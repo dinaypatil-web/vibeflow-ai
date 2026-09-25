@@ -1,0 +1,178 @@
+// Prisma schema for VibeFlow AI - PostgreSQL Production
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum ProviderType {
+  YOUTUBE
+  SPOTIFY
+  SOUNDCLOUD
+  LOCAL
+  JAMENDO
+}
+
+model User {
+  id               String            @id @default(uuid())
+  email            String            @unique
+  passwordHash     String
+  name             String
+  avatar           String?
+  role             Role              @default(USER)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  preferences      UserPreference?
+  playlists        Playlist[]
+  favorites        Favorite[]
+  listeningHistory ListeningHistory[]
+  userFeedback     UserFeedback[]
+  devices          UserDevice[]
+}
+
+model UserPreference {
+  id                         String   @id @default(uuid())
+  userId                     String   @unique
+  user                       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  favoriteGenres             String[]
+  favoriteMoods              String[]
+  preferredLanguages         String[]
+  favoriteArtists            String[]
+  preferredDurationMaxMinutes Int?
+  autoPlaySimilar            Boolean  @default(true)
+  streamQuality              String   @default("high")
+  downloadQuality            String   @default("high")
+  wifiOnlyDownloads          Boolean  @default(true)
+  enableListeningHistory     Boolean  @default(true)
+  theme                      String   @default("dark")
+}
+
+model MediaItem {
+  id                 String             @id @default(uuid())
+  provider           ProviderType
+  providerId         String
+  title              String
+  artist             String
+  album              String?
+  thumbnail          String
+  duration           Int
+  genre              String
+  mood               String
+  language           String?
+  releaseYear        Int?
+  capabilities       String[]
+  streamUrl          String?
+  embedUrl           String?
+  localPath          String?
+  isOfflinePermitted Boolean            @default(false)
+  isLocal            Boolean            @default(false)
+  lyrics             String?
+  confidenceScore    Float?
+  tags               String[]
+  playbackCount      Int                @default(0)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  playlistItems      PlaylistItem[]
+  favorites          Favorite[]
+  listeningHistory   ListeningHistory[]
+  downloadJobs       DownloadJob[]
+
+  @@unique([provider, providerId])
+  @@index([genre])
+  @@index([mood])
+  @@index([artist])
+}
+
+model Playlist {
+  id              String         @id @default(uuid())
+  userId          String
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title           String
+  description     String?
+  coverArt        String?
+  isSmart         Boolean        @default(false)
+  smartDefinition Json?
+  isPrivate       Boolean        @default(false)
+  isShareable     Boolean        @default(true)
+  isPinned        Boolean        @default(false)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  items           PlaylistItem[]
+}
+
+model PlaylistItem {
+  id          String    @id @default(uuid())
+  playlistId  String
+  playlist    Playlist  @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  mediaItemId String
+  mediaItem   MediaItem @relation(fields: [mediaItemId], references: [id], onDelete: Cascade)
+  orderIndex  Int
+  addedAt     DateTime  @default(now())
+
+  @@index([playlistId, orderIndex])
+}
+
+model Favorite {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mediaItemId String
+  mediaItem   MediaItem @relation(fields: [mediaItemId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@unique([userId, mediaItemId])
+}
+
+model ListeningHistory {
+  id             String    @id @default(uuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mediaItemId    String
+  mediaItem      MediaItem @relation(fields: [mediaItemId], references: [id], onDelete: Cascade)
+  playedSeconds  Int
+  completionRate Float
+  listenedAt     DateTime  @default(now())
+
+  @@index([userId, listenedAt])
+}
+
+model DownloadJob {
+  id              String    @id @default(uuid())
+  mediaItemId     String
+  mediaItem       MediaItem @relation(fields: [mediaItemId], references: [id], onDelete: Cascade)
+  status          String
+  progress        Int       @default(0)
+  downloadedBytes Int       @default(0)
+  totalBytes      Int       @default(0)
+  localPath       String?
+  startedAt       DateTime  @default(now())
+  completedAt     DateTime?
+}
+
+model UserFeedback {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  targetType  String // "recommendation" | "classification"
+  targetId    String
+  feedbackType String // "like" | "dislike" | "override_genre" | "override_mood"
+  payload     Json?
+  createdAt   DateTime @default(now())
+}
+
+model UserDevice {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceType  String // "android" | "ios" | "web"
+  deviceName  String
+  lastSeenAt  DateTime @default(now())
+}
