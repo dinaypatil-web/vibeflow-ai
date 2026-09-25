@@ -2,10 +2,16 @@
   "name": "vibeflow-ai",
   "version": "1.0.0",
   "description": "VibeFlow AI – Intelligent Music & Video Discovery Platform",
+  "workspaces": [
+    "backend",
+    "web"
+  ],
   "scripts": {
-    "dev:backend": "cd backend && npm start",
+    "dev:backend": "cd backend && npm run dev",
     "dev:web": "cd web && npm run dev",
-    "build": "cd backend && npm run build",
+    "build:web": "npm run build --workspace=web",
+    "build:backend": "npm run build --workspace=backend",
+    "build": "npm run build --workspace=web",
     "test": "node test.js"
   },
   "keywords": ["music", "ai", "discovery", "streaming", "youtube", "offline", "recommendation"],

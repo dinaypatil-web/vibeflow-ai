@@ -328,10 +328,19 @@ class MemoryDatabase {
     this.seedDefaultPlaylists();
   }
 
+  private getFilePath(): { dir: string; file: string } {
+    if (process.env.VERCEL) {
+      return { dir: '/tmp', file: '/tmp/vibeflow_db.json' };
+    }
+    return { dir: DATA_DIR, file: DATA_FILE };
+  }
+
   private loadFromDisk() {
     try {
-      if (fs.existsSync(DATA_FILE)) {
-        const raw = fs.readFileSync(DATA_FILE, 'utf-8');
+      const { file } = this.getFilePath();
+      const targetFile = fs.existsSync(file) ? file : (fs.existsSync(DATA_FILE) ? DATA_FILE : null);
+      if (targetFile) {
+        const raw = fs.readFileSync(targetFile, 'utf-8');
         const parsed = JSON.parse(raw);
         this.data = { ...this.data, ...parsed };
       }
@@ -342,10 +351,11 @@ class MemoryDatabase {
 
   public saveToDisk() {
     try {
-      if (!fs.existsSync(DATA_DIR)) {
-        fs.mkdirSync(DATA_DIR, { recursive: true });
+      const { dir, file } = this.getFilePath();
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
       }
-      fs.writeFileSync(DATA_FILE, JSON.stringify(this.data, null, 2), 'utf-8');
+      fs.writeFileSync(file, JSON.stringify(this.data, null, 2), 'utf-8');
     } catch (err) {
       console.warn('Could not persist data file to disk', err);
     }

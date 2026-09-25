@@ -65,10 +65,15 @@ app.get('/api/docs', (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`=================================================`);
-  console.log(`  🎵 VibeFlow AI Backend running on port ${PORT}`);
-  console.log(`  API Base: http://localhost:${PORT}/api`);
-  console.log(`  Health:   http://localhost:${PORT}/api/health`);
-  console.log(`=================================================`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`=================================================`);
+    console.log(`  🎵 VibeFlow AI Backend running on port ${PORT}`);
+    console.log(`  API Base: http://localhost:${PORT}/api`);
+    console.log(`  Health:   http://localhost:${PORT}/api/health`);
+    console.log(`=================================================`);
+  });
+}
+
+export default app;
+

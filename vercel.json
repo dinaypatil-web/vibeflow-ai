@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build --workspace=web",
+  "outputDirectory": "web/dist",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/"
+    }
+  ]
+}
