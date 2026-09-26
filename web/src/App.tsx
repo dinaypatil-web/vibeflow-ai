@@ -10,12 +10,15 @@ import { ImportUrlModal } from './components/ImportUrlModal';
 import { AddToPlaylistModal } from './components/AddToPlaylistModal';
 import { HomeView } from './views/HomeView';
 import { ExploreView } from './views/ExploreView';
+import { SearchView } from './views/SearchView';
 import { PlaylistsView } from './views/PlaylistsView';
 import { LibraryView } from './views/LibraryView';
 import { AIStudioView } from './views/AIStudioView';
 import { SettingsView } from './views/SettingsView';
+import { AuthModal } from './components/AuthModal';
 import { 
   Home, 
+  Search,
   Compass, 
   ListMusic, 
   Library as LibraryIcon, 
@@ -29,6 +32,7 @@ export const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isImportUrlModalOpen, setIsImportUrlModalOpen] = useState(false);
   const [playlistTargetTrack, setPlaylistTargetTrack] = useState<MediaItem | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   const handleSelectMood = (mood: MoodCategory | null) => {
     setSelectedMood(mood);
@@ -52,7 +56,7 @@ export const App: React.FC = () => {
       <AudioEngine />
 
       {/* Desktop Sidebar */}
-      <Sidebar />
+      <Sidebar onOpenAuth={() => setIsAuthModalOpen(true)} />
 
       {/* Main App Layout */}
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
@@ -62,10 +66,11 @@ export const App: React.FC = () => {
           selectedMood={selectedMood}
           onSelectMood={handleSelectMood}
           onOpenImportUrl={() => setIsImportUrlModalOpen(true)}
+          onOpenAuth={() => setIsAuthModalOpen(true)}
         />
 
         {/* Scrollable View Content */}
-        <main className="flex-1 overflow-y-auto px-4 md:px-8 pt-6 pb-28">
+        <main className="flex-1 overflow-y-auto px-4 md:px-8 pt-6 pb-44 md:pb-28">
           <div className="max-w-7xl mx-auto">
             {activeTab === 'home' && (
               <HomeView 
@@ -73,6 +78,9 @@ export const App: React.FC = () => {
                 onSearchQuery={handleSearchSubmit}
                 onAddToPlaylist={handleAddToPlaylist}
               />
+            )}
+            {activeTab === 'search' && (
+              <SearchView onAddToPlaylist={handleAddToPlaylist} />
             )}
             {activeTab === 'explore' && (
               <ExploreView 
@@ -82,7 +90,9 @@ export const App: React.FC = () => {
                 onOpenImportUrl={() => setIsImportUrlModalOpen(true)}
               />
             )}
-            {activeTab === 'playlists' && <PlaylistsView />}
+            {activeTab === 'playlists' && (
+              <PlaylistsView onOpenAuth={() => setIsAuthModalOpen(true)} />
+            )}
             {activeTab === 'library' && <LibraryView />}
             {activeTab === 'ai-studio' && <AIStudioView />}
             {activeTab === 'settings' && <SettingsView />}
@@ -90,11 +100,11 @@ export const App: React.FC = () => {
         </main>
 
         {/* Mobile Bottom Navigation Bar */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-surface-950/95 backdrop-blur-xl border-t border-white/5 px-2 py-2 flex items-center justify-around text-[10px] font-medium text-slate-400">
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-surface-950/95 backdrop-blur-xl border-t border-white/5 px-1 py-2 flex items-center justify-around text-[10px] font-medium text-slate-400">
           <button
             onClick={() => setActiveTab('home')}
-            className={`flex flex-col items-center gap-1 p-1.5 transition-colors ${
-              activeTab === 'home' ? 'text-brand-400 font-bold' : 'hover:text-slate-200'
+            className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl transition-all ${
+              activeTab === 'home' ? 'text-brand-400 bg-brand-500/10' : 'hover:text-slate-200'
             }`}
           >
             <Home className="w-5 h-5" />
@@ -102,9 +112,19 @@ export const App: React.FC = () => {
           </button>
 
           <button
+            onClick={() => setActiveTab('search')}
+            className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl transition-all ${
+              activeTab === 'search' ? 'text-brand-400 bg-brand-500/10' : 'hover:text-slate-200'
+            }`}
+          >
+            <Search className="w-5 h-5" />
+            <span>Search</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('explore')}
-            className={`flex flex-col items-center gap-1 p-1.5 transition-colors ${
-              activeTab === 'explore' ? 'text-brand-400 font-bold' : 'hover:text-slate-200'
+            className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl transition-all ${
+              activeTab === 'explore' ? 'text-brand-400 bg-brand-500/10' : 'hover:text-slate-200'
             }`}
           >
             <Compass className="w-5 h-5" />
@@ -113,8 +133,8 @@ export const App: React.FC = () => {
 
           <button
             onClick={() => setActiveTab('playlists')}
-            className={`flex flex-col items-center gap-1 p-1.5 transition-colors ${
-              activeTab === 'playlists' ? 'text-brand-400 font-bold' : 'hover:text-slate-200'
+            className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl transition-all ${
+              activeTab === 'playlists' ? 'text-brand-400 bg-brand-500/10' : 'hover:text-slate-200'
             }`}
           >
             <ListMusic className="w-5 h-5" />
@@ -123,8 +143,8 @@ export const App: React.FC = () => {
 
           <button
             onClick={() => setActiveTab('library')}
-            className={`flex flex-col items-center gap-1 p-1.5 transition-colors ${
-              activeTab === 'library' ? 'text-brand-400 font-bold' : 'hover:text-slate-200'
+            className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl transition-all ${
+              activeTab === 'library' ? 'text-brand-400 bg-brand-500/10' : 'hover:text-slate-200'
             }`}
           >
             <LibraryIcon className="w-5 h-5" />
@@ -133,12 +153,12 @@ export const App: React.FC = () => {
 
           <button
             onClick={() => setActiveTab('ai-studio')}
-            className={`flex flex-col items-center gap-1 p-1.5 transition-colors ${
-              activeTab === 'ai-studio' ? 'text-brand-400 font-bold' : 'hover:text-slate-200'
+            className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl transition-all ${
+              activeTab === 'ai-studio' ? 'text-brand-400 bg-brand-500/10' : 'hover:text-slate-200'
             }`}
           >
             <Sparkles className="w-5 h-5" />
-            <span>AI Studio</span>
+            <span>AI</span>
           </button>
         </nav>
 
@@ -160,6 +180,11 @@ export const App: React.FC = () => {
           track={playlistTargetTrack}
           onClose={() => setPlaylistTargetTrack(null)}
         />
+
+        {/* User Authentication & Cloud Sync Modal */}
+        {isAuthModalOpen && (
+          <AuthModal onClose={() => setIsAuthModalOpen(false)} />
+        )}
       </div>
     </div>
   );

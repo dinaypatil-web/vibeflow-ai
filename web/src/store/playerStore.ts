@@ -1,8 +1,28 @@
 import { create } from 'zustand';
 import { MediaItem, User } from '../types';
 
-export type TabType = 'home' | 'explore' | 'playlists' | 'library' | 'ai-studio' | 'settings';
+export type TabType = 'home' | 'search' | 'explore' | 'playlists' | 'library' | 'ai-studio' | 'settings';
 export type RepeatMode = 'off' | 'all' | 'one';
+
+const LS_TOKEN = 'vibeflow_token';
+const LS_USER  = 'vibeflow_user';
+const LS_FAVS  = (userId: string) => `vibeflow_favs_${userId}`;
+
+function loadPersisted() {
+  try {
+    const token = localStorage.getItem(LS_TOKEN);
+    const userRaw = localStorage.getItem(LS_USER);
+    const user: User | null = userRaw ? JSON.parse(userRaw) : null;
+    const favs: string[] = user
+      ? JSON.parse(localStorage.getItem(LS_FAVS(user.id)) || '[]')
+      : [];
+    return { token, user, favorites: favs };
+  } catch {
+    return { token: null, user: null, favorites: [] };
+  }
+}
+
+const persisted = loadPersisted();
 
 interface PlayerState {
   currentTrack: MediaItem | null;
@@ -24,6 +44,8 @@ interface PlayerState {
   user: User | null;
   token: string | null;
   seekRequestedTime: number | null;
+  authLoading: boolean;
+  authError: string | null;
 
   // Actions
   playTrack: (track: MediaItem, newQueue?: MediaItem[]) => void;
@@ -48,6 +70,11 @@ interface PlayerState {
   tickSleepTimer: () => void;
   toggleFavorite: (trackId: string) => void;
   setUser: (user: User | null, token: string | null) => void;
+  login: (email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<void>;
+  loginDemo: () => Promise<void>;
+  logout: () => void;
+  clearAuthError: () => void;
 }
 
 export const usePlayerStore = create<PlayerState>((set, get) => ({
@@ -66,17 +93,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   activeTab: 'home',
   sleepTimerMinutes: null,
   sleepTimerRemainingSeconds: null,
-  favorites: ['track-1', 'track-3'],
-  user: {
-    id: 'demo-user-id',
-    email: 'demo@vibeflow.ai',
-    name: 'Aarav Sharma',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
-    role: 'user',
-    createdAt: new Date().toISOString()
-  },
-  token: 'demo-token',
+  favorites: persisted.favorites,
+  user: persisted.user,
+  token: persisted.token,
   seekRequestedTime: null,
+  authLoading: false,
+  authError: null,
 
   playTrack: (track, newQueue) => {
     let queue = get().queue;
@@ -202,9 +224,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   addToQueue: (track) => {
-    set(state => ({
-      queue: [...state.queue, track]
-    }));
+    set(state => ({ queue: [...state.queue, track] }));
   },
 
   removeFromQueue: (index) => {
@@ -228,10 +248,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (minutes === null) {
       set({ sleepTimerMinutes: null, sleepTimerRemainingSeconds: null });
     } else {
-      set({
-        sleepTimerMinutes: minutes,
-        sleepTimerRemainingSeconds: minutes * 60
-      });
+      set({ sleepTimerMinutes: minutes, sleepTimerRemainingSeconds: minutes * 60 });
     }
   },
 
@@ -239,11 +256,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const rem = get().sleepTimerRemainingSeconds;
     if (rem === null) return;
     if (rem <= 1) {
-      set({
-        isPlaying: false,
-        sleepTimerMinutes: null,
-        sleepTimerRemainingSeconds: null
-      });
+      set({ isPlaying: false, sleepTimerMinutes: null, sleepTimerRemainingSeconds: null });
     } else {
       set({ sleepTimerRemainingSeconds: rem - 1 });
     }
@@ -252,13 +265,83 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   toggleFavorite: (trackId) => {
     set(state => {
       const exists = state.favorites.includes(trackId);
-      return {
-        favorites: exists
-          ? state.favorites.filter(id => id !== trackId)
-          : [...state.favorites, trackId]
-      };
+      const newFavs = exists
+        ? state.favorites.filter(id => id !== trackId)
+        : [...state.favorites, trackId];
+      if (state.user) {
+        localStorage.setItem(LS_FAVS(state.user.id), JSON.stringify(newFavs));
+      }
+      return { favorites: newFavs };
     });
   },
 
-  setUser: (user, token) => set({ user, token })
+  setUser: (user, token) => {
+    if (user && token) {
+      localStorage.setItem(LS_TOKEN, token);
+      localStorage.setItem(LS_USER, JSON.stringify(user));
+      const favs: string[] = JSON.parse(localStorage.getItem(LS_FAVS(user.id)) || '[]');
+      set({ user, token, favorites: favs });
+    } else {
+      localStorage.removeItem(LS_TOKEN);
+      localStorage.removeItem(LS_USER);
+      set({ user: null, token: null, favorites: [] });
+    }
+  },
+
+  login: async (email, password) => {
+    set({ authLoading: true, authError: null });
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Login failed');
+      get().setUser(data.user, data.token);
+      set({ authLoading: false });
+    } catch (err: any) {
+      set({ authLoading: false, authError: err.message || 'Login failed' });
+      throw err;
+    }
+  },
+
+  register: async (name, email, password) => {
+    set({ authLoading: true, authError: null });
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Registration failed');
+      get().setUser(data.user, data.token);
+      set({ authLoading: false });
+    } catch (err: any) {
+      set({ authLoading: false, authError: err.message || 'Registration failed' });
+      throw err;
+    }
+  },
+
+  loginDemo: async () => {
+    set({ authLoading: true, authError: null });
+    try {
+      const res = await fetch('/api/auth/demo', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Demo login failed');
+      get().setUser(data.user, data.token);
+      set({ authLoading: false });
+    } catch (err: any) {
+      set({ authLoading: false, authError: err.message || 'Demo login failed' });
+    }
+  },
+
+  logout: () => {
+    localStorage.removeItem(LS_TOKEN);
+    localStorage.removeItem(LS_USER);
+    set({ user: null, token: null, favorites: [], activeTab: 'home' });
+  },
+
+  clearAuthError: () => set({ authError: null }),
 }));

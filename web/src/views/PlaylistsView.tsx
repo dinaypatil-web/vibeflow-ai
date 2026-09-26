@@ -10,7 +10,11 @@ import {
   Clock, 
   CheckCircle2,
   FolderPlus,
-  X
+  X,
+  User as UserIcon,
+  Cloud,
+  LogOut,
+  LogIn
 } from 'lucide-react';
 import { Playlist, PlaylistItem } from '../types';
 import { api } from '../services/api';
@@ -18,25 +22,33 @@ import { usePlayerStore } from '../store/playerStore';
 import { SmartPlaylistModal } from '../components/SmartPlaylistModal';
 import { CreatePlaylistModal } from '../components/CreatePlaylistModal';
 
-export const PlaylistsView: React.FC = () => {
+interface PlaylistsViewProps {
+  onOpenAuth?: () => void;
+}
+
+export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
   const [isSmartModalOpen, setIsSmartModalOpen] = useState(false);
   const [isCustomModalOpen, setIsCustomModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const { playTrack, setNowPlayingOpen } = usePlayerStore();
+  const { playTrack, setNowPlayingOpen, user, logout } = usePlayerStore();
 
   const fetchPlaylists = async () => {
     setLoading(true);
     try {
       const data = await api.getPlaylists();
       setPlaylists(data);
-      if (data.length > 0 && !selectedPlaylist) {
-        setSelectedPlaylist(data[0]);
-      } else if (selectedPlaylist) {
-        const refreshed = data.find(p => p.id === selectedPlaylist.id);
-        if (refreshed) setSelectedPlaylist(refreshed);
+      if (data.length > 0) {
+        if (!selectedPlaylist) {
+          setSelectedPlaylist(data[0]);
+        } else {
+          const refreshed = data.find(p => p.id === selectedPlaylist.id);
+          setSelectedPlaylist(refreshed || data[0]);
+        }
+      } else {
+        setSelectedPlaylist(null);
       }
     } catch (err) {
       console.error('Fetch playlists error', err);
@@ -46,8 +58,9 @@ export const PlaylistsView: React.FC = () => {
   };
 
   useEffect(() => {
+    setSelectedPlaylist(null);
     fetchPlaylists();
-  }, []);
+  }, [user?.id]);
 
   const handlePlayAll = () => {
     if (!selectedPlaylist || !selectedPlaylist.items || selectedPlaylist.items.length === 0) return;
@@ -115,6 +128,58 @@ export const PlaylistsView: React.FC = () => {
             <Sparkles className="w-3.5 h-3.5 text-accent-cyan" />
             <span>Smart Rule Mix</span>
           </button>
+        </div>
+      </div>
+
+      {/* User Cloud Sync Status Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-gradient-to-r from-brand-950/60 via-surface-850 to-surface-850 border border-brand-500/20 shadow-md">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center shrink-0 overflow-hidden">
+            {user ? (
+              <img src={user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <UserIcon className="w-5 h-5 text-brand-400" />
+            )}
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-white">
+                {user ? user.name : 'Guest Session'}
+              </span>
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                user ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/15 text-amber-400 border-amber-500/20'
+              }`}>
+                <Cloud className="w-3 h-3" />
+                <span>{user ? 'Cloud Synced Across Devices' : 'Local Only (Not Synced)'}</span>
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {user 
+                ? `Logged in as ${user.email} • Your playlists & tracks are synced across all your devices`
+                : 'Sign in to sync your playlists and saved tracks across all your phones, tablets, and computers.'
+              }
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {user ? (
+            <button
+              onClick={logout}
+              className="px-3 py-1.5 rounded-xl bg-surface-800 hover:bg-surface-750 border border-white/10 text-xs font-medium text-slate-300 hover:text-white transition-all flex items-center gap-1.5"
+            >
+              <LogOut className="w-3.5 h-3.5 text-slate-400" />
+              <span>Sign Out</span>
+            </button>
+          ) : (
+            <button
+              onClick={onOpenAuth}
+              className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-brand-600 to-accent-cyan hover:opacity-95 text-xs font-bold text-white shadow-md shadow-brand-500/20 transition-all flex items-center gap-1.5"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Sign In / Create Account</span>
+            </button>
+          )}
         </div>
       </div>
 

@@ -73,8 +73,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
         searchTerm.trim(), 
         provParam, 
         activeGenre || undefined, 
-        activeMood || undefined, 
-        48
+        activeMood || undefined
       );
       setResults(res);
 

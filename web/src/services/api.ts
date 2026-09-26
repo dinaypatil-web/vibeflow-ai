@@ -10,16 +10,46 @@ import {
 
 const API_BASE = (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/$/, '') : '') || '/api';
 
+export function getStoredToken(): string | null {
+  try {
+    return localStorage.getItem('vibeflow_token');
+  } catch {
+    return null;
+  }
+}
+
+export function getStoredUserId(): string {
+  try {
+    const raw = localStorage.getItem('vibeflow_user');
+    if (raw) {
+      const u = JSON.parse(raw);
+      if (u?.id) return u.id;
+    }
+  } catch {}
+  return 'demo-user-id';
+}
+
+function authHeaders(token?: string | null): HeadersInit {
+  const t = token || getStoredToken();
+  const h: HeadersInit = { 'Content-Type': 'application/json' };
+  if (t) h['Authorization'] = `Bearer ${t}`;
+  return h;
+}
+
 export const api = {
-  // Search
-  search: async (query: string, provider?: MediaProvider, genre?: string, mood?: string, limit = 48): Promise<MediaItem[]> => {
+  // Search — searches all files matching criteria, not limited to any number
+  search: async (query: string, provider?: MediaProvider, genre?: string, mood?: string, limit?: number): Promise<MediaItem[]> => {
     try {
       const params = new URLSearchParams();
       if (query) params.append('q', query);
       if (provider) params.append('provider', provider);
       if (genre) params.append('genre', genre);
       if (mood) params.append('mood', mood);
-      params.append('limit', limit.toString());
+      if (limit !== undefined && limit > 0) {
+        params.append('limit', limit.toString());
+      } else {
+        params.append('limit', 'all');
+      }
 
       const res = await fetch(`${API_BASE}/media/search?${params.toString()}`);
       if (!res.ok) throw new Error('Search failed');
@@ -104,10 +134,14 @@ export const api = {
     return await res.json();
   },
 
-  // Playlists
-  getPlaylists: async (userId = 'demo-user-id'): Promise<Playlist[]> => {
+  // Playlists — token-scoped per logged-in user
+  getPlaylists: async (userId?: string, token?: string | null): Promise<Playlist[]> => {
     try {
-      const res = await fetch(`${API_BASE}/playlists?userId=${userId}`);
+      const uid = userId || getStoredUserId();
+      const t = token !== undefined ? token : getStoredToken();
+      const headers: HeadersInit = {};
+      if (t) headers['Authorization'] = `Bearer ${t}`;
+      const res = await fetch(`${API_BASE}/playlists?userId=${uid}`, { headers });
       if (!res.ok) throw new Error('Fetch playlists failed');
       const data = await res.json();
       return data.playlists || [];
@@ -117,37 +151,52 @@ export const api = {
     }
   },
 
-  createPlaylist: async (playlistData: Partial<Playlist>): Promise<Playlist> => {
+  createPlaylist: async (playlistData: Partial<Playlist>, token?: string | null): Promise<Playlist> => {
+    const uid = playlistData.userId || getStoredUserId();
+    const t = token !== undefined ? token : getStoredToken();
     const res = await fetch(`${API_BASE}/playlists`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(playlistData)
+      headers: authHeaders(t),
+      body: JSON.stringify({ ...playlistData, userId: uid })
     });
     const data = await res.json();
     return data.playlist;
   },
 
-  deletePlaylist: async (id: string) => {
-    await fetch(`${API_BASE}/playlists/${id}`, { method: 'DELETE' });
+  deletePlaylist: async (id: string, token?: string | null) => {
+    const t = token !== undefined ? token : getStoredToken();
+    await fetch(`${API_BASE}/playlists/${id}`, {
+      method: 'DELETE',
+      headers: t ? { 'Authorization': `Bearer ${t}` } : {}
+    });
   },
 
-  addItemToPlaylist: async (playlistId: string, mediaItemId: string) => {
+  addItemToPlaylist: async (playlistId: string, mediaItemId: string, token?: string | null) => {
+    const t = token !== undefined ? token : getStoredToken();
     const res = await fetch(`${API_BASE}/playlists/${playlistId}/items`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders(t),
       body: JSON.stringify({ mediaItemId })
     });
     return await res.json();
   },
 
-  removeItemFromPlaylist: async (playlistId: string, mediaItemId: string) => {
-    await fetch(`${API_BASE}/playlists/${playlistId}/items/${mediaItemId}`, { method: 'DELETE' });
+  removeItemFromPlaylist: async (playlistId: string, mediaItemId: string, token?: string | null) => {
+    const t = token !== undefined ? token : getStoredToken();
+    await fetch(`${API_BASE}/playlists/${playlistId}/items/${mediaItemId}`, {
+      method: 'DELETE',
+      headers: t ? { 'Authorization': `Bearer ${t}` } : {}
+    });
   },
 
-  // Recommendations Feed
-  getPersonalizedFeed: async (userId = 'demo-user-id'): Promise<RecommendationResponse[]> => {
+  // Personalized feed
+  getPersonalizedFeed: async (userId?: string, token?: string | null): Promise<RecommendationResponse[]> => {
     try {
-      const res = await fetch(`${API_BASE}/recommendations/feed?userId=${userId}`);
+      const uid = userId || getStoredUserId();
+      const t = token !== undefined ? token : getStoredToken();
+      const headers: HeadersInit = {};
+      if (t) headers['Authorization'] = `Bearer ${t}`;
+      const res = await fetch(`${API_BASE}/recommendations/feed?userId=${uid}`, { headers });
       if (!res.ok) throw new Error('Fetch feed failed');
       const data = await res.json();
       return data.feed || [];
@@ -158,9 +207,13 @@ export const api = {
   },
 
   // Favorites
-  getFavorites: async (userId = 'demo-user-id'): Promise<MediaItem[]> => {
+  getFavorites: async (userId?: string, token?: string | null): Promise<MediaItem[]> => {
     try {
-      const res = await fetch(`${API_BASE}/library/favorites?userId=${userId}`);
+      const uid = userId || getStoredUserId();
+      const t = token !== undefined ? token : getStoredToken();
+      const headers: HeadersInit = {};
+      if (t) headers['Authorization'] = `Bearer ${t}`;
+      const res = await fetch(`${API_BASE}/library/favorites?userId=${uid}`, { headers });
       const data = await res.json();
       return data.favorites || [];
     } catch (err) {
@@ -168,21 +221,23 @@ export const api = {
     }
   },
 
-  toggleFavorite: async (userId: string, mediaItemId: string): Promise<boolean> => {
+  toggleFavorite: async (userId?: string, mediaItemId?: string, token?: string | null): Promise<boolean> => {
+    const uid = userId || getStoredUserId();
+    const t = token !== undefined ? token : getStoredToken();
     const res = await fetch(`${API_BASE}/library/favorites/toggle`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, mediaItemId })
+      headers: authHeaders(t),
+      body: JSON.stringify({ userId: uid, mediaItemId })
     });
     const data = await res.json();
     return data.isFavorite;
   },
 
   // History
-  recordHistory: async (userId: string, mediaItemId: string, playedSeconds: number, completionRate: number) => {
+  recordHistory: async (userId: string, mediaItemId: string, playedSeconds: number, completionRate: number, token?: string | null) => {
     await fetch(`${API_BASE}/library/history`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders(token),
       body: JSON.stringify({ userId, mediaItemId, playedSeconds, completionRate })
     });
   },
@@ -193,9 +248,40 @@ export const api = {
     return await res.json();
   },
 
-  // 1-Click Demo Login
+  // Auth
   loginDemo: async (): Promise<{ user: User; token: string }> => {
     const res = await fetch(`${API_BASE}/auth/demo`, { method: 'POST' });
     return await res.json();
+  },
+
+  login: async (email: string, password: string): Promise<{ user: User; token: string }> => {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Login failed');
+    return data;
+  },
+
+  register: async (name: string, email: string, password: string): Promise<{ user: User; token: string }> => {
+    const res = await fetch(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Registration failed');
+    return data;
+  },
+
+  getMe: async (token: string): Promise<User> => {
+    const res = await fetch(`${API_BASE}/auth/me`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Unauthorized');
+    return data.user;
   }
 };

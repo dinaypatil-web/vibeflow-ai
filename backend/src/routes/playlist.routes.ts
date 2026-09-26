@@ -1,13 +1,28 @@
 import { Router, Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
 import { db } from '../store/database';
 import { Playlist, PlaylistItem, MediaItem } from '../types';
 import { AIRecommendationService } from '../services/aiRecommendationService';
 
 const router = Router();
+const JWT_SECRET = process.env.JWT_SECRET || 'vibeflow-super-secret-key-2026';
+
+function resolveUserId(req: Request): string {
+  const auth = req.headers.authorization;
+  if (auth && auth.startsWith('Bearer ')) {
+    try {
+      const decoded = jwt.verify(auth.substring(7), JWT_SECRET) as any;
+      if (decoded?.userId) return decoded.userId;
+    } catch {}
+  }
+  if (req.query.userId) return req.query.userId as string;
+  if (req.body?.userId) return req.body.userId as string;
+  return 'demo-user-id';
+}
 
 // Get playlists
 router.get('/', (req: Request, res: Response) => {
-  const userId = (req.query.userId as string) || 'demo-user-id';
+  const userId = resolveUserId(req);
   const playlists = db.getPlaylistsByUserId(userId);
 
   // Hydrate items for smart playlists dynamically
@@ -61,7 +76,7 @@ router.post('/', (req: Request, res: Response) => {
 
   const newPlaylist: Playlist = {
     id: playlistId,
-    userId: userId || 'demo-user-id',
+    userId: userId || resolveUserId(req),
     title,
     description: description || '',
     coverArt: coverArt || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=600&q=80',

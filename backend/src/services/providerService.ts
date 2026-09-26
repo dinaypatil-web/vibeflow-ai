@@ -85,9 +85,10 @@ export class ITunesLiveProviderAdapter implements ProviderAdapter {
     };
   }
 
-  public async search(query: string, limit = 10): Promise<MediaItem[]> {
+  public async search(query: string, limit?: number): Promise<MediaItem[]> {
     try {
-      const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=${limit}`;
+      const fetchLimit = limit && limit > 0 ? limit : 100;
+      const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=${fetchLimit}`;
       const res = await fetch(url);
       if (!res.ok) return [];
 
@@ -172,9 +173,10 @@ export class AudiusLiveProviderAdapter implements ProviderAdapter {
     };
   }
 
-  public async search(query: string, limit = 6): Promise<MediaItem[]> {
+  public async search(query: string, limit?: number): Promise<MediaItem[]> {
     try {
-      const url = `https://discoveryprovider.audius.co/v1/tracks/search?query=${encodeURIComponent(query)}&app_name=VIBEFLOW_AI&limit=${limit}`;
+      const fetchLimit = limit && limit > 0 ? limit : 50;
+      const url = `https://discoveryprovider.audius.co/v1/tracks/search?query=${encodeURIComponent(query)}&app_name=VIBEFLOW_AI&limit=${fetchLimit}`;
       const res = await fetch(url);
       if (!res.ok) return [];
 
@@ -256,13 +258,14 @@ export class YouTubeProviderAdapter implements ProviderAdapter {
     };
   }
 
-  public async search(query: string, limit = 8): Promise<MediaItem[]> {
+  public async search(query: string, limit?: number): Promise<MediaItem[]> {
     const qLower = query.toLowerCase();
+    const fetchLimit = limit && limit > 0 ? limit : 50;
 
     // If API key is configured, perform live authorized YouTube Data API v3 request
     if (this.isConfigured()) {
       try {
-        const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&maxResults=${limit}&q=${encodeURIComponent(query)}&key=${this.apiKey}`;
+        const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&maxResults=${Math.min(fetchLimit, 50)}&q=${encodeURIComponent(query)}&key=${this.apiKey}`;
         const res = await fetch(url);
         if (res.ok) {
           const json = await res.json() as any;
@@ -354,7 +357,7 @@ export class YouTubeProviderAdapter implements ProviderAdapter {
                 };
                 db.addMediaItem(mediaItem);
                 liveYtItems.push(mediaItem);
-                if (liveYtItems.length >= limit) break;
+                if (limit && liveYtItems.length >= limit) break;
               }
             }
             if (liveYtItems.length > 0) {
@@ -376,7 +379,7 @@ export class YouTubeProviderAdapter implements ProviderAdapter {
        item.mood.toLowerCase().includes(qLower))
     );
 
-    return curatedMatches.slice(0, limit);
+    return limit ? curatedMatches.slice(0, limit) : curatedMatches;
   }
 }
 
@@ -408,9 +411,10 @@ export class DeezerProviderAdapter implements ProviderAdapter {
     };
   }
 
-  public async search(query: string, limit = 8): Promise<MediaItem[]> {
+  public async search(query: string, limit?: number): Promise<MediaItem[]> {
     try {
-      const url = `https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=${limit}`;
+      const fetchLimit = limit && limit > 0 ? limit : 100;
+      const url = `https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=${fetchLimit}`;
       const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
       if (!res.ok) return [];
 
@@ -492,9 +496,10 @@ export class JioSaavnProviderAdapter implements ProviderAdapter {
     };
   }
 
-  public async search(query: string, limit = 20): Promise<MediaItem[]> {
+  public async search(query: string, limit?: number): Promise<MediaItem[]> {
     try {
-      const url = `https://www.jiosaavn.com/api.php?__call=search.getResults&_format=json&_marker=0&api_version=4&ctx=web6dot0&n=${limit}&p=1&q=${encodeURIComponent(query)}`;
+      const fetchLimit = limit && limit > 0 ? limit : 50;
+      const url = `https://www.jiosaavn.com/api.php?__call=search.getResults&_format=json&_marker=0&api_version=4&ctx=web6dot0&n=${fetchLimit}&p=1&q=${encodeURIComponent(query)}`;
       const res = await fetch(url, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -759,13 +764,13 @@ export class LocalMediaProviderAdapter implements ProviderAdapter {
     };
   }
 
-  public async search(query: string, limit = 10): Promise<MediaItem[]> {
+  public async search(query: string, limit?: number): Promise<MediaItem[]> {
     const qLower = query.toLowerCase();
     const localItems = db.getAllMediaItems().filter(item => 
       item.isLocal && 
       (item.title.toLowerCase().includes(qLower) || item.artist.toLowerCase().includes(qLower))
     );
-    return localItems.slice(0, limit);
+    return limit && limit > 0 ? localItems.slice(0, limit) : localItems;
   }
 }
 
@@ -839,7 +844,7 @@ export class ProviderRegistry {
   /**
    * Search across all live providers and local database
    */
-  public async unifiedSearch(query: string, providerFilter?: MediaProvider, limit = 36): Promise<MediaItem[]> {
+  public async unifiedSearch(query: string, providerFilter?: MediaProvider, limit?: number): Promise<MediaItem[]> {
     const qTrimmed = query.trim();
     const qLower = qTrimmed.toLowerCase();
 
@@ -847,9 +852,10 @@ export class ProviderRegistry {
     if (!qTrimmed) {
       const items = db.getAllMediaItems();
       if (providerFilter && providerFilter !== 'public_domain') {
-        return items.filter(i => i.provider === providerFilter).slice(0, limit);
+        const filtered = items.filter(i => i.provider === providerFilter);
+        return limit && limit > 0 ? filtered.slice(0, limit) : filtered;
       }
-      return items.slice(0, limit);
+      return limit && limit > 0 ? items.slice(0, limit) : items;
     }
 
     const ytAdapter = this.adapters.get('youtube') as YouTubeProviderAdapter;
@@ -860,27 +866,33 @@ export class ProviderRegistry {
     const spotifyAdapter = this.adapters.get('spotify') as SpotifyProviderAdapter;
     const soundcloudAdapter = new SoundCloudProviderAdapter();
 
-    // 2. If a specific provider is selected, query that provider directly with higher quota!
+    // 2. If a specific provider is selected, query that provider directly
     if (providerFilter && providerFilter !== 'public_domain') {
       try {
         let directResults: MediaItem[] = [];
+        const provLimit = limit && limit > 0 ? limit : 100;
         if (providerFilter === 'jiosaavn') {
-          directResults = await saavnAdapter.search(qTrimmed, limit);
+          directResults = await saavnAdapter.search(qTrimmed, provLimit);
         } else if (providerFilter === 'youtube') {
-          directResults = ytAdapter ? await ytAdapter.search(qTrimmed, limit) : [];
+          directResults = ytAdapter ? await ytAdapter.search(qTrimmed, provLimit) : [];
         } else if (providerFilter === 'spotify' && spotifyAdapter && spotifyAdapter.isConfigured()) {
-          directResults = await spotifyAdapter.search(qTrimmed, limit);
+          directResults = await spotifyAdapter.search(qTrimmed, provLimit);
         } else if (providerFilter === 'deezer') {
-          directResults = await deezerAdapter.search(qTrimmed, limit);
+          directResults = await deezerAdapter.search(qTrimmed, provLimit);
         } else if (providerFilter === 'jamendo') {
-          directResults = await audiusAdapter.search(qTrimmed, limit);
+          directResults = await audiusAdapter.search(qTrimmed, provLimit);
         } else if (providerFilter === 'soundcloud') {
-          directResults = await soundcloudAdapter.search(qTrimmed, limit);
+          directResults = await soundcloudAdapter.search(qTrimmed, provLimit);
         }
 
         const localMatches = db.getAllMediaItems().filter(i => 
           i.provider === providerFilter &&
-          (i.title.toLowerCase().includes(qLower) || i.artist.toLowerCase().includes(qLower))
+          (i.title.toLowerCase().includes(qLower) || 
+           i.artist.toLowerCase().includes(qLower) ||
+           (i.album && i.album.toLowerCase().includes(qLower)) ||
+           i.genre.toLowerCase().includes(qLower) ||
+           i.mood.toLowerCase().includes(qLower) ||
+           i.tags?.some(t => t.toLowerCase().includes(qLower)))
         );
 
         const combined = [...directResults, ...localMatches];
@@ -892,33 +904,35 @@ export class ProviderRegistry {
             dedup.push(item);
           }
         }
-        return dedup.slice(0, limit);
+        return limit && limit > 0 ? dedup.slice(0, limit) : dedup;
       } catch (err) {
         console.warn(`Error querying provider ${providerFilter}:`, err);
       }
     }
 
-    // 3. Unified search across ALL providers in parallel
+    // 3. Unified search across ALL providers in parallel (unlimited or bounded by limit)
     try {
+      const perProviderQuota = limit && limit > 0 ? Math.max(15, Math.ceil(limit / 4)) : 50;
       const [liveSaavn, liveYt, liveItunes, liveAudius, liveDeezer, liveSpotify] = await Promise.all([
-        saavnAdapter.search(qTrimmed, 16),
-        ytAdapter ? ytAdapter.search(qTrimmed, 14) : Promise.resolve([]),
-        itunesAdapter.search(qTrimmed, 12),
-        audiusAdapter.search(qTrimmed, 8),
-        deezerAdapter.search(qTrimmed, 8),
-        (spotifyAdapter && spotifyAdapter.isConfigured()) ? spotifyAdapter.search(qTrimmed, 6) : Promise.resolve([])
+        saavnAdapter.search(qTrimmed, perProviderQuota),
+        ytAdapter ? ytAdapter.search(qTrimmed, perProviderQuota) : Promise.resolve([]),
+        itunesAdapter.search(qTrimmed, perProviderQuota),
+        audiusAdapter.search(qTrimmed, perProviderQuota),
+        deezerAdapter.search(qTrimmed, perProviderQuota),
+        (spotifyAdapter && spotifyAdapter.isConfigured()) ? spotifyAdapter.search(qTrimmed, perProviderQuota) : Promise.resolve([])
       ]);
 
       const dbMatches = db.getAllMediaItems().filter(item => {
         const titleMatch = item.title.toLowerCase().includes(qLower);
         const artistMatch = item.artist.toLowerCase().includes(qLower);
+        const albumMatch = item.album ? item.album.toLowerCase().includes(qLower) : false;
         const genreMatch = item.genre.toLowerCase().includes(qLower);
         const moodMatch = item.mood.toLowerCase().includes(qLower);
         const tagMatch = item.tags?.some(t => t.toLowerCase().includes(qLower));
-        return titleMatch || artistMatch || genreMatch || moodMatch || tagMatch;
+        return titleMatch || artistMatch || albumMatch || genreMatch || moodMatch || tagMatch;
       });
 
-      // Combine: Full-length JioSaavn + YouTube videos first, followed by Apple Music, Audius, Deezer, Spotify
+      // Combine: Full-length JioSaavn + YouTube videos first, followed by Apple Music, Audius, Deezer, Spotify and local catalog matches
       const combined = [...liveSaavn, ...liveYt, ...liveItunes, ...liveAudius, ...liveDeezer, ...liveSpotify, ...dbMatches];
       const seen = new Set<string>();
       const deduplicated: MediaItem[] = [];
@@ -930,12 +944,15 @@ export class ProviderRegistry {
         }
       }
 
-      return deduplicated.slice(0, limit);
+      return limit && limit > 0 ? deduplicated.slice(0, limit) : deduplicated;
     } catch (err) {
       console.warn('Live search error, falling back to local catalog', err);
-      return db.getAllMediaItems().filter(i => 
-        i.title.toLowerCase().includes(qLower) || i.artist.toLowerCase().includes(qLower)
-      ).slice(0, limit);
+      const fallback = db.getAllMediaItems().filter(i => 
+        i.title.toLowerCase().includes(qLower) || 
+        i.artist.toLowerCase().includes(qLower) ||
+        (i.album && i.album.toLowerCase().includes(qLower))
+      );
+      return limit && limit > 0 ? fallback.slice(0, limit) : fallback;
     }
   }
 

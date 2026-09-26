@@ -46,7 +46,7 @@ export const MiniPlayer: React.FC = () => {
 
   if (!currentTrack) {
     return (
-      <footer className="fixed bottom-0 left-0 right-0 z-40 bg-surface-900/90 backdrop-blur-xl border-t border-white/5 px-4 py-3 flex items-center justify-between">
+      <footer className="fixed bottom-14 md:bottom-0 left-0 right-0 z-40 bg-surface-900/90 backdrop-blur-xl border-t border-white/5 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-surface-800 flex items-center justify-center text-slate-500">
             <Radio className="w-5 h-5" />
@@ -71,7 +71,7 @@ export const MiniPlayer: React.FC = () => {
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <footer className="fixed bottom-0 left-0 right-0 z-40 bg-surface-850/95 backdrop-blur-2xl border-t border-white/10 shadow-2xl transition-all">
+    <footer className="fixed bottom-14 md:bottom-0 left-0 right-0 z-40 bg-surface-850/95 backdrop-blur-2xl border-t border-white/10 shadow-2xl transition-all">
       {/* Top micro progress timeline (seekable) */}
       <div 
         className="w-full h-1.5 bg-surface-750 cursor-pointer relative group"

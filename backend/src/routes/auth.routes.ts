@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { db } from '../store/database';
-import { User, UserPreferences } from '../types';
+import { User, UserPreferences, Playlist } from '../types';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'vibeflow-super-secret-key-2026';
@@ -61,6 +61,24 @@ router.post('/register', async (req: Request, res: Response) => {
     };
 
     db.createUser(newUser, hashedPassword);
+
+    // Seed initial personal playlist for this new user
+    const welcomePlaylist: Playlist = {
+      id: `pl-${Date.now()}`,
+      userId: newUser.id,
+      title: `${newUser.name.split(' ')[0]}'s Favorites`,
+      description: 'Personal cloud playlist synced across all your devices.',
+      coverArt: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=600&q=80',
+      isSmart: false,
+      isPrivate: false,
+      isShareable: true,
+      itemCount: 0,
+      items: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    db.createPlaylist(welcomePlaylist);
+
     const token = jwt.sign({ userId: newUser.id, email: newUser.email }, JWT_SECRET, { expiresIn: '7d' });
 
     res.status(201).json({ user: newUser, token });

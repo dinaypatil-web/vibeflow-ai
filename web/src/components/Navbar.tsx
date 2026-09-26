@@ -18,13 +18,15 @@ interface NavbarProps {
   selectedMood?: MoodCategory | null;
   onSelectMood?: (mood: MoodCategory | null) => void;
   onOpenImportUrl?: () => void;
+  onOpenAuth?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ 
   onSearchSubmit, 
   selectedMood, 
   onSelectMood,
-  onOpenImportUrl 
+  onOpenImportUrl,
+  onOpenAuth
 }) => {
   const [searchInput, setSearchInput] = useState('');
   const { 
@@ -32,7 +34,8 @@ export const Navbar: React.FC<NavbarProps> = ({
     setActiveTab, 
     sleepTimerRemainingSeconds, 
     setNowPlayingOpen,
-    currentTrack 
+    currentTrack,
+    user
   } = usePlayerStore();
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -40,7 +43,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       if (onSearchSubmit) {
         onSearchSubmit(searchInput.trim());
       }
-      setActiveTab('explore');
+      setActiveTab('search');
     }
   };
 
@@ -89,7 +92,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={() => {
                 if (searchInput.trim()) {
                   if (onSearchSubmit) onSearchSubmit(searchInput.trim());
-                  setActiveTab('explore');
+                  setActiveTab('search');
                 }
               }}
               className="absolute right-1.5 px-3 py-1 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1 transition-all shadow-xs"
@@ -139,6 +142,32 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <SlidersHorizontal className="w-4 h-4" />
           </button>
+
+          {/* User Profile / Auth Button */}
+          {user ? (
+            <button
+              onClick={() => onOpenAuth ? onOpenAuth() : setActiveTab('settings')}
+              className="flex items-center gap-2 p-1 pl-2 rounded-xl bg-surface-800 hover:bg-surface-750 border border-white/10 transition-all group"
+              title={`Logged in as ${user.name} (${user.email})`}
+            >
+              <span className="text-xs font-semibold text-slate-200 hidden md:inline max-w-[100px] truncate">
+                {user.name.split(' ')[0]}
+              </span>
+              <img 
+                src={user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'} 
+                alt="" 
+                className="w-7 h-7 rounded-lg object-cover ring-1 ring-brand-500/40"
+              />
+            </button>
+          ) : (
+            <button
+              onClick={onOpenAuth}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-brand-600 to-accent-cyan text-white text-xs font-bold shadow-sm shadow-brand-500/20 hover:opacity-95 transition-all"
+            >
+              <User className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Sign In</span>
+            </button>
+          )}
         </div>
       </div>
 

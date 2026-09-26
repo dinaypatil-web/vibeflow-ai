@@ -13,7 +13,9 @@ router.get('/search', async (req: Request, res: Response) => {
     const provider = req.query.provider as MediaProvider | undefined;
     const genre = req.query.genre as string | undefined;
     const mood = req.query.mood as string | undefined;
-    const limit = parseInt(req.query.limit as string) || 40;
+    const limitParam = req.query.limit as string | undefined;
+    const isUnlimited = !limitParam || limitParam === 'all' || limitParam === '0' || parseInt(limitParam) <= 0;
+    const limit = isUnlimited ? undefined : parseInt(limitParam);
 
     let items = await providerRegistry.unifiedSearch(query, provider, limit);
 
@@ -27,7 +29,7 @@ router.get('/search', async (req: Request, res: Response) => {
     res.json({
       query,
       count: items.length,
-      items: items.slice(0, limit)
+      items: limit ? items.slice(0, limit) : items
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Search execution failed' });

@@ -1,6 +1,7 @@
 import React from 'react';
 import { 
   Home, 
+  Search,
   Compass, 
   ListMusic, 
   Library, 
@@ -12,16 +13,24 @@ import {
   Clock, 
   Volume2, 
   CheckCircle2, 
-  DownloadCloud 
+  DownloadCloud,
+  LogIn,
+  LogOut,
+  User as UserIcon
 } from 'lucide-react';
 import { usePlayerStore, TabType } from '../store/playerStore';
 
-export const Sidebar: React.FC = () => {
-  const { activeTab, setActiveTab, user } = usePlayerStore();
+interface SidebarProps {
+  onOpenAuth?: () => void;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({ onOpenAuth }) => {
+  const { activeTab, setActiveTab, user, logout } = usePlayerStore();
 
   const navItems: { id: TabType; label: string; icon: React.ReactNode; badge?: string }[] = [
     { id: 'home', label: 'Home', icon: <Home className="w-5 h-5" /> },
-    { id: 'explore', label: 'Explore & Search', icon: <Compass className="w-5 h-5" /> },
+    { id: 'search', label: 'Search', icon: <Search className="w-5 h-5" /> },
+    { id: 'explore', label: 'Explore & Browse', icon: <Compass className="w-5 h-5" /> },
     { id: 'playlists', label: 'Playlists & Smart Mix', icon: <ListMusic className="w-5 h-5" /> },
     { id: 'library', label: 'My Library & Offline', icon: <Library className="w-5 h-5" /> },
     { id: 'ai-studio', label: 'AI Taste Studio', icon: <Sparkles className="w-5 h-5" />, badge: 'AI' },
@@ -111,20 +120,40 @@ export const Sidebar: React.FC = () => {
 
       {/* User profile card at bottom */}
       <div className="mt-auto pt-4 border-t border-white/5">
-        <div className="flex items-center gap-3 p-2 rounded-xl bg-surface-850/80 border border-white/5">
-          <img 
-            src={user?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'} 
-            alt="Profile" 
-            className="w-9 h-9 rounded-full object-cover ring-2 ring-brand-500/40"
-          />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-slate-200 truncate">{user?.name || 'Aarav Sharma'}</p>
-            <div className="flex items-center gap-1.5 text-[11px] text-emerald-400">
-              <CheckCircle2 className="w-3 h-3" />
-              <span>Pro AI Active</span>
+        {user ? (
+          <div className="flex items-center gap-3 p-2 rounded-xl bg-surface-850/80 border border-white/5 group">
+            <img 
+              src={user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'} 
+              alt="Profile" 
+              className="w-9 h-9 rounded-full object-cover ring-2 ring-brand-500/40 shrink-0"
+            />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-slate-200 truncate">{user.name}</p>
+              <div className="flex items-center gap-1.5 text-[11px] text-emerald-400">
+                <CheckCircle2 className="w-3 h-3" />
+                <span className="truncate">Cloud Synced</span>
+              </div>
             </div>
+            <button
+              onClick={logout}
+              title="Sign Out"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-surface-800 transition-all opacity-70 group-hover:opacity-100"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
-        </div>
+        ) : (
+          <div className="p-3 rounded-2xl bg-gradient-to-b from-brand-950/40 to-surface-850 border border-brand-500/20 text-center space-y-2">
+            <p className="text-xs text-slate-300 font-medium">Sync playlists across devices</p>
+            <button
+              onClick={onOpenAuth}
+              className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-brand-600 to-accent-cyan text-white text-xs font-bold shadow-md shadow-brand-500/20 hover:opacity-95 transition-all flex items-center justify-center gap-1.5"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Sign In / Register</span>
+            </button>
+          </div>
+        )}
       </div>
     </aside>
   );

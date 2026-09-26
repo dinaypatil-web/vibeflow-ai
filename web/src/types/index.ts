@@ -1,5 +1,35 @@
 export type MediaProvider = 'youtube' | 'spotify' | 'soundcloud' | 'deezer' | 'jiosaavn' | 'local' | 'jamendo' | 'public_domain';
 
+export type SearchResultType = 'track' | 'album' | 'channel';
+
+export interface Channel {
+  id: string;
+  providerId: string;
+  provider: MediaProvider;
+  name: string;
+  description?: string;
+  thumbnail: string;
+  subscriberCount?: string;
+  videoCount?: number;
+  verified?: boolean;
+  channelUrl?: string;
+  tags?: string[];
+}
+
+export interface Album {
+  id: string;
+  providerId: string;
+  provider: MediaProvider;
+  title: string;
+  artist: string;
+  thumbnail: string;
+  releaseYear?: number;
+  trackCount?: number;
+  genre?: string;
+  albumUrl?: string;
+  tracks?: MediaItem[];
+}
+
 export type PlaybackCapability = 'stream_embed' | 'stream_direct' | 'offline_download' | 'preview_only' | 'external_link';
 
 export type MoodCategory = 
