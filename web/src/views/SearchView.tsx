@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   Search, X, Play, Pause, Plus, Heart, Music, Disc3, Radio,
   Tv2, ArrowLeft, Sparkles, ChevronRight, Youtube, Music2,
@@ -8,6 +8,8 @@ import {
 import { MediaItem, Channel, Album, MediaProvider } from "../types";
 import { api } from "../services/api";
 import { usePlayerStore } from "../store/playerStore";
+import { TrackSortControl } from "../components/TrackSortControl";
+import { sortMediaItems } from "../utils/trackSort";
 
 const formatDuration = (secs: number) => {
   if (!secs) return "0:00";
@@ -254,7 +256,12 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
   const [semanticHint, setSemanticHint] = useState<string | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [selectedAlbum, setSelectedAlbum] = useState<Album | null>(null);
+  const [sortOption, setSortOption] = useState<string>('default');
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const sortedTracks = useMemo(() => {
+    return sortMediaItems(tracks, sortOption);
+  }, [tracks, sortOption]);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -348,13 +355,19 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
       )}
       {hasSearched && !loading && (
         <div className="space-y-4">
-          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-            {tabConfig.map(tab => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold shrink-0 transition-all ${activeTab === tab.id ? "bg-brand-600 text-white shadow-md shadow-brand-500/30" : "text-slate-400 hover:text-slate-200 hover:bg-surface-800"}`}>
-                {tab.icon}<span>{tab.label}</span>
-                {tab.count > 0 && <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === tab.id ? "bg-white/20" : "bg-surface-750 text-slate-400"}`}>{tab.count}</span>}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+              {tabConfig.map(tab => (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold shrink-0 transition-all ${activeTab === tab.id ? "bg-brand-600 text-white shadow-md shadow-brand-500/30" : "text-slate-400 hover:text-slate-200 hover:bg-surface-800"}`}>
+                  {tab.icon}<span>{tab.label}</span>
+                  {tab.count > 0 && <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === tab.id ? "bg-white/20" : "bg-surface-750 text-slate-400"}`}>{tab.count}</span>}
+                </button>
+              ))}
+            </div>
+
+            {activeTab === 'tracks' && tracks.length > 1 && (
+              <TrackSortControl currentSort={sortOption} onSortChange={setSortOption} />
+            )}
           </div>
 
           <div className="flex items-center justify-between text-xs text-slate-400 px-1 py-1 bg-surface-850/60 rounded-xl border border-white/5">
@@ -366,7 +379,7 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
             </span>
           </div>
 
-          {activeTab === "tracks" && (tracks.length > 0 ? <div className="space-y-1">{tracks.map(t => <TrackRow key={t.id} track={t} queueContext={tracks} onAddToPlaylist={onAddToPlaylist} />)}</div> : <EmptyState icon={<Music className="w-8 h-8" />} message="No tracks found" sub="Try a different search term" />)}
+          {activeTab === "tracks" && (sortedTracks.length > 0 ? <div className="space-y-1">{sortedTracks.map(t => <TrackRow key={t.id} track={t} queueContext={sortedTracks} onAddToPlaylist={onAddToPlaylist} />)}</div> : <EmptyState icon={<Music className="w-8 h-8" />} message="No tracks found" sub="Try a different search term" />)}
           {activeTab === "albums" && (albums.length > 0 ? <div className="space-y-1">{albums.map(a => <AlbumCard key={a.id} album={a} onClick={setSelectedAlbum} />)}</div> : <EmptyState icon={<Disc3 className="w-8 h-8" />} message="No albums found" sub="Search by album name or artist" />)}
           {activeTab === "channels" && (channels.length > 0 ? <div className="space-y-1">{channels.map(c => <ChannelCard key={c.id} channel={c} onClick={setSelectedChannel} />)}</div> : <EmptyState icon={<Tv2 className="w-8 h-8" />} message="No channels found" sub="Search by artist or channel name" />)}
         </div>

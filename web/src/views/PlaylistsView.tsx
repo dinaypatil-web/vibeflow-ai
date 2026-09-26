@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ListMusic, 
   Sparkles, 
@@ -21,6 +21,8 @@ import { api } from '../services/api';
 import { usePlayerStore } from '../store/playerStore';
 import { SmartPlaylistModal } from '../components/SmartPlaylistModal';
 import { CreatePlaylistModal } from '../components/CreatePlaylistModal';
+import { TrackSortControl } from '../components/TrackSortControl';
+import { sortMediaItems } from '../utils/trackSort';
 
 interface PlaylistsViewProps {
   onOpenAuth?: () => void;
@@ -32,8 +34,20 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
   const [isSmartModalOpen, setIsSmartModalOpen] = useState(false);
   const [isCustomModalOpen, setIsCustomModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [playlistSort, setPlaylistSort] = useState<string>('default');
 
   const { playTrack, setNowPlayingOpen, user, logout } = usePlayerStore();
+
+  const sortedPlaylistItems = useMemo(() => {
+    if (!selectedPlaylist?.items || selectedPlaylist.items.length === 0) return [];
+    if (playlistSort === 'default') return selectedPlaylist.items;
+
+    const itemsCopy = [...selectedPlaylist.items];
+    const sortedMedia = sortMediaItems(itemsCopy.map(i => i.mediaItem), playlistSort);
+    return sortedMedia
+      .map(m => itemsCopy.find(i => i.mediaItem.id === m.id)!)
+      .filter(Boolean);
+  }, [selectedPlaylist?.items, playlistSort]);
 
   const fetchPlaylists = async () => {
     setLoading(true);
@@ -63,8 +77,8 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
   }, [user?.id]);
 
   const handlePlayAll = () => {
-    if (!selectedPlaylist || !selectedPlaylist.items || selectedPlaylist.items.length === 0) return;
-    const mediaTracks = selectedPlaylist.items.map(i => i.mediaItem);
+    if (!sortedPlaylistItems || sortedPlaylistItems.length === 0) return;
+    const mediaTracks = sortedPlaylistItems.map(i => i.mediaItem);
     playTrack(mediaTracks[0], mediaTracks);
     setNowPlayingOpen(true);
   };
@@ -280,6 +294,11 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
                     <span>Play Mix</span>
                   </button>
 
+                  {/* Track Sort Control based on attributes */}
+                  {selectedPlaylist.items && selectedPlaylist.items.length > 1 && (
+                    <TrackSortControl currentSort={playlistSort} onSortChange={setPlaylistSort} />
+                  )}
+
                   {/* Export Options */}
                   <div className="flex items-center bg-surface-800 rounded-xl p-1 border border-white/5 text-xs">
                     <button
@@ -324,14 +343,14 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
                 </div>
 
                 <div className="space-y-1.5">
-                  {selectedPlaylist.items && selectedPlaylist.items.length > 0 ? (
-                    selectedPlaylist.items.map((item, idx) => {
+                  {sortedPlaylistItems && sortedPlaylistItems.length > 0 ? (
+                    sortedPlaylistItems.map((item, idx) => {
                       const track = item.mediaItem;
                       return (
                         <div
                           key={`${item.id}-${idx}`}
                           onClick={() => {
-                            const all = selectedPlaylist.items!.map(i => i.mediaItem);
+                            const all = sortedPlaylistItems.map(i => i.mediaItem);
                             playTrack(track, all);
                           }}
                           className="flex items-center justify-between p-2.5 rounded-xl hover:bg-surface-800 transition-colors group cursor-pointer border border-transparent hover:border-white/5"

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Search, 
   Filter, 
@@ -18,6 +18,8 @@ import {
 import { MediaItem, MediaProvider, GenreCategory, MoodCategory } from '../types';
 import { api } from '../services/api';
 import { TrackCard } from '../components/TrackCard';
+import { TrackSortControl } from '../components/TrackSortControl';
+import { sortMediaItems } from '../utils/trackSort';
 
 interface ExploreViewProps {
   initialQuery?: string;
@@ -39,6 +41,11 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   const [results, setResults] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [semanticSummary, setSemanticSummary] = useState<string | null>(null);
+  const [sortOption, setSortOption] = useState<string>('default');
+
+  const sortedResults = useMemo(() => {
+    return sortMediaItems(results, sortOption);
+  }, [results, sortOption]);
 
   useEffect(() => {
     if (initialQuery) {
@@ -292,11 +299,18 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
 
       {/* Search Results Grid */}
       <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-bold text-white">
-            {query || selectedGenre || selectedMood ? `Results (${results.length})` : 'All Curated Media Items'}
-          </h3>
-          <span className="text-xs text-slate-400">Click any card to play immediately</span>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-bold text-white">
+              {query || selectedGenre || selectedMood ? `Results (${results.length})` : 'All Curated Media Items'}
+            </h3>
+            {results.length > 0 && (
+              <span className="hidden sm:inline text-xs text-slate-400">• Click any card to play</span>
+            )}
+          </div>
+          {results.length > 1 && (
+            <TrackSortControl currentSort={sortOption} onSortChange={setSortOption} />
+          )}
         </div>
 
         {loading ? (
@@ -305,13 +319,13 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
               <div key={i} className="aspect-square bg-surface-850 rounded-2xl" />
             ))}
           </div>
-        ) : results.length > 0 ? (
+        ) : sortedResults.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {results.map(track => (
+            {sortedResults.map(track => (
               <TrackCard 
                 key={track.id} 
                 track={track} 
-                queueContext={results}
+                queueContext={sortedResults}
                 onAddToPlaylist={onAddToPlaylist}
               />
             ))}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Library, 
   Upload, 
@@ -9,14 +9,16 @@ import {
   CheckCircle2, 
   Sparkles, 
   Play, 
-  FileAudio,
-  Trash2,
-  PieChart
+  FileAudio, 
+  Trash2, 
+  PieChart 
 } from 'lucide-react';
 import { MediaItem } from '../types';
 import { api } from '../services/api';
 import { TrackCard } from '../components/TrackCard';
 import { usePlayerStore } from '../store/playerStore';
+import { TrackSortControl } from '../components/TrackSortControl';
+import { sortMediaItems } from '../utils/trackSort';
 
 export const LibraryView: React.FC = () => {
   const [subTab, setSubTab] = useState<'favorites' | 'local' | 'downloads' | 'history'>('favorites');
@@ -25,8 +27,18 @@ export const LibraryView: React.FC = () => {
   const [localItems, setLocalItems] = useState<MediaItem[]>([]);
   const [importing, setImporting] = useState(false);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
+  const [favSort, setFavSort] = useState<string>('default');
+  const [localSort, setLocalSort] = useState<string>('default');
 
   const { user, playTrack, setNowPlayingOpen } = usePlayerStore();
+
+  const sortedFavorites = useMemo(() => {
+    return sortMediaItems(favorites, favSort);
+  }, [favorites, favSort]);
+
+  const sortedLocalItems = useMemo(() => {
+    return sortMediaItems(localItems, localSort);
+  }, [localItems, localSort]);
 
   useEffect(() => {
     loadData();
@@ -134,26 +146,29 @@ export const LibraryView: React.FC = () => {
       {/* Subtab 1: Favorites */}
       {subTab === 'favorites' && (
         <section className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <h3 className="text-lg font-bold text-white">Your Favorited Tracks</h3>
-            {favorites.length > 0 && (
-              <button
-                onClick={() => {
-                  playTrack(favorites[0], favorites);
-                  setNowPlayingOpen(true);
-                }}
-                className="px-4 py-2 bg-gradient-to-r from-brand-600 to-accent-cyan text-white text-xs font-bold rounded-xl shadow-md flex items-center gap-1.5"
-              >
-                <Play className="w-3.5 h-3.5 fill-current" />
-                <span>Play All Favorites</span>
-              </button>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <TrackSortControl currentSort={favSort} onSortChange={setFavSort} />
+              {favorites.length > 0 && (
+                <button
+                  onClick={() => {
+                    playTrack(sortedFavorites[0] || favorites[0], sortedFavorites);
+                    setNowPlayingOpen(true);
+                  }}
+                  className="px-4 py-2 bg-gradient-to-r from-brand-600 to-accent-cyan text-white text-xs font-bold rounded-xl shadow-md flex items-center gap-1.5"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>Play All Favorites</span>
+                </button>
+              )}
+            </div>
           </div>
 
           {favorites.length > 0 ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {favorites.map(track => (
-                <TrackCard key={track.id} track={track} queueContext={favorites} />
+              {sortedFavorites.map(track => (
+                <TrackCard key={track.id} track={track} queueContext={sortedFavorites} />
               ))}
             </div>
           ) : (
@@ -208,11 +223,16 @@ export const LibraryView: React.FC = () => {
 
           {/* Local Tracks list */}
           <div className="space-y-3">
-            <h3 className="text-base font-bold text-white">Device Imported Tracks ({localItems.length})</h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <h3 className="text-base font-bold text-white">Device Imported Tracks ({localItems.length})</h3>
+              {localItems.length > 0 && (
+                <TrackSortControl currentSort={localSort} onSortChange={setLocalSort} />
+              )}
+            </div>
             {localItems.length > 0 ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                {localItems.map(track => (
-                  <TrackCard key={track.id} track={track} queueContext={localItems} />
+                {sortedLocalItems.map(track => (
+                  <TrackCard key={track.id} track={track} queueContext={sortedLocalItems} />
                 ))}
               </div>
             ) : (
