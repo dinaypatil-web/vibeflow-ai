@@ -63,7 +63,9 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
     toggleFavorite,
     setNowPlayingOpen,
     setSleepTimer,
-    playTrack
+    playTrack,
+    spotifyAccount,
+    setSpotifyConnectModalOpen
   } = usePlayerStore();
 
   const [activeTab, setActiveTab] = useState<'visualizer' | 'video' | 'spotify' | 'lyrics' | 'queue'>('visualizer');
@@ -220,6 +222,22 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
               </button>
             </div>
 
+            {/* Spotify Source Login Button */}
+            {currentTrack.provider === 'spotify' && (
+              <button
+                onClick={() => setSpotifyConnectModalOpen(true)}
+                className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs ${
+                  spotifyAccount.connected
+                    ? 'bg-[#1DB954]/20 border-[#1DB954]/40 text-[#1DB954] hover:bg-[#1DB954]/30'
+                    : 'bg-surface-800 border-amber-500/30 text-amber-300 hover:bg-surface-750'
+                }`}
+                title="Manage Spotify Source Login"
+              >
+                <Waves className="w-3.5 h-3.5" />
+                <span>{spotifyAccount.connected ? 'Spotify Logged In' : 'Log in to Spotify'}</span>
+              </button>
+            )}
+
             {/* Add to Playlist button */}
             {onAddToPlaylist && (
               <button
@@ -266,25 +284,57 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
                 />
               </div>
             ) : activeTab === 'spotify' && currentTrack.provider === 'spotify' ? (
-              <div className="w-full max-w-md sm:max-w-lg rounded-2xl overflow-hidden shadow-2xl border border-white/10 mb-6 bg-surface-900 flex flex-col items-center justify-center p-3 space-y-3">
-                <iframe
-                  src={`https://open.spotify.com/embed/track/${currentTrack.providerId.replace('spotify-', '').replace('sp-', '')}?utm_source=generator&theme=0`}
-                  width="100%"
-                  height="152"
-                  frameBorder="0"
-                  allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                  loading="lazy"
-                  className="rounded-xl border-0 shadow-lg"
-                />
-                <a
-                  href={`https://open.spotify.com/track/${currentTrack.providerId.replace('spotify-', '').replace('sp-', '')}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-4 py-2 rounded-xl bg-[#1DB954] hover:bg-[#1ed760] text-black text-xs font-bold flex items-center gap-1.5 shadow-md transition-all active:scale-95"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Open Full Track on Spotify</span>
-                </a>
+              <div className="w-full max-w-md sm:max-w-lg rounded-2xl overflow-hidden shadow-2xl border border-white/10 mb-6 bg-surface-900 flex flex-col p-4 space-y-3.5">
+                {/* Status & Login Header */}
+                <div className="flex items-center justify-between p-3 rounded-xl bg-surface-850 border border-white/5">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-2.5 h-2.5 rounded-full ${spotifyAccount.connected ? 'bg-[#1DB954] animate-pulse' : 'bg-amber-400'}`} />
+                    <div>
+                      <p className="text-xs font-bold text-white">
+                        {spotifyAccount.connected ? `Spotify Connected (${spotifyAccount.username || 'Active'})` : 'Spotify Source Not Authenticated'}
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        {spotifyAccount.connected ? 'Full track streaming unlocked' : 'Log in below for full tracks without 30s limit'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setSpotifyConnectModalOpen(true)}
+                    className="px-3 py-1.5 rounded-xl bg-[#1DB954] hover:bg-[#1ed760] text-black text-xs font-bold transition-all shadow-md active:scale-95"
+                  >
+                    {spotifyAccount.connected ? 'Manage Account' : 'Log in to Spotify'}
+                  </button>
+                </div>
+
+                {/* Spotify Iframe Embed */}
+                <div className="rounded-xl overflow-hidden shadow-lg border border-white/5 bg-black">
+                  <iframe
+                    src={`https://open.spotify.com/embed/track/${currentTrack.providerId.replace('spotify-', '').replace('sp-', '')}?utm_source=generator&theme=0`}
+                    width="100%"
+                    height="152"
+                    frameBorder="0"
+                    allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                    loading="lazy"
+                    className="rounded-xl border-0"
+                  />
+                </div>
+
+                {/* Engine Info & Direct Link */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-1 text-[11px] text-slate-400">
+                  <span className="flex items-center gap-1 text-slate-300">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    Hi-Fi Stream Bridge plays complete track in Visualizer tab
+                  </span>
+                  <a
+                    href={`https://open.spotify.com/track/${currentTrack.providerId.replace('spotify-', '').replace('sp-', '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 rounded-xl bg-surface-800 hover:bg-surface-750 text-white text-xs font-semibold flex items-center gap-1.5 border border-white/10 transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Open in Spotify App</span>
+                  </a>
+                </div>
               </div>
             ) : (
               <>

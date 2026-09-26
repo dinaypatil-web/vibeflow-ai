@@ -42,7 +42,9 @@ export const MiniPlayer: React.FC = () => {
     toggleShuffle,
     toggleFavorite,
     setNowPlayingOpen,
-    setSleepTimer
+    setSleepTimer,
+    setSpotifyConnectModalOpen,
+    spotifyAccount
   } = usePlayerStore();
 
   if (!currentTrack) {
@@ -133,6 +135,19 @@ export const MiniPlayer: React.FC = () => {
               <span className="text-[11px] px-1.5 py-0.2 rounded bg-surface-750 text-brand-300 font-medium truncate">
                 {currentTrack.mood}
               </span>
+              {currentTrack.provider === 'spotify' && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSpotifyConnectModalOpen(true);
+                  }}
+                  className="text-[10px] px-2 py-0.5 rounded-full bg-[#1DB954]/20 text-[#1DB954] hover:bg-[#1DB954]/30 border border-[#1DB954]/30 font-semibold flex items-center gap-1 transition-colors shrink-0"
+                  title={spotifyAccount.connected ? "Spotify Account Connected • Full Track Streaming Active" : "Click to log in to Spotify"}
+                >
+                  <Waves className="w-2.5 h-2.5" />
+                  <span>{spotifyAccount.connected ? 'Spotify' : 'Log in'}</span>
+                </button>
+              )}
             </div>
           </div>
 

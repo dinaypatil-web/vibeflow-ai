@@ -152,6 +152,15 @@ export interface User {
   createdAt: string;
 }
 
+export interface SourceAccount {
+  provider: MediaProvider;
+  connected: boolean;
+  username?: string;
+  accountType?: 'free' | 'premium' | 'developer';
+  accessToken?: string;
+  lastSynced?: string;
+}
+
 export interface DownloadJob {
   id: string;
   mediaItemId: string;

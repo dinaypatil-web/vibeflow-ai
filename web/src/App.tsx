@@ -16,6 +16,7 @@ import { LibraryView } from './views/LibraryView';
 import { AIStudioView } from './views/AIStudioView';
 import { SettingsView } from './views/SettingsView';
 import { AuthModal } from './components/AuthModal';
+import { SpotifyConnectModal } from './components/SpotifyConnectModal';
 import { 
   Home, 
   Search,
@@ -185,6 +186,9 @@ export const App: React.FC = () => {
         {isAuthModalOpen && (
           <AuthModal onClose={() => setIsAuthModalOpen(false)} />
         )}
+
+        {/* Spotify Source Login Modal */}
+        <SpotifyConnectModal />
       </div>
     </div>
   );

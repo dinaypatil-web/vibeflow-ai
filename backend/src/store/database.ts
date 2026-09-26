@@ -322,12 +322,13 @@ const INITIAL_MEDIA_ITEMS: MediaItem[] = [
     language: 'Hindi',
     releaseYear: 2022,
     capabilities: ['stream_direct', 'stream_embed', 'preview_only', 'external_link'],
-    streamUrl: 'https://p.scdn.co/mp3-preview/9ca5c9b20f18ba3c8d08887c08c0d22b3f8699b1',
+    streamUrl: 'https://aac.saavncdn.com/871/c2febd353f3a076a406fa37510f31f9f_160.mp4',
+    embedUrl: 'https://open.spotify.com/embed/track/6VBhH7CyP56BXjp8VsDFPZ',
     isOfflinePermitted: false,
     isLocal: false,
     lyrics: 'Mujhko itna bataaye koi... Kaise tujhse dil na lagaaye koi... Kesariya tera ishq hai piya...',
     confidenceScore: 0.98,
-    tags: ['spotify', 'bollywood', 'arijit_singh', 'romantic', 'love'],
+    tags: ['spotify', 'bollywood', 'arijit_singh', 'romantic', 'love', 'full_track'],
     playbackCount: 95400
   },
   {
@@ -338,18 +339,19 @@ const INITIAL_MEDIA_ITEMS: MediaItem[] = [
     artist: 'Rick Astley',
     album: 'Whenever You Need Somebody',
     thumbnail: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02baf89eb11ec7c657805d2da0',
-    duration: 214,
+    duration: 213,
     genre: 'Pop',
     mood: 'Uplifting & Happy',
     language: 'English',
     releaseYear: 1987,
     capabilities: ['stream_direct', 'stream_embed', 'preview_only', 'external_link'],
-    streamUrl: 'https://p.scdn.co/mp3-preview/b4c682084c3fd05538726d0a126b7e14b6e92c83',
+    streamUrl: 'https://aac.saavncdn.com/793/bd42241d5bc13017588669eada1eebd2_160.mp4',
+    embedUrl: 'https://open.spotify.com/embed/track/4cOdK2wGLETKBW3PvgPWqT',
     isOfflinePermitted: false,
     isLocal: false,
     lyrics: 'Never gonna give you up, never gonna let you down, never gonna run around and desert you...',
     confidenceScore: 0.99,
-    tags: ['spotify', 'pop', 'retro', '80s', 'classic'],
+    tags: ['spotify', 'pop', 'retro', '80s', 'classic', 'full_track'],
     playbackCount: 120500
   },
   {
@@ -366,11 +368,12 @@ const INITIAL_MEDIA_ITEMS: MediaItem[] = [
     language: 'English',
     releaseYear: 2013,
     capabilities: ['stream_direct', 'stream_embed', 'preview_only', 'external_link'],
-    streamUrl: 'https://p.scdn.co/mp3-preview/7974b74d938ac047700dd7a2a0766d1ede1ec023',
+    streamUrl: 'https://aac.saavncdn.com/087/76d361a84d3caf3b3f709eedb4772705_160.mp4',
+    embedUrl: 'https://open.spotify.com/embed/track/0dEIca2nhcxDUV8C5QkPYb',
     isOfflinePermitted: false,
     isLocal: false,
     confidenceScore: 0.97,
-    tags: ['spotify', 'electronic', 'disco', 'energy'],
+    tags: ['spotify', 'electronic', 'disco', 'energy', 'full_track'],
     playbackCount: 88400
   },
   {
@@ -387,11 +390,12 @@ const INITIAL_MEDIA_ITEMS: MediaItem[] = [
     language: 'Hindi',
     releaseYear: 2018,
     capabilities: ['stream_direct', 'stream_embed', 'preview_only', 'external_link'],
-    streamUrl: 'https://p.scdn.co/mp3-preview/19140828bec0f02914a3cf648e883773f84760f9',
+    streamUrl: 'https://aac.saavncdn.com/565/3e1176b6bb17f8a7e04040da423ea83b_160.mp4',
+    embedUrl: 'https://open.spotify.com/embed/track/0EwRpK9wY6lHfcJSt82w4x',
     isOfflinePermitted: false,
     isLocal: false,
     confidenceScore: 0.96,
-    tags: ['spotify', 'bollywood', 'arijit_singh'],
+    tags: ['spotify', 'bollywood', 'arijit_singh', 'full_track'],
     playbackCount: 65200
   }
 ];

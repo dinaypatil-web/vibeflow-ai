@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { MediaItem, User } from '../types';
+import { MediaItem, User, SourceAccount } from '../types';
 
 export type TabType = 'home' | 'search' | 'explore' | 'playlists' | 'library' | 'ai-studio' | 'settings';
 export type RepeatMode = 'off' | 'all' | 'one';
@@ -7,6 +7,7 @@ export type RepeatMode = 'off' | 'all' | 'one';
 const LS_TOKEN = 'vibeflow_token';
 const LS_USER  = 'vibeflow_user';
 const LS_FAVS  = (userId: string) => `vibeflow_favs_${userId}`;
+const LS_SPOTIFY = 'vibeflow_spotify_account';
 
 function loadPersisted() {
   try {
@@ -16,9 +17,13 @@ function loadPersisted() {
     const favs: string[] = user
       ? JSON.parse(localStorage.getItem(LS_FAVS(user.id)) || '[]')
       : [];
-    return { token, user, favorites: favs };
+    const spotifyRaw = localStorage.getItem(LS_SPOTIFY);
+    const spotifyAccount: SourceAccount = spotifyRaw
+      ? JSON.parse(spotifyRaw)
+      : { provider: 'spotify', connected: false };
+    return { token, user, favorites: favs, spotifyAccount };
   } catch {
-    return { token: null, user: null, favorites: [] };
+    return { token: null, user: null, favorites: [], spotifyAccount: { provider: 'spotify' as const, connected: false } };
   }
 }
 
@@ -46,8 +51,13 @@ interface PlayerState {
   seekRequestedTime: number | null;
   authLoading: boolean;
   authError: string | null;
+  isSpotifyConnectModalOpen: boolean;
+  spotifyAccount: SourceAccount;
 
   // Actions
+  setSpotifyConnectModalOpen: (open: boolean) => void;
+  connectSpotifyAccount: (account?: Partial<SourceAccount>) => void;
+  disconnectSpotifyAccount: () => void;
   playTrack: (track: MediaItem, newQueue?: MediaItem[]) => void;
   togglePlay: () => void;
   setPlaying: (isPlaying: boolean) => void;
@@ -99,6 +109,31 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   seekRequestedTime: null,
   authLoading: false,
   authError: null,
+  isSpotifyConnectModalOpen: false,
+  spotifyAccount: persisted.spotifyAccount,
+
+  setSpotifyConnectModalOpen: (open) => set({ isSpotifyConnectModalOpen: open }),
+  connectSpotifyAccount: (account) => {
+    const updated: SourceAccount = {
+      provider: 'spotify',
+      connected: true,
+      username: account?.username || 'Aarav Sharma (Spotify)',
+      accountType: account?.accountType || 'premium',
+      accessToken: account?.accessToken || `sp_token_${Date.now()}_auth`,
+      lastSynced: new Date().toISOString()
+    };
+    try {
+      localStorage.setItem(LS_SPOTIFY, JSON.stringify(updated));
+    } catch {}
+    set({ spotifyAccount: updated });
+  },
+  disconnectSpotifyAccount: () => {
+    const disconnected: SourceAccount = { provider: 'spotify', connected: false };
+    try {
+      localStorage.removeItem(LS_SPOTIFY);
+    } catch {}
+    set({ spotifyAccount: disconnected });
+  },
 
   playTrack: (track, newQueue) => {
     let queue = get().queue;

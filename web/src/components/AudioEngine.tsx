@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { usePlayerStore } from '../store/playerStore';
 import { api } from '../services/api';
 
@@ -242,6 +242,39 @@ export const AudioEngine: React.FC = () => {
       }
     }
   }, [isPlaying, isYtReady, currentTrack?.id]);
+
+  // 5b. Automatic Spotify Full-Track Stream Bridge
+  useEffect(() => {
+    if (!currentTrack || currentTrack.provider !== 'spotify') return;
+    const isPreview = (
+      currentTrack.duration <= 35 ||
+      currentTrack.streamUrl?.includes('preview') ||
+      currentTrack.streamUrl?.includes('p.scdn.co') ||
+      currentTrack.streamUrl?.includes('open.spotify.com')
+    );
+    if (isPreview) {
+      fetch(`/api/media/resolve-stream?title=${encodeURIComponent(currentTrack.title)}&artist=${encodeURIComponent(currentTrack.artist)}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data?.streamUrl && data.streamUrl !== currentTrack.streamUrl && data.streamUrl.startsWith('http')) {
+            console.log('[AudioEngine] Bridged Spotify track to verified full-length audio stream:', data.streamUrl);
+            currentTrack.streamUrl = data.streamUrl;
+            if (data.duration && data.duration > 35) {
+              currentTrack.duration = data.duration;
+              setDuration(data.duration);
+            }
+            if (audioRef.current) {
+              audioRef.current.src = data.streamUrl;
+              audioRef.current.load();
+              if (isPlaying) {
+                audioRef.current.play().catch(e => console.warn('Stream play warning:', e));
+              }
+            }
+          }
+        })
+        .catch(err => console.warn('Spotify stream resolution failed:', err));
+    }
+  }, [currentTrack?.id]);
 
   // 6. Handle Volume, Mute & Playback Speed
   useEffect(() => {

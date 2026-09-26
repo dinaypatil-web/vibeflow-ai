@@ -167,4 +167,17 @@ router.post('/local/import', (req: Request, res: Response) => {
   res.status(201).json({ item: localItem, classification });
 });
 
+// Resolve full audio stream for any track (e.g. Spotify tracks without audio cutoffs)
+router.get('/resolve-stream', async (req: Request, res: Response) => {
+  try {
+    const title = (req.query.title as string) || '';
+    const artist = (req.query.artist as string) || '';
+    if (!title) return res.status(400).json({ error: 'Title is required' });
+    const result = await providerRegistry.resolveFullAudio(title, artist);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Stream resolution failed' });
+  }
+});
+
 export default router;

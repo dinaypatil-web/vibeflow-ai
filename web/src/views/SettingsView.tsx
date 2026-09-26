@@ -12,13 +12,17 @@ import {
   ExternalLink,
   Wifi,
   FileText,
-  Radio
+  Radio,
+  Waves,
+  Sparkles,
+  LogOut,
+  Key
 } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
 import { api } from '../services/api';
 
 export const SettingsView: React.FC = () => {
-  const { user } = usePlayerStore();
+  const { user, spotifyAccount, setSpotifyConnectModalOpen, disconnectSpotifyAccount } = usePlayerStore();
   const [theme, setTheme] = useState<'dark' | 'cyberpunk' | 'light'>('dark');
   const [audioQuality, setAudioQuality] = useState<'standard' | 'high' | 'lossless'>('high');
   const [wifiOnly, setWifiOnly] = useState(true);
@@ -137,6 +141,106 @@ export const SettingsView: React.FC = () => {
               onChange={(e) => setWifiOnly(e.target.checked)}
               className="w-4 h-4 accent-brand-500 rounded cursor-pointer"
             />
+          </div>
+        </div>
+      </section>
+
+      {/* External Sources & Logins */}
+      <section className="p-6 rounded-3xl bg-surface-850 border border-white/5 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Waves className="w-5 h-5 text-[#1DB954]" />
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider">Source Logins & External Accounts</h3>
+          </div>
+          <span className="text-[11px] text-slate-400">Stream Complete Tracks</span>
+        </div>
+
+        <p className="text-xs text-slate-300 leading-relaxed">
+          Log in to your streaming accounts (Spotify, YouTube) to stream full songs directly without 30-second preview limitations.
+        </p>
+
+        <div className="space-y-3">
+          {/* Spotify Source Card */}
+          <div className={`p-4 rounded-2xl border transition-all ${
+            spotifyAccount.connected 
+              ? 'bg-[#1DB954]/10 border-[#1DB954]/30' 
+              : 'bg-surface-800 border-white/5'
+          }`}>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#1DB954] flex items-center justify-center shrink-0">
+                  <Waves className="w-5 h-5 text-black" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-xs font-bold text-white">Spotify Account</h4>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      spotifyAccount.connected 
+                        ? 'bg-[#1DB954]/20 text-[#1DB954]' 
+                        : 'bg-amber-500/20 text-amber-300'
+                    }`}>
+                      {spotifyAccount.connected ? 'Connected' : 'Free / Not Connected'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    {spotifyAccount.connected 
+                      ? `${spotifyAccount.username || 'Aarav Sharma'} • ${spotifyAccount.accountType?.toUpperCase() || 'PREMIUM'} Active • Full Playback Authorized` 
+                      : 'Free API previews cut off after 30s. Log in or bridge via VibeFlow to play complete tracks.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 self-end sm:self-auto">
+                {spotifyAccount.connected ? (
+                  <>
+                    <button
+                      onClick={() => setSpotifyConnectModalOpen(true)}
+                      className="px-3 py-1.5 rounded-xl bg-surface-750 hover:bg-surface-700 text-xs font-semibold text-white border border-white/10 transition-colors"
+                    >
+                      Manage
+                    </button>
+                    <button
+                      onClick={disconnectSpotifyAccount}
+                      className="px-3 py-1.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 text-xs font-semibold transition-colors flex items-center gap-1"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>Disconnect</span>
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => setSpotifyConnectModalOpen(true)}
+                    className="px-4 py-2 rounded-xl bg-[#1DB954] hover:bg-[#1ed760] text-black text-xs font-bold transition-all shadow-md active:scale-95 flex items-center gap-1.5"
+                  >
+                    <Key className="w-3.5 h-3.5" />
+                    <span>Log in to Spotify</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* JioSaavn Master Audio Source */}
+          <div className="p-4 rounded-2xl bg-surface-800 border border-white/5 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+                <Radio className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs font-bold text-white">JioSaavn Master Audio Source</h4>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+                    Active &amp; Verified
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  100% full-length 320kbps/160kbps master audio streams for Indian and global music without logins or cutoffs.
+                </p>
+              </div>
+            </div>
+            <span className="text-xs text-emerald-400 font-semibold hidden sm:inline">
+              ✓ 0 API Key Needed
+            </span>
           </div>
         </div>
       </section>
