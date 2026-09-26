@@ -55,11 +55,17 @@ router.get('/providers', (req: Request, res: Response) => {
 
 // Configure Provider API Keys at runtime
 router.post('/providers/configure', (req: Request, res: Response) => {
-  const { youtubeApiKey } = req.body;
+  const { youtubeApiKey, spotifyClientId, spotifyClientSecret } = req.body;
   if (youtubeApiKey !== undefined) {
     const yt = providerRegistry.getAdapter('youtube') as any;
     if (yt && yt.setApiKey) {
       yt.setApiKey(youtubeApiKey);
+    }
+  }
+  if (spotifyClientId !== undefined || spotifyClientSecret !== undefined) {
+    const sp = providerRegistry.getAdapter('spotify') as any;
+    if (sp && sp.setCredentials) {
+      sp.setCredentials(spotifyClientId || '', spotifyClientSecret || '');
     }
   }
   res.json({ success: true, message: 'Provider configuration updated', providers: providerRegistry.getAllStatuses() });

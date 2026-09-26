@@ -180,14 +180,17 @@ export const SettingsView: React.FC = () => {
                 className="flex-1 px-3.5 py-2 rounded-xl bg-surface-850 border border-white/10 text-xs text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/50"
               />
               <button
-                onClick={() => {
+                onClick={async () => {
                   const el = document.getElementById('custom-yt-key') as HTMLInputElement;
                   if (el && el.value) {
-                    fetch('http://localhost:4000/api/library/providers/configure', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ youtubeApiKey: el.value.trim() })
-                    }).then(() => alert('YouTube API key configured successfully!'));
+                    try {
+                      await api.configureProviders({ youtubeApiKey: el.value.trim() });
+                      alert('YouTube API key configured successfully!');
+                      const updated = await api.getProviders();
+                      setProviderStatuses(updated.providers || []);
+                    } catch {
+                      alert('Failed to save YouTube key.');
+                    }
                   } else {
                     alert('Please enter a YouTube API key.');
                   }
@@ -203,7 +206,7 @@ export const SettingsView: React.FC = () => {
           <div className="border-t border-white/5 pt-3">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-xs font-bold text-[#1DB954]">Spotify Web API Credentials (Optional)</span>
-              <span className="text-[11px] text-slate-400">Enables 30s Spotify previews</span>
+              <span className="text-[11px] text-slate-400">OAuth official API search</span>
             </div>
             <div className="flex flex-col gap-2">
               <input
@@ -220,15 +223,21 @@ export const SettingsView: React.FC = () => {
                   className="flex-1 px-3.5 py-2 rounded-xl bg-surface-850 border border-white/10 text-xs text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#1DB954]/50"
                 />
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     const idEl = document.getElementById('spotify-client-id') as HTMLInputElement;
                     const secEl = document.getElementById('spotify-client-secret') as HTMLInputElement;
                     if (idEl?.value && secEl?.value) {
-                      fetch('http://localhost:4000/api/library/providers/configure', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ spotifyClientId: idEl.value.trim(), spotifyClientSecret: secEl.value.trim() })
-                      }).then(() => alert('Spotify credentials saved! Restart the server to apply.'));
+                      try {
+                        await api.configureProviders({
+                          spotifyClientId: idEl.value.trim(),
+                          spotifyClientSecret: secEl.value.trim()
+                        });
+                        alert('Spotify credentials saved & active immediately!');
+                        const updated = await api.getProviders();
+                        setProviderStatuses(updated.providers || []);
+                      } catch {
+                        alert('Failed to save Spotify credentials.');
+                      }
                     } else {
                       alert('Enter both Spotify Client ID and Client Secret.');
                     }
@@ -239,7 +248,7 @@ export const SettingsView: React.FC = () => {
                 </button>
               </div>
               <p className="text-[11px] text-slate-500">
-                Get free credentials at <span className="text-[#1DB954]" >developer.spotify.com</span> → Create App
+                Get free credentials at <span className="text-[#1DB954]">developer.spotify.com</span> → Create App
               </p>
             </div>
           </div>

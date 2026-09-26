@@ -248,6 +248,15 @@ export const api = {
     return await res.json();
   },
 
+  configureProviders: async (config: { youtubeApiKey?: string; spotifyClientId?: string; spotifyClientSecret?: string }) => {
+    const res = await fetch(`${API_BASE}/library/providers/configure`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config)
+    });
+    return await res.json();
+  },
+
   // Auth
   loginDemo: async (): Promise<{ user: User; token: string }> => {
     const res = await fetch(`${API_BASE}/auth/demo`, { method: 'POST' });

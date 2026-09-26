@@ -15,7 +15,8 @@ import {
   Radio, 
   Sparkles,
   Youtube,
-  HardDrive
+  HardDrive,
+  Waves
 } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
 
@@ -105,6 +106,11 @@ export const MiniPlayer: React.FC = () => {
             {currentTrack.provider === 'youtube' && (
               <span className="absolute -top-1 -right-1 bg-red-600 text-white p-0.5 rounded-full shadow-sm">
                 <Youtube className="w-2.5 h-2.5" />
+              </span>
+            )}
+            {currentTrack.provider === 'spotify' && (
+              <span className="absolute -top-1 -right-1 bg-[#1DB954] text-black p-0.5 rounded-full shadow-sm">
+                <Waves className="w-2.5 h-2.5" />
               </span>
             )}
             {currentTrack.isLocal && (

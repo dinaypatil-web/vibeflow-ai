@@ -22,7 +22,9 @@ import {
   Youtube,
   HardDrive,
   Plus,
-  Video
+  Video,
+  Waves,
+  ExternalLink
 } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
 import { globalAudioAnalyser } from './AudioEngine';
@@ -64,7 +66,7 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
     playTrack
   } = usePlayerStore();
 
-  const [activeTab, setActiveTab] = useState<'visualizer' | 'video' | 'lyrics' | 'queue'>('visualizer');
+  const [activeTab, setActiveTab] = useState<'visualizer' | 'video' | 'spotify' | 'lyrics' | 'queue'>('visualizer');
   const [showSleepModal, setShowSleepModal] = useState(false);
   const [similarTracks, setSimilarTracks] = useState<any[]>([]);
   const [similarReason, setSimilarReason] = useState<string>('');
@@ -189,6 +191,17 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
                   <span>Video</span>
                 </button>
               )}
+              {currentTrack.provider === 'spotify' && (
+                <button
+                  onClick={() => setActiveTab('spotify')}
+                  className={`px-3 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
+                    activeTab === 'spotify' ? 'bg-[#1DB954] text-black shadow-xs font-semibold' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Waves className="w-3.5 h-3.5" />
+                  <span>Spotify Embed</span>
+                </button>
+              )}
               <button
                 onClick={() => setActiveTab('lyrics')}
                 className={`px-3 py-1 rounded-lg font-medium transition-all ${
@@ -251,6 +264,27 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
                 />
+              </div>
+            ) : activeTab === 'spotify' && currentTrack.provider === 'spotify' ? (
+              <div className="w-full max-w-md sm:max-w-lg rounded-2xl overflow-hidden shadow-2xl border border-white/10 mb-6 bg-surface-900 flex flex-col items-center justify-center p-3 space-y-3">
+                <iframe
+                  src={`https://open.spotify.com/embed/track/${currentTrack.providerId.replace('spotify-', '').replace('sp-', '')}?utm_source=generator&theme=0`}
+                  width="100%"
+                  height="152"
+                  frameBorder="0"
+                  allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                  loading="lazy"
+                  className="rounded-xl border-0 shadow-lg"
+                />
+                <a
+                  href={`https://open.spotify.com/track/${currentTrack.providerId.replace('spotify-', '').replace('sp-', '')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 rounded-xl bg-[#1DB954] hover:bg-[#1ed760] text-black text-xs font-bold flex items-center gap-1.5 shadow-md transition-all active:scale-95"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Open Full Track on Spotify</span>
+                </a>
               </div>
             ) : (
               <>

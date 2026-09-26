@@ -309,7 +309,7 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
         <input
           ref={inputRef} type="text" value={query}
           onChange={(e) => setQuery(e.target.value)} onKeyDown={handleKeyDown}
-          placeholder="Search tracks, albums, channels, artists..."
+          placeholder="Search tracks, albums, artists, or paste Spotify / YouTube link..."
           className="w-full pl-12 pr-28 py-4 rounded-2xl bg-surface-850 border border-white/10 text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/40 shadow-inner transition-all"
         />
         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
@@ -320,6 +320,13 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
           </button>
         </div>
       </div>
+      {query.includes('spotify.com') && (
+        <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#1DB954]/15 border border-[#1DB954]/30 text-xs text-[#1DB954]">
+          <Waves className="w-4 h-4 shrink-0" />
+          <span className="font-semibold">Spotify Link Detected:</span>
+          <span className="text-slate-300">Click Search or press Enter to extract tracks and play!</span>
+        </div>
+      )}
       {semanticHint && (
         <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-brand-950/40 border border-brand-500/25 text-xs text-brand-200">
           <Sparkles className="w-4 h-4 text-brand-400 shrink-0 mt-0.5" />
@@ -333,10 +340,10 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
           </div>
           <div>
             <h3 className="text-base font-semibold text-slate-200">Find anything</h3>
-            <p className="text-sm text-slate-500 mt-1">Search tracks, albums, or channels across all sources</p>
+            <p className="text-sm text-slate-500 mt-1">Search tracks, albums, or channels across Spotify, YouTube, JioSaavn, Deezer & Local</p>
           </div>
           <div className="flex flex-wrap justify-center gap-2 pt-2">
-            {["Arijit Singh", "Lo-Fi Chill", "Bollywood Hits", "Punjabi Party", "Devotional"].map(s => (
+            {["Arijit Singh", "Spotify Hits", "Kesariya", "Lo-Fi Chill", "Daft Punk", "Ed Sheeran"].map(s => (
               <button key={s} onClick={() => { setQuery(s); performSearch(s); }} className="px-3 py-1.5 rounded-full bg-surface-800 border border-white/8 text-xs text-slate-300 hover:bg-surface-750 hover:border-brand-500/30 hover:text-brand-300 transition-all">{s}</button>
             ))}
           </div>
