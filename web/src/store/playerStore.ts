@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { MediaItem, User, SourceAccount } from '../types';
+import { MediaItem, User, UserPreferences, SourceAccount, AppTheme } from '../types';
 
 export type TabType = 'home' | 'search' | 'explore' | 'playlists' | 'library' | 'ai-studio' | 'settings';
 export type RepeatMode = 'off' | 'all' | 'one';
@@ -8,6 +8,7 @@ const LS_TOKEN = 'vibeflow_token';
 const LS_USER  = 'vibeflow_user';
 const LS_FAVS  = (userId: string) => `vibeflow_favs_${userId}`;
 const LS_SPOTIFY = 'vibeflow_spotify_account';
+const LS_THEME = 'vibeflow_theme';
 
 function loadPersisted() {
   try {
@@ -21,9 +22,13 @@ function loadPersisted() {
     const spotifyAccount: SourceAccount = spotifyRaw
       ? JSON.parse(spotifyRaw)
       : { provider: 'spotify', connected: false };
-    return { token, user, favorites: favs, spotifyAccount };
+    const savedTheme: AppTheme = (localStorage.getItem(LS_THEME) as AppTheme) || 'dark';
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', savedTheme);
+    }
+    return { token, user, favorites: favs, spotifyAccount, theme: savedTheme };
   } catch {
-    return { token: null, user: null, favorites: [], spotifyAccount: { provider: 'spotify' as const, connected: false } };
+    return { token: null, user: null, favorites: [], spotifyAccount: { provider: 'spotify' as const, connected: false }, theme: 'dark' as AppTheme };
   }
 }
 
@@ -53,8 +58,10 @@ interface PlayerState {
   authError: string | null;
   isSpotifyConnectModalOpen: boolean;
   spotifyAccount: SourceAccount;
+  theme: AppTheme;
 
   // Actions
+  setTheme: (theme: AppTheme) => void;
   setSpotifyConnectModalOpen: (open: boolean) => void;
   connectSpotifyAccount: (account?: Partial<SourceAccount>) => void;
   disconnectSpotifyAccount: () => void;
@@ -80,8 +87,9 @@ interface PlayerState {
   tickSleepTimer: () => void;
   toggleFavorite: (trackId: string) => void;
   setUser: (user: User | null, token: string | null) => void;
-  login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  updatePreferences: (prefs: Partial<UserPreferences>) => Promise<void>;
+  login: (identifier: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string, username?: string) => Promise<void>;
   loginDemo: () => Promise<void>;
   logout: () => void;
   clearAuthError: () => void;
@@ -111,7 +119,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   authError: null,
   isSpotifyConnectModalOpen: false,
   spotifyAccount: persisted.spotifyAccount,
+  theme: persisted.theme,
 
+  setTheme: (theme: AppTheme) => {
+    try {
+      localStorage.setItem(LS_THEME, theme);
+      if (typeof document !== 'undefined') {
+        document.documentElement.setAttribute('data-theme', theme);
+      }
+    } catch {}
+    set({ theme });
+  },
   setSpotifyConnectModalOpen: (open) => set({ isSpotifyConnectModalOpen: open }),
   connectSpotifyAccount: (account) => {
     const updated: SourceAccount = {
@@ -323,39 +341,166 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
   },
 
-  login: async (email, password) => {
+  login: async (identifier, password) => {
     set({ authLoading: true, authError: null });
+    const cleanId = (identifier || '').trim();
+    const cleanPass = (password || '').trim();
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ identifier: cleanId, email: cleanId, username: cleanId, password: cleanPass })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Login failed');
       get().setUser(data.user, data.token);
       set({ authLoading: false });
     } catch (err: any) {
+      // Local fallback in case network is down or offline
+      try {
+        const localUsersRaw = localStorage.getItem('vibeflow_local_users');
+        if (localUsersRaw) {
+          const localUsers: any[] = JSON.parse(localUsersRaw);
+          const found = localUsers.find(u => 
+            (u.email && u.email.toLowerCase() === cleanId.toLowerCase()) ||
+            (u.username && u.username.toLowerCase() === cleanId.toLowerCase()) ||
+            (u.name && u.name.toLowerCase() === cleanId.toLowerCase())
+          );
+          if (found && found.password === cleanPass) {
+            const token = `local-jwt-${Date.now()}`;
+            get().setUser(found.user, token);
+            set({ authLoading: false, authError: null });
+            return;
+          }
+        }
+      } catch {}
+
       set({ authLoading: false, authError: err.message || 'Login failed' });
       throw err;
     }
   },
 
-  register: async (name, email, password) => {
+  register: async (name, email, password, username) => {
     set({ authLoading: true, authError: null });
+    const cleanName = (name || '').trim();
+    const cleanEmail = (email || '').trim();
+    const cleanPass = (password || '').trim();
+    const cleanUser = (username || cleanEmail.split('@')[0] || cleanName.replace(/\s+/g, '')).trim();
+
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password })
+        body: JSON.stringify({ name: cleanName, email: cleanEmail, username: cleanUser, password: cleanPass })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Registration failed');
       get().setUser(data.user, data.token);
+
+      // Save to local cache as resilience safeguard
+      try {
+        const localUsersRaw = localStorage.getItem('vibeflow_local_users') || '[]';
+        const localUsers: any[] = JSON.parse(localUsersRaw);
+        localUsers.push({ user: data.user, password: cleanPass });
+        localStorage.setItem('vibeflow_local_users', JSON.stringify(localUsers));
+      } catch {}
+
       set({ authLoading: false });
     } catch (err: any) {
+      // If server rejected with existing error, surface it
+      if (err.message && err.message.includes('already exists')) {
+        set({ authLoading: false, authError: err.message });
+        throw err;
+      }
+
+      // Offline / network failure fallback
+      if (err.message && (err.message.includes('fetch') || err.message.includes('Network') || err.message.includes('Failed'))) {
+        const localId = `usr-${Date.now()}`;
+        const localUser: User = {
+          id: localId,
+          name: cleanName,
+          email: cleanEmail || `${cleanUser}@vibeflow.local`,
+          username: cleanUser,
+          role: 'user',
+          preferences: {
+            userId: localId,
+            favoriteGenres: ['Bollywood', 'Lo-Fi & Chill', 'Hindi Retro', 'Marathi'],
+            favoriteMoods: ['Calm & Peaceful', 'Focus & Study', 'Workout & Energy', 'Romantic'],
+            preferredLanguages: ['Hindi', 'English', 'Marathi'],
+            favoriteArtists: ['Arijit Singh', 'Bombay Chill Collective'],
+            autoPlaySimilar: true,
+            streamQuality: 'high',
+            downloadQuality: 'high',
+            wifiOnlyDownloads: true,
+            enableListeningHistory: true,
+            theme: 'dark'
+          },
+          createdAt: new Date().toISOString()
+        };
+        const token = `local-jwt-${Date.now()}`;
+        get().setUser(localUser, token);
+
+        try {
+          const localUsersRaw = localStorage.getItem('vibeflow_local_users') || '[]';
+          const localUsers: any[] = JSON.parse(localUsersRaw);
+          localUsers.push({ user: localUser, password: cleanPass });
+          localStorage.setItem('vibeflow_local_users', JSON.stringify(localUsers));
+        } catch {}
+
+        set({ authLoading: false, authError: null });
+        return;
+      }
+
       set({ authLoading: false, authError: err.message || 'Registration failed' });
       throw err;
+    }
+  },
+
+  updatePreferences: async (prefs: Partial<UserPreferences>) => {
+    const state = get();
+    if (!state.user) return;
+
+    const currentPrefs = state.user.preferences || {
+      userId: state.user.id,
+      favoriteGenres: ['Bollywood', 'Lo-Fi & Chill'],
+      favoriteMoods: ['Calm & Peaceful', 'Focus & Study'],
+      preferredLanguages: ['Hindi', 'English'],
+      favoriteArtists: ['Arijit Singh'],
+      autoPlaySimilar: true,
+      streamQuality: 'high',
+      downloadQuality: 'high',
+      wifiOnlyDownloads: true,
+      enableListeningHistory: true,
+      theme: 'dark'
+    };
+
+    const newPreferences: UserPreferences = {
+      ...currentPrefs,
+      ...prefs,
+      userId: state.user.id
+    };
+
+    const updatedUser: User = {
+      ...state.user,
+      preferences: newPreferences
+    };
+
+    // Update store state immediately
+    set({ user: updatedUser });
+    localStorage.setItem(LS_USER, JSON.stringify(updatedUser));
+
+    // Persist to backend
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
+
+      await fetch('/api/auth/preferences', {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ preferences: newPreferences, userId: state.user.id })
+      });
+    } catch (err) {
+      console.warn('Preferences saved locally, backend sync failed:', err);
     }
   },
 

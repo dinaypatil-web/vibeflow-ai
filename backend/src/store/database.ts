@@ -432,7 +432,15 @@ class MemoryDatabase {
       if (targetFile) {
         const raw = fs.readFileSync(targetFile, 'utf-8');
         const parsed = JSON.parse(raw);
-        this.data = { ...this.data, ...parsed };
+        this.data = {
+          ...this.data,
+          ...parsed,
+          users: parsed.users || [],
+          passwords: parsed.passwords || {},
+          playlists: parsed.playlists || [],
+          favorites: parsed.favorites || [],
+          history: parsed.history || []
+        };
       }
     } catch (err) {
       console.warn('Could not read existing data file, using fresh in-memory data store', err);
@@ -446,6 +454,12 @@ class MemoryDatabase {
         fs.mkdirSync(dir, { recursive: true });
       }
       fs.writeFileSync(file, JSON.stringify(this.data, null, 2), 'utf-8');
+      // Also ensure primary DATA_FILE is written if running on a custom path
+      if (file !== DATA_FILE && fs.existsSync(DATA_DIR)) {
+        try {
+          fs.writeFileSync(DATA_FILE, JSON.stringify(this.data, null, 2), 'utf-8');
+        } catch {}
+      }
     } catch (err) {
       console.warn('Could not persist data file to disk', err);
     }
@@ -540,35 +554,75 @@ class MemoryDatabase {
   }
 
   // User operations
+  public findUserByIdentifier(identifier: string): User | undefined {
+    if (!identifier) return undefined;
+    const clean = identifier.trim().toLowerCase();
+    return this.data.users.find(u => {
+      const email = (u.email || '').trim().toLowerCase();
+      const username = (u.username || '').trim().toLowerCase();
+      const name = (u.name || '').trim().toLowerCase();
+      const id = (u.id || '').trim().toLowerCase();
+      return email === clean || username === clean || name === clean || id === clean;
+    });
+  }
+
   public findUserByEmail(email: string): User | undefined {
-    return this.data.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    return this.findUserByIdentifier(email);
   }
 
   public findUserById(id: string): User | undefined {
+    if (!id) return undefined;
     return this.data.users.find(u => u.id === id);
   }
 
   public createUser(user: User, passwordHash: string): User {
-    this.data.users.push(user);
+    if (!user.username) {
+      user.username = (user.email ? user.email.split('@')[0] : user.name.replace(/\s+/g, '')).toLowerCase();
+    }
+    // Update if already exists, else push
+    const existingIndex = this.data.users.findIndex(u => u.id === user.id || u.email.toLowerCase() === user.email.toLowerCase());
+    if (existingIndex >= 0) {
+      this.data.users[existingIndex] = { ...this.data.users[existingIndex], ...user };
+    } else {
+      this.data.users.push(user);
+    }
     this.data.passwords[user.id] = passwordHash;
+    if (user.email) {
+      this.data.passwords[user.email.toLowerCase()] = passwordHash;
+    }
+    if (user.username) {
+      this.data.passwords[user.username.toLowerCase()] = passwordHash;
+    }
     this.saveToDisk();
     return user;
   }
 
   public updateUserPreferences(userId: string, prefs: Partial<UserPreferences>): UserPreferences | undefined {
-    const user = this.findUserById(userId);
+    const user = this.findUserById(userId) || this.findUserByIdentifier(userId);
     if (!user) return undefined;
     user.preferences = {
       ...user.preferences,
       ...prefs,
-      userId
+      userId: user.id
     } as UserPreferences;
     this.saveToDisk();
     return user.preferences;
   }
 
-  public getPasswordHash(userId: string): string | undefined {
-    return this.data.passwords[userId];
+  public getPasswordHash(userIdOrIdentifier: string): string | undefined {
+    if (!userIdOrIdentifier) return undefined;
+    if (this.data.passwords[userIdOrIdentifier]) {
+      return this.data.passwords[userIdOrIdentifier];
+    }
+    const clean = userIdOrIdentifier.trim().toLowerCase();
+    if (this.data.passwords[clean]) {
+      return this.data.passwords[clean];
+    }
+    const user = this.findUserByIdentifier(userIdOrIdentifier);
+    if (user) {
+      return this.data.passwords[user.id] || (user.email ? this.data.passwords[user.email.toLowerCase()] : undefined);
+    }
+    return undefined;
   }
 
   // Media operations

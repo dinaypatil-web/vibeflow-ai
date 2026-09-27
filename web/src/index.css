@@ -2,15 +2,161 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+:root,
+[data-theme="dark"] {
   color-scheme: dark;
+  --color-surface-900: 13 15 23;
+  --color-surface-850: 18 22 36;
+  --color-surface-800: 24 29 48;
+  --color-surface-750: 32 38 63;
+  --color-surface-700: 41 50 82;
+  --color-surface-600: 57 69 112;
+
+  --color-brand-50: 245 243 255;
+  --color-brand-100: 237 233 254;
+  --color-brand-200: 221 214 254;
+  --color-brand-300: 196 181 253;
+  --color-brand-400: 167 139 250;
+  --color-brand-500: 139 92 246;
+  --color-brand-600: 124 58 237;
+  --color-brand-700: 109 40 217;
+  --color-brand-800: 91 33 182;
+  --color-brand-900: 76 29 149;
+  --color-brand-950: 46 16 101;
+}
+
+[data-theme="cyberpunk"] {
+  color-scheme: dark;
+  --color-surface-900: 3 7 18;
+  --color-surface-850: 7 13 30;
+  --color-surface-800: 13 23 46;
+  --color-surface-750: 20 34 68;
+  --color-surface-700: 30 48 94;
+  --color-surface-600: 41 64 122;
+
+  --color-brand-50: 236 254 255;
+  --color-brand-100: 207 250 254;
+  --color-brand-200: 165 243 252;
+  --color-brand-300: 103 232 249;
+  --color-brand-400: 34 211 238;
+  --color-brand-500: 6 182 212;
+  --color-brand-600: 8 145 178;
+  --color-brand-700: 14 116 144;
+  --color-brand-800: 21 94 117;
+  --color-brand-900: 22 78 99;
+  --color-brand-950: 8 51 68;
+}
+
+[data-theme="emerald"] {
+  color-scheme: dark;
+  --color-surface-900: 5 19 11;
+  --color-surface-850: 9 31 20;
+  --color-surface-800: 15 45 30;
+  --color-surface-750: 23 60 41;
+  --color-surface-700: 33 78 54;
+  --color-surface-600: 45 100 71;
+
+  --color-brand-50: 236 253 245;
+  --color-brand-100: 209 250 229;
+  --color-brand-200: 167 243 208;
+  --color-brand-300: 110 231 183;
+  --color-brand-400: 52 211 153;
+  --color-brand-500: 16 185 129;
+  --color-brand-600: 5 150 105;
+  --color-brand-700: 4 120 87;
+  --color-brand-800: 6 95 70;
+  --color-brand-900: 6 78 59;
+  --color-brand-950: 2 44 34;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --color-surface-900: 241 245 249;
+  --color-surface-850: 255 255 255;
+  --color-surface-800: 226 232 240;
+  --color-surface-750: 203 213 225;
+  --color-surface-700: 148 163 184;
+  --color-surface-600: 100 116 139;
+
+  --color-brand-50: 238 242 255;
+  --color-brand-100: 224 231 255;
+  --color-brand-200: 199 210 254;
+  --color-brand-300: 165 180 252;
+  --color-brand-400: 129 140 248;
+  --color-brand-500: 99 102 241;
+  --color-brand-600: 79 70 229;
+  --color-brand-700: 67 56 202;
+  --color-brand-800: 55 48 163;
+  --color-brand-900: 49 46 129;
+  --color-brand-950: 30 27 75;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  background-color: #0d0f17;
+  background-color: rgb(var(--color-surface-900));
   color: #f1f5f9;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Light theme typographic and contrast overrides */
+[data-theme="light"] body {
+  color: #0f172a;
+}
+
+[data-theme="light"] .text-white {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .text-slate-100 {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .text-slate-200 {
+  color: #1e293b !important;
+}
+
+[data-theme="light"] .text-slate-300 {
+  color: #334155 !important;
+}
+
+[data-theme="light"] .text-slate-400 {
+  color: #64748b !important;
+}
+
+[data-theme="light"] .text-slate-500 {
+  color: #94a3b8 !important;
+}
+
+[data-theme="light"] .border-white\/5,
+[data-theme="light"] .border-white\/10 {
+  border-color: rgba(15, 23, 42, 0.09) !important;
+}
+
+[data-theme="light"] .border-white\/20 {
+  border-color: rgba(15, 23, 42, 0.18) !important;
+}
+
+[data-theme="light"] .bg-black\/80 {
+  background-color: rgba(15, 23, 42, 0.5) !important;
+}
+
+/* Cyberpunk border tints */
+[data-theme="cyberpunk"] .border-white\/5 {
+  border-color: rgba(6, 182, 212, 0.12) !important;
+}
+
+[data-theme="cyberpunk"] .border-white\/10 {
+  border-color: rgba(6, 182, 212, 0.22) !important;
+}
+
+/* Emerald border tints */
+[data-theme="emerald"] .border-white\/5 {
+  border-color: rgba(16, 185, 129, 0.12) !important;
+}
+
+[data-theme="emerald"] .border-white\/10 {
+  border-color: rgba(16, 185, 129, 0.22) !important;
 }
 
 /* Custom sleek scrollbars */

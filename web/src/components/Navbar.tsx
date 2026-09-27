@@ -3,6 +3,8 @@ import {
   Search, 
   Sparkles, 
   Moon, 
+  Sun,
+  Zap,
   Bell, 
   User, 
   Clock, 
@@ -11,7 +13,7 @@ import {
   Layers
 } from 'lucide-react';
 import { usePlayerStore, TabType } from '../store/playerStore';
-import { MoodCategory } from '../types';
+import { MoodCategory, AppTheme } from '../types';
 
 interface NavbarProps {
   onSearchSubmit?: (query: string) => void;
@@ -32,7 +34,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   const { 
     activeTab, 
     setActiveTab, 
-    sleepTimerRemainingSeconds, 
+    sleepTimerRemainingSeconds,
+    theme,
+    setTheme, 
     setNowPlayingOpen,
     currentTrack,
     user
@@ -134,6 +138,22 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>Now Playing</span>
             </button>
           )}
+
+          {/* Quick Theme Switcher Button */}
+          <button
+            onClick={() => {
+              const themes: AppTheme[] = ['dark', 'cyberpunk', 'emerald', 'light'];
+              const next = themes[(themes.indexOf(theme) + 1) % themes.length];
+              setTheme(next);
+            }}
+            className="w-9 h-9 rounded-xl bg-surface-800 hover:bg-surface-750 border border-white/5 flex items-center justify-center transition-colors"
+            title={`Current theme: ${theme.toUpperCase()}. Click to switch theme ambiance.`}
+          >
+            {theme === 'dark' && <Moon className="w-4 h-4 text-purple-400" />}
+            {theme === 'cyberpunk' && <Zap className="w-4 h-4 text-cyan-400" />}
+            {theme === 'emerald' && <Sparkles className="w-4 h-4 text-emerald-400" />}
+            {theme === 'light' && <Sun className="w-4 h-4 text-amber-500" />}
+          </button>
 
           <button 
             onClick={() => setActiveTab('settings')}

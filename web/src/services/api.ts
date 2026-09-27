@@ -2,6 +2,7 @@ import {
   MediaItem, 
   Playlist, 
   User, 
+  UserPreferences,
   RecommendationResponse, 
   AIClassificationResult, 
   NaturalLanguageSearchQuery,
@@ -263,25 +264,41 @@ export const api = {
     return await res.json();
   },
 
-  login: async (email: string, password: string): Promise<{ user: User; token: string }> => {
+  login: async (identifier: string, password: string): Promise<{ user: User; token: string }> => {
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({ identifier, email: identifier, username: identifier, password })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Login failed');
     return data;
   },
 
-  register: async (name: string, email: string, password: string): Promise<{ user: User; token: string }> => {
+  register: async (name: string, email: string, password: string, username?: string): Promise<{ user: User; token: string }> => {
     const res = await fetch(`${API_BASE}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, password })
+      body: JSON.stringify({ name, email, username, password })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Registration failed');
+    return data;
+  },
+
+  updatePreferences: async (preferences: Partial<UserPreferences>, token?: string | null, userId?: string): Promise<{ preferences: UserPreferences; user: User }> => {
+    const t = token !== undefined ? token : getStoredToken();
+    const uid = userId || getStoredUserId();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (t) headers['Authorization'] = `Bearer ${t}`;
+
+    const res = await fetch(`${API_BASE}/auth/preferences`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ preferences, userId: uid })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to save preferences');
     return data;
   },
 

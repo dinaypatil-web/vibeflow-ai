@@ -23,6 +23,7 @@ const FEATURES = [
 export const AuthModal: React.FC<AuthModalProps> = ({ onClose, required = false }) => {
   const [mode, setMode] = useState<AuthMode>('login');
   const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
@@ -39,10 +40,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, required = false 
   }, [user, success, onClose]);
 
   const validate = () => {
-    if (!email.trim()) return 'Email is required';
-    if (!email.includes('@')) return 'Enter a valid email address';
-    if (!password || password.length < 6) return 'Password must be at least 6 characters';
-    if (mode === 'register' && !name.trim()) return 'Name is required';
+    if (mode === 'login') {
+      if (!email.trim()) return 'Please enter your username or email address';
+      if (!password) return 'Password is required';
+    } else {
+      if (!name.trim()) return 'Your full name is required';
+      if (!email.trim() && !username.trim()) return 'An email address or username is required';
+      if (!password || password.length < 6) return 'Password must be at least 6 characters';
+    }
     return null;
   };
 
@@ -54,9 +59,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, required = false 
     if (err) { setLocalError(err); return; }
     try {
       if (mode === 'login') {
-        await login(email.trim(), password);
+        await login(email.trim(), password.trim());
       } else {
-        await register(name.trim(), email.trim(), password);
+        const rawUser = username.trim() || (!email.includes('@') ? email.trim() : email.split('@')[0]);
+        const rawEmail = email.includes('@') ? email.trim() : `${rawUser}@vibeflow.local`;
+        await register(name.trim(), rawEmail, password.trim(), rawUser);
       }
       setSuccess(true);
     } catch {
@@ -116,8 +123,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, required = false 
             </h2>
             <p className="text-sm text-slate-400 mt-1">
               {mode === 'login'
-                ? 'Sign in to access your playlists & personalized music'
-                : 'Create your account and sync music across all devices'}
+                ? 'Sign in with your username or email'
+                : 'Create your account and personalize your soundscape'}
             </p>
           </div>
 
@@ -154,28 +161,42 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, required = false 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-3">
             {mode === 'register' && (
-              <div className="relative">
-                <User className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  type="text"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  placeholder="Full name"
-                  autoComplete="name"
-                  className="w-full pl-11 pr-4 py-3.5 bg-surface-850 border border-white/10 rounded-2xl text-sm text-slateate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/40 transition-all text-white"
-                />
-              </div>
+              <>
+                <div className="relative">
+                  <User className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                    placeholder="Full name (e.g. Dinay Patil)"
+                    autoComplete="name"
+                    className="w-full pl-11 pr-4 py-3 bg-surface-850 border border-white/10 rounded-2xl text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/40 transition-all text-white"
+                  />
+                </div>
+
+                <div className="relative">
+                  <span className="text-xs font-bold text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">@</span>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={e => setUsername(e.target.value.replace(/[@\s]/g, ''))}
+                    placeholder="Username (e.g. dinay_vibe)"
+                    autoComplete="username"
+                    className="w-full pl-11 pr-4 py-3 bg-surface-850 border border-white/10 rounded-2xl text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/40 transition-all text-white"
+                  />
+                </div>
+              </>
             )}
 
             <div className="relative">
               <Mail className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
-                type="email"
+                type={mode === 'login' ? 'text' : 'email'}
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="Email address"
-                autoComplete={mode === 'login' ? 'email' : 'new-email'}
-                className="w-full pl-11 pr-4 py-3.5 bg-surface-850 border border-white/10 rounded-2xl text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/40 transition-all text-white"
+                placeholder={mode === 'login' ? 'Username or email address' : 'Email address (optional if username set)'}
+                autoComplete={mode === 'login' ? 'username' : 'email'}
+                className="w-full pl-11 pr-4 py-3 bg-surface-850 border border-white/10 rounded-2xl text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/40 transition-all text-white"
               />
             </div>
 
@@ -185,9 +206,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, required = false 
                 type={showPass ? 'text' : 'password'}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder={mode === 'register' ? 'Create password (min 6 chars)' : 'Password'}
+                placeholder={mode === 'register' ? 'Password (min 6 characters)' : 'Password'}
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                className="w-full pl-11 pr-12 py-3.5 bg-surface-850 border border-white/10 rounded-2xl text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/40 transition-all text-white"
+                className="w-full pl-11 pr-12 py-3 bg-surface-850 border border-white/10 rounded-2xl text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/40 transition-all text-white"
               />
               <button
                 type="button"

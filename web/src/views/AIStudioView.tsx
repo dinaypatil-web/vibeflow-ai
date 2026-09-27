@@ -12,8 +12,10 @@ import {
 } from 'lucide-react';
 import { AIClassificationResult, GenreCategory, MoodCategory } from '../types';
 import { api } from '../services/api';
+import { usePlayerStore } from '../store/playerStore';
 
 export const AIStudioView: React.FC = () => {
+  const { user, updatePreferences } = usePlayerStore();
   // Classification test states
   const [testTitle, setTestTitle] = useState('Chaiyya Chaiyya Sufi Pulse');
   const [testArtist, setTestArtist] = useState('A.R. Rahman');
@@ -34,6 +36,33 @@ export const AIStudioView: React.FC = () => {
     chill: 95,
     devotional: 60
   });
+  const [weightsSaved, setWeightsSaved] = useState(false);
+
+  const handleApplyWeights = async () => {
+    const moodMap: Record<string, MoodCategory> = {
+      study: 'Focus & Study',
+      workout: 'Workout & Energy',
+      chill: 'Calm & Peaceful',
+      romantic: 'Romantic',
+      devotional: 'Spiritual & Devotional'
+    };
+
+    // Sort moods by weight descending
+    const sortedMoodEntries = Object.entries(weights)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k]) => moodMap[k])
+      .filter(Boolean);
+
+    try {
+      await updatePreferences({
+        favoriteMoods: sortedMoodEntries
+      });
+      setWeightsSaved(true);
+      setTimeout(() => setWeightsSaved(false), 3500);
+    } catch (err) {
+      console.error('Failed to update mood preferences:', err);
+    }
+  };
 
   const handleClassify = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -235,11 +264,19 @@ export const AIStudioView: React.FC = () => {
               ))}
             </div>
 
+            {weightsSaved && (
+              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs animate-in fade-in">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>Taste profile saved to your account! Recommendations updated.</span>
+              </div>
+            )}
+
             <button
-              onClick={() => alert('Taste profile updated! VibeFlow AI will prioritize your adjusted mood affinities.')}
-              className="w-full py-2 bg-surface-750 hover:bg-surface-700 text-slate-200 text-xs font-semibold rounded-xl transition-colors"
+              onClick={handleApplyWeights}
+              className="w-full py-2.5 bg-gradient-to-r from-brand-600 via-brand-500 to-accent-cyan hover:brightness-110 active:scale-[0.98] text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5"
             >
-              Apply Weight Profile
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Apply & Save Weight Profile</span>
             </button>
           </div>
 

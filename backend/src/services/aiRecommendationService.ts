@@ -218,88 +218,138 @@ export class AIRecommendationService {
   }
 
   /**
-   * Hybrid personalized discovery feed.
+   * Hybrid personalized discovery feed based on user preferences, favorites, and history.
    */
   public static getPersonalizedFeed(userId: string): RecommendationResponse[] {
-    const user = db.findUserById(userId);
+    const user = db.findUserById(userId) || db.findUserByIdentifier(userId);
     const allItems = db.getAllMediaItems();
-    const favorites = db.getFavorites(userId);
-    const history = db.getHistory(userId);
+    const favorites = db.getFavorites(user ? user.id : userId);
+    const history = db.getHistory(user ? user.id : userId);
 
-    const preferredGenres = user?.preferences?.favoriteGenres?.length 
+    const preferredGenres: string[] = user?.preferences?.favoriteGenres?.length 
       ? user.preferences.favoriteGenres 
       : ['Bollywood', 'Lo-Fi & Chill', 'Hindi Retro', 'Marathi'];
 
-    const preferredMoods = user?.preferences?.favoriteMoods?.length 
+    const preferredMoods: string[] = user?.preferences?.favoriteMoods?.length 
       ? user.preferences.favoriteMoods 
       : ['Calm & Peaceful', 'Focus & Study', 'Workout & Energy', 'Romantic'];
 
+    const preferredLanguages: string[] = user?.preferences?.preferredLanguages || [];
+    const favoriteArtists: string[] = user?.preferences?.favoriteArtists || [];
+
     const feed: RecommendationResponse[] = [];
 
+    // Helper: calculate user affinity score for a track
+    const scoreItem = (item: MediaItem): number => {
+      let score = 0;
+      if (preferredGenres.includes(item.genre)) score += 35;
+      if (preferredMoods.includes(item.mood)) score += 30;
+      if (preferredLanguages.length > 0 && item.language && preferredLanguages.includes(item.language)) score += 25;
+      if (favoriteArtists.length > 0 && favoriteArtists.some(a => 
+        item.artist.toLowerCase().includes(a.toLowerCase()) || a.toLowerCase().includes(item.artist.toLowerCase())
+      )) score += 45;
+      if (favorites.some(f => f.id === item.id)) score += 15;
+      score += Math.min(10, (item.playbackCount || 0) / 1000);
+      return score;
+    };
+
     // 1. Recommended for You (Weighted by preferences + history)
-    const recForYou = allItems.filter(item => 
-      preferredGenres.includes(item.genre) || preferredMoods.includes(item.mood)
-    ).slice(0, 6);
+    const scoredItems = [...allItems]
+      .map(item => ({ item, score: scoreItem(item) }))
+      .sort((a, b) => b.score - a.score);
+
+    const recForYou = scoredItems.filter(s => s.score > 0).map(s => s.item).slice(0, 6);
+    const topReasonParts: string[] = [];
+    if (preferredGenres.length > 0) topReasonParts.push(preferredGenres.slice(0, 2).join(' & '));
+    if (preferredMoods.length > 0) topReasonParts.push(preferredMoods.slice(0, 2).join(' & '));
 
     feed.push({
-      sectionTitle: 'Recommended for You',
-      description: 'Crafted by VibeFlow AI based on your listening habits and mood affinities.',
-      reason: `Personalized for your affinity with ${preferredGenres.slice(0, 2).join(' & ')}.`,
-      items: recForYou.length > 0 ? recForYou : allItems.slice(0, 5)
+      sectionTitle: user?.name ? `Made for ${user.name.split(' ')[0]}` : 'Recommended for You',
+      description: 'Crafted by VibeFlow AI directly from your saved genres, moods, and artist affinities.',
+      reason: topReasonParts.length > 0
+        ? `Personalized from your affinity for ${topReasonParts.join(' • ')}.`
+        : 'Curated based on your listening profile.',
+      items: recForYou.length > 0 ? recForYou : allItems.slice(0, 6)
     });
 
-    // 2. Similar to Your Favorites
+    // 2. Favorite Moods Spotlight
+    if (preferredMoods.length > 0) {
+      const primaryMood = preferredMoods[0];
+      const moodTracks = allItems.filter(item => preferredMoods.includes(item.mood)).slice(0, 6);
+      if (moodTracks.length > 0) {
+        feed.push({
+          sectionTitle: `Mood Flow: ${primaryMood}`,
+          description: `Vibes handpicked to match your selected emotional resonance.`,
+          reason: `Filtered for your preferred mood affinities (${preferredMoods.slice(0, 3).join(', ')}).`,
+          items: moodTracks
+        });
+      }
+    }
+
+    // 3. Preferred Genres Spotlight
+    if (preferredGenres.length > 0) {
+      const primaryGenre = preferredGenres[0];
+      const genreTracks = allItems.filter(item => preferredGenres.includes(item.genre)).slice(0, 6);
+      if (genreTracks.length > 0) {
+        feed.push({
+          sectionTitle: `Genre Spotlight: ${primaryGenre}`,
+          description: `Signature beats and melodies tailored to your favorite genres.`,
+          reason: `Highlighted because you saved ${preferredGenres.slice(0, 3).join(', ')} in your taste profile.`,
+          items: genreTracks
+        });
+      }
+    }
+
+    // 4. Preferred Languages Flow (if specified)
+    if (preferredLanguages.length > 0) {
+      const langTracks = allItems.filter(item => item.language && preferredLanguages.includes(item.language)).slice(0, 6);
+      if (langTracks.length > 0) {
+        feed.push({
+          sectionTitle: `Language Mix: ${preferredLanguages.slice(0, 2).join(' & ')}`,
+          description: `High-fidelity audio streaming in your preferred regional & global languages.`,
+          reason: `Matched to your selected language preferences (${preferredLanguages.join(', ')}).`,
+          items: langTracks
+        });
+      }
+    }
+
+    // 5. Favorite Artists Spotlight (if specified)
+    if (favoriteArtists.length > 0) {
+      const artistTracks = allItems.filter(item => 
+        favoriteArtists.some(a => item.artist.toLowerCase().includes(a.toLowerCase()) || a.toLowerCase().includes(item.artist.toLowerCase()))
+      ).slice(0, 6);
+      if (artistTracks.length > 0) {
+        feed.push({
+          sectionTitle: `Artist Affinity: ${favoriteArtists.slice(0, 2).join(' & ')}`,
+          description: `Tracks from artists you follow and creators with complementary acoustic style.`,
+          reason: `Selected from your saved favorite artists list.`,
+          items: artistTracks
+        });
+      }
+    }
+
+    // 6. Similar to Your Favorites
     if (favorites.length > 0) {
       const seedFav = favorites[0];
       const { similar, reason } = this.getSimilarTracks(seedFav.id, 5);
-      feed.push({
-        sectionTitle: `Inspired by "${seedFav.title}"`,
-        description: 'Tracks sharing similar acoustic signatures and emotional resonance.',
-        reason,
-        items: similar
-      });
-    } else {
-      const topPlayed = [...allItems].sort((a, b) => (b.playbackCount || 0) - (a.playbackCount || 0)).slice(0, 5);
-      feed.push({
-        sectionTitle: 'Trending in Your Preferred Genres',
-        description: 'Most popular tracks resonating with listeners this week.',
-        reason: 'Curated from global play count and positive reception.',
-        items: topPlayed
-      });
+      if (similar.length > 0) {
+        feed.push({
+          sectionTitle: `Inspired by "${seedFav.title}"`,
+          description: 'Tracks sharing similar acoustic signatures and emotional resonance.',
+          reason,
+          items: similar
+        });
+      }
     }
 
-    // 3. Your Next Workout Playlist
-    const workoutTracks = allItems.filter(item => item.mood === 'Workout & Energy' || item.mood === 'Party & Dance').slice(0, 5);
-    if (workoutTracks.length > 0) {
-      feed.push({
-        sectionTitle: 'Your Next Workout Playlist',
-        description: 'High-octane Dhol Tasha, electronic synthwave, and energetic anthems.',
-        reason: 'Selected for high BPM and motivating rhythms.',
-        items: workoutTracks
-      });
-    }
-
-    // 4. Focus & Lo-Fi Sanctuary
-    const focusTracks = allItems.filter(item => item.mood === 'Focus & Study' || item.genre === 'Lo-Fi & Chill').slice(0, 5);
-    if (focusTracks.length > 0) {
-      feed.push({
-        sectionTitle: 'Focus & Deep Study Zone',
-        description: 'Distraction-free ambient soundscapes, rain lo-fi, and intellectual talks.',
-        reason: 'Curated for flow state and productive concentration.',
-        items: focusTracks
-      });
-    }
-
-    // 5. Hidden Gems & Regional Discoveries
-    const regional = allItems.filter(item => item.genre === 'Marathi' || item.genre === 'Punjabi' || item.genre === 'Classical & Instrumental').slice(0, 5);
-    if (regional.length > 0) {
-      feed.push({
-        sectionTitle: 'Discover Regional Music & Heritage',
-        description: 'Authentic regional folk, classical ragas, and unplugged melodies.',
-        reason: 'Broadens your musical horizons beyond mainstream trends.',
-        items: regional
-      });
-    }
+    // 7. Trending in Global Catalog
+    const topPlayed = [...allItems].sort((a, b) => (b.playbackCount || 0) - (a.playbackCount || 0)).slice(0, 6);
+    feed.push({
+      sectionTitle: 'Trending Discoveries',
+      description: 'Most popular tracks resonating with listeners across platforms this week.',
+      reason: 'Curated from global play count and positive reception.',
+      items: topPlayed
+    });
 
     return feed;
   }

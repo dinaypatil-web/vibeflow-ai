@@ -142,10 +142,13 @@ export interface UserPreferences {
   theme: 'dark' | 'light' | 'cyberpunk' | 'system';
 }
 
+export type AppTheme = 'dark' | 'cyberpunk' | 'light' | 'emerald';
+
 export interface User {
   id: string;
   email: string;
   name: string;
+  username?: string;
   avatar?: string;
   role: 'user' | 'admin';
   preferences?: UserPreferences;

@@ -28,12 +28,16 @@ import {
 } from 'lucide-react';
 
 export const App: React.FC = () => {
-  const { activeTab, setActiveTab } = usePlayerStore();
+  const { activeTab, setActiveTab, theme } = usePlayerStore();
   const [selectedMood, setSelectedMood] = useState<MoodCategory | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isImportUrlModalOpen, setIsImportUrlModalOpen] = useState(false);
   const [playlistTargetTrack, setPlaylistTargetTrack] = useState<MediaItem | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
+  React.useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
 
   const handleSelectMood = (mood: MoodCategory | null) => {
     setSelectedMood(mood);
@@ -52,7 +56,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-surface-900 text-slate-100 overflow-hidden font-sans">
+    <div className="flex h-screen bg-surface-900 text-slate-100 overflow-hidden font-sans transition-colors duration-300" data-theme={theme}>
       {/* Background Audio Engine */}
       <AudioEngine />
 

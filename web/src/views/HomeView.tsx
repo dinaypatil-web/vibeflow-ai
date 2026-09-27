@@ -9,7 +9,9 @@ import {
   TrendingUp, 
   Zap,
   ArrowRight,
-  Headphones
+  Headphones,
+  Sliders,
+  Heart
 } from 'lucide-react';
 import { MediaItem, RecommendationResponse, MoodCategory } from '../types';
 import { api } from '../services/api';
@@ -29,7 +31,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
 }) => {
   const [feed, setFeed] = useState<RecommendationResponse[]>([]);
   const [loading, setLoading] = useState(true);
-  const { user, playTrack, setNowPlayingOpen } = usePlayerStore();
+  const { user, playTrack, setNowPlayingOpen, setActiveTab } = usePlayerStore();
+
+  const userPrefKey = JSON.stringify(user?.preferences || {});
 
   useEffect(() => {
     setLoading(true);
@@ -39,7 +43,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [user]);
+  }, [user?.id, userPrefKey]);
 
   const quickPrompts = [
     { title: 'Study & Flow', query: 'Suggest peaceful instrumental music for studying', icon: '🧠', gradient: 'from-blue-600 to-indigo-800' },
@@ -66,6 +70,32 @@ export const HomeView: React.FC<HomeViewProps> = ({
             Curated from YouTube, high-fidelity local audio, and royalty-free master streams with automatic mood classification and background playback.
           </p>
 
+          {/* Active preferences pills */}
+          {user?.preferences && (user.preferences.favoriteGenres?.length > 0 || user.preferences.favoriteMoods?.length > 0) && (
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="text-xs text-brand-300 font-semibold flex items-center gap-1">
+                <Heart className="w-3.5 h-3.5 fill-current" />
+                <span>Your Active Vibe:</span>
+              </span>
+              {user.preferences.favoriteGenres?.slice(0, 3).map((g, i) => (
+                <span key={i} className="px-2.5 py-0.5 rounded-full bg-brand-500/20 text-brand-200 border border-brand-500/30 text-[11px] font-medium">
+                  {g}
+                </span>
+              ))}
+              {user.preferences.favoriteMoods?.slice(0, 2).map((m, i) => (
+                <span key={i} className="px-2.5 py-0.5 rounded-full bg-accent-pink/20 text-accent-pink border border-accent-pink/30 text-[11px] font-medium">
+                  {m}
+                </span>
+              ))}
+              <button
+                onClick={() => setActiveTab('settings')}
+                className="text-[11px] text-slate-400 hover:text-white underline underline-offset-2 ml-1 transition-colors"
+              >
+                Change
+              </button>
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center gap-3 pt-2">
             <button 
               onClick={() => {
@@ -78,6 +108,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
             >
               <Play className="w-4 h-4 fill-current" />
               <span>Start Daily Vibe Mix</span>
+            </button>
+            <button 
+              onClick={() => setActiveTab('settings')}
+              className="px-5 py-3 rounded-2xl bg-surface-750/80 hover:bg-surface-700 text-slate-200 border border-white/10 font-semibold text-sm flex items-center gap-2 transition-all"
+            >
+              <Sliders className="w-4 h-4 text-brand-400" />
+              <span>Tune Preferences</span>
             </button>
             <button 
               onClick={() => onSelectMood('Workout & Energy')}
@@ -147,6 +184,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   {sIdx === 0 && <span className="text-xs px-2 py-0.5 rounded-full bg-brand-500/20 text-brand-300 font-normal">AI Tailored</span>}
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">{section.description}</p>
+                {section.reason && (
+                  <p className="text-[11px] text-brand-400/90 font-medium mt-1 flex items-center gap-1.5">
+                    <Sparkles className="w-3 h-3 shrink-0" />
+                    <span>{section.reason}</span>
+                  </p>
+                )}
               </div>
             </div>
 
