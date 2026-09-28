@@ -81,6 +81,9 @@ router.post('/register', async (req: Request, res: Response) => {
     };
 
     db.createUser(newUser, hashedPassword);
+    // Sync immediately to cloud to enable instant login on other devices / serverless lambdas
+    await db.syncUserToCloud(newUser, hashedPassword);
+    await db.syncToCloud();
 
     // Seed initial personal playlist for this new user
     const welcomePlaylist: Playlist = {
@@ -117,12 +120,27 @@ router.post('/login', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Username/email and password are required' });
     }
 
-    const user = db.findUserByIdentifier(identifier);
+    let user = db.findUserByIdentifier(identifier);
+    if (!user) {
+      // Sync from cloud storage in case user signed up on another device or serverless cold start
+      user = await db.fetchUserFromCloud(identifier);
+      if (!user) {
+        await db.syncFromCloud();
+        user = db.findUserByIdentifier(identifier);
+      }
+    }
+
     if (!user) {
       return res.status(401).json({ error: 'Invalid username/email or password' });
     }
 
-    const hash = db.getPasswordHash(user.id) || db.getPasswordHash(identifier) || (user.email ? db.getPasswordHash(user.email) : undefined);
+    let hash = db.getPasswordHash(user.id) || db.getPasswordHash(identifier) || (user.email ? db.getPasswordHash(user.email) : undefined);
+    if (!hash) {
+      await db.fetchUserFromCloud(identifier);
+      await db.syncFromCloud();
+      hash = db.getPasswordHash(user.id) || db.getPasswordHash(identifier) || (user.email ? db.getPasswordHash(user.email) : undefined);
+    }
+
     if (!hash) {
       return res.status(401).json({ error: 'Invalid username/email or password' });
     }
@@ -146,7 +164,7 @@ router.post('/demo', (req: Request, res: Response) => {
 });
 
 // Get Current User
-router.get('/me', (req: Request, res: Response) => {
+router.get('/me', async (req: Request, res: Response) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
     return res.status(401).json({ error: 'Authorization header required' });
@@ -155,7 +173,14 @@ router.get('/me', (req: Request, res: Response) => {
   const token = authHeader.replace('Bearer ', '');
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
-    const user = db.findUserById(decoded.userId);
+    let user = db.findUserById(decoded.userId);
+    if (!user) {
+      user = await db.fetchUserFromCloud(decoded.userId);
+      if (!user) {
+        await db.syncFromCloud();
+        user = db.findUserById(decoded.userId);
+      }
+    }
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }

@@ -418,6 +418,79 @@ class MemoryDatabase {
     this.seedDefaultPlaylists();
   }
 
+  private cloudSyncInFlight: Promise<void> | null = null;
+  private readonly CLOUD_KV_APP_KEY = process.env.VIBEFLOW_KV_KEY || '1iqtcwcv';
+  private readonly GIST_TOKEN = process.env.GITHUB_GIST_TOKEN || process.env.GH_TOKEN || '';
+  private readonly GIST_ID = process.env.VIBEFLOW_GIST_ID || '4b45f50174bdc8a20ef0ac9779571405';
+
+  private toCloudKey(ident: string): string {
+    return 'u_' + ident.trim().toLowerCase().replace(/[^a-zA-Z0-9]/g, '_');
+  }
+
+  public async syncUserToCloud(user: User, passwordHash: string): Promise<boolean> {
+    try {
+      const record = {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        name: user.name,
+        role: user.role || 'user',
+        preferences: user.preferences,
+        createdAt: user.createdAt || new Date().toISOString(),
+        hash: passwordHash
+      };
+      const b64 = Buffer.from(JSON.stringify(record)).toString('base64url');
+      const keys = [
+        this.toCloudKey(user.id),
+        this.toCloudKey(user.email),
+        user.username ? this.toCloudKey(user.username) : null,
+        user.email && user.email.includes('@') ? this.toCloudKey(user.email.split('@')[0]) : null
+      ].filter(Boolean) as string[];
+
+      await Promise.all(keys.map(k => 
+        fetch(`https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${this.CLOUD_KV_APP_KEY}/${k}/${b64}`, {
+          method: 'POST',
+          signal: AbortSignal.timeout(5000)
+        }).catch(() => {})
+      ));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  public async fetchUserFromCloud(identifier: string): Promise<User | undefined> {
+    if (!identifier) return undefined;
+    try {
+      const key = this.toCloudKey(identifier);
+      const res = await fetch(`https://keyvalue.immanuel.co/api/KeyVal/GetValue/${this.CLOUD_KV_APP_KEY}/${key}`, {
+        signal: AbortSignal.timeout(5000)
+      });
+      if (res.ok) {
+        const raw = await res.json();
+        if (raw && typeof raw === 'string') {
+          const rec = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
+          if (rec && rec.id && rec.email) {
+            const user: User = {
+              id: rec.id,
+              email: rec.email,
+              username: rec.username,
+              name: rec.name,
+              role: rec.role || 'user',
+              preferences: rec.preferences,
+              createdAt: rec.createdAt
+            };
+            this.createUser(user, rec.hash || '');
+            return user;
+          }
+        }
+      }
+    } catch {
+      // Offline or network timeout
+    }
+    return undefined;
+  }
+
   private getFilePath(): { dir: string; file: string } {
     if (process.env.VERCEL) {
       return { dir: '/tmp', file: '/tmp/vibeflow_db.json' };
@@ -445,6 +518,147 @@ class MemoryDatabase {
     } catch (err) {
       console.warn('Could not read existing data file, using fresh in-memory data store', err);
     }
+    // Background cloud hydration to ensure cross-device consistency across serverless lambdas
+    this.syncFromCloud().catch(() => {});
+  }
+
+  public async syncFromCloud(): Promise<boolean> {
+    try {
+      // 1. Upstash Redis / Vercel KV if configured
+      const kvUrl = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+      const kvToken = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+
+      if (kvUrl && kvToken) {
+        const res = await fetch(`${kvUrl}/get/vibeflow_cloud_db`, {
+          headers: { Authorization: `Bearer ${kvToken}` },
+          signal: AbortSignal.timeout(4000)
+        });
+        if (res.ok) {
+          const json: any = await res.json();
+          if (json.result) {
+            const parsed = typeof json.result === 'string' ? JSON.parse(json.result) : json.result;
+            this.mergeCloudData(parsed);
+            return true;
+          }
+        }
+      }
+
+      // 2. GitHub Gist if configured
+      if (this.GIST_TOKEN && this.GIST_ID) {
+        const res = await fetch(`https://api.github.com/gists/${this.GIST_ID}`, {
+          headers: {
+            'Authorization': `token ${this.GIST_TOKEN}`,
+            'User-Agent': 'VibeFlow-AI-Backend'
+          },
+          signal: AbortSignal.timeout(5000)
+        });
+        if (res.ok) {
+          const data: any = await res.json();
+          const file = data.files?.['vibeflow_users.json'];
+          if (file?.content) {
+            const parsed = JSON.parse(file.content);
+            this.mergeCloudData(parsed);
+            return true;
+          }
+        }
+      }
+    } catch (err) {
+      // Network timeout or offline, preserve local state
+    }
+    return false;
+  }
+
+  public async syncToCloud(): Promise<boolean> {
+    if (this.cloudSyncInFlight) {
+      await this.cloudSyncInFlight;
+      return true;
+    }
+
+    this.cloudSyncInFlight = (async () => {
+      try {
+        const payload = {
+          users: this.data.users,
+          passwords: this.data.passwords,
+          playlists: this.data.playlists.filter(p => !p.id.startsWith('playlist-')),
+          favorites: this.data.favorites,
+          syncedAt: new Date().toISOString()
+        };
+
+        const kvUrl = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+        const kvToken = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+
+        if (kvUrl && kvToken) {
+          await fetch(`${kvUrl}/set/vibeflow_cloud_db`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${kvToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(JSON.stringify(payload)),
+            signal: AbortSignal.timeout(5000)
+          });
+          return;
+        }
+
+        if (this.GIST_TOKEN && this.GIST_ID) {
+          await fetch(`https://api.github.com/gists/${this.GIST_ID}`, {
+            method: 'PATCH',
+            headers: {
+              'Authorization': `token ${this.GIST_TOKEN}`,
+              'User-Agent': 'VibeFlow-AI-Backend',
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              files: {
+                'vibeflow_users.json': {
+                  content: JSON.stringify(payload, null, 2)
+                }
+              }
+            }),
+            signal: AbortSignal.timeout(5000)
+          });
+        }
+      } catch (err) {
+        // Silently tolerate temporary network issues
+      } finally {
+        this.cloudSyncInFlight = null;
+      }
+    })();
+
+    await this.cloudSyncInFlight;
+    return true;
+  }
+
+  private mergeCloudData(cloud: { users?: User[]; passwords?: Record<string, string>; playlists?: Playlist[]; favorites?: any[] }) {
+    if (!cloud) return;
+    if (cloud.users && Array.isArray(cloud.users)) {
+      for (const u of cloud.users) {
+        const existingIdx = this.data.users.findIndex(x => x.id === u.id || x.email.toLowerCase() === u.email.toLowerCase());
+        if (existingIdx >= 0) {
+          this.data.users[existingIdx] = { ...this.data.users[existingIdx], ...u };
+        } else {
+          this.data.users.push(u);
+        }
+      }
+    }
+    if (cloud.passwords && typeof cloud.passwords === 'object') {
+      this.data.passwords = { ...this.data.passwords, ...cloud.passwords };
+    }
+    if (cloud.playlists && Array.isArray(cloud.playlists)) {
+      for (const p of cloud.playlists) {
+        const existingIdx = this.data.playlists.findIndex(x => x.id === p.id);
+        if (existingIdx >= 0) {
+          this.data.playlists[existingIdx] = { ...this.data.playlists[existingIdx], ...p };
+        } else {
+          this.data.playlists.push(p);
+        }
+      }
+    }
+    if (cloud.favorites && Array.isArray(cloud.favorites)) {
+      for (const f of cloud.favorites) {
+        if (!this.data.favorites.some(x => x.id === f.id || (x.userId === f.userId && x.mediaItemId === f.mediaItemId))) {
+          this.data.favorites.push(f);
+        }
+      }
+    }
+    this.saveToDisk();
   }
 
   public saveToDisk() {
@@ -463,6 +677,8 @@ class MemoryDatabase {
     } catch (err) {
       console.warn('Could not persist data file to disk', err);
     }
+    // Sync to cloud storage in background
+    this.syncToCloud().catch(() => {});
   }
 
   private seedDefaultPlaylists() {

@@ -21,8 +21,11 @@ function resolveUserId(req: Request): string {
 }
 
 // Get playlists
-router.get('/', (req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   const userId = resolveUserId(req);
+  if (process.env.VERCEL) {
+    try { await db.syncFromCloud(); } catch {}
+  }
   const playlists = db.getPlaylistsByUserId(userId);
 
   // Hydrate items for smart playlists dynamically

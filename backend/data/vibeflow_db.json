@@ -151,6 +151,73 @@
         "theme": "dark"
       },
       "createdAt": "2026-09-28T16:07:15.659Z"
+    },
+    {
+      "id": "usr-1",
+      "name": "Rohan",
+      "email": "rohan@test.com"
+    },
+    {
+      "id": "usr-cross_1790612762756",
+      "email": "cross_1790612762756@vibeflow.ai",
+      "username": "cross_1790612762756",
+      "name": "Cross Device Tester",
+      "role": "user",
+      "preferences": {
+        "userId": "usr-cross_1790612762756"
+      },
+      "createdAt": "2026-09-28T16:26:02.756Z"
+    },
+    {
+      "id": "usr-cross_1790613005330",
+      "email": "cross_1790613005330@vibeflow.ai",
+      "username": "cross_1790613005330",
+      "name": "Cross Device Tester",
+      "role": "user",
+      "preferences": {
+        "userId": "usr-cross_1790613005330"
+      },
+      "createdAt": "2026-09-28T16:30:05.330Z"
+    },
+    {
+      "id": "usr-1790613102060",
+      "email": "test_1790613101935@vibeflow.local",
+      "name": "Auto Tester",
+      "username": "user_1790613101935",
+      "role": "user",
+      "preferences": {
+        "userId": "usr-1790613102060",
+        "favoriteGenres": [
+          "Bollywood",
+          "Lo-Fi & Chill",
+          "Hindi Retro",
+          "Marathi"
+        ],
+        "favoriteMoods": [
+          "Calm & Peaceful",
+          "Focus & Study",
+          "Workout & Energy",
+          "Romantic"
+        ],
+        "preferredLanguages": [
+          "Hindi",
+          "English",
+          "Marathi",
+          "Punjabi"
+        ],
+        "favoriteArtists": [
+          "Arijit Singh",
+          "Lata Mangeshkar",
+          "Bombay Chill Collective"
+        ],
+        "autoPlaySimilar": true,
+        "streamQuality": "high",
+        "downloadQuality": "high",
+        "wifiOnlyDownloads": true,
+        "enableListeningHistory": true,
+        "theme": "dark"
+      },
+      "createdAt": "2026-09-28T16:31:42.060Z"
     }
   ],
   "passwords": {
@@ -161,7 +228,17 @@
     "user_1790511700768": "$2a$10$PsK407AMyMl3Rz1/h0LAj.cAvNdjeRUSVvKwCNScb9nK0zbMVBZby",
     "usr-1790611635659": "$2a$10$sMN6DQNLY19DygrH13szc.tEHl6DHK8J88UB7LEBh83gtSswgs/iG",
     "test_1790611635216@vibeflow.local": "$2a$10$sMN6DQNLY19DygrH13szc.tEHl6DHK8J88UB7LEBh83gtSswgs/iG",
-    "user_1790611635216": "$2a$10$sMN6DQNLY19DygrH13szc.tEHl6DHK8J88UB7LEBh83gtSswgs/iG"
+    "user_1790611635216": "$2a$10$sMN6DQNLY19DygrH13szc.tEHl6DHK8J88UB7LEBh83gtSswgs/iG",
+    "usr-1": "hashed123",
+    "usr-cross_1790612762756": "$2a$10$7hUk4M4KSqlLGpFzqJXeJOi.WVXru4kC2WdAZdi.mT1RozzAaSrRq",
+    "cross_1790612762756@vibeflow.ai": "$2a$10$7hUk4M4KSqlLGpFzqJXeJOi.WVXru4kC2WdAZdi.mT1RozzAaSrRq",
+    "cross_1790612762756": "$2a$10$7hUk4M4KSqlLGpFzqJXeJOi.WVXru4kC2WdAZdi.mT1RozzAaSrRq",
+    "usr-cross_1790613005330": "$2a$10$PtUpK0a4rCVDYOCZnyJE5uTVjpciPhuqVfxcHLNK4K2FjFIg3GFVS",
+    "cross_1790613005330@vibeflow.ai": "$2a$10$PtUpK0a4rCVDYOCZnyJE5uTVjpciPhuqVfxcHLNK4K2FjFIg3GFVS",
+    "cross_1790613005330": "$2a$10$PtUpK0a4rCVDYOCZnyJE5uTVjpciPhuqVfxcHLNK4K2FjFIg3GFVS",
+    "usr-1790613102060": "$2a$10$f9tk/BUqjKDCunCr0g45tO2FrPqMQ38NbV66Judb0oLfgEW5ETNmq",
+    "test_1790613101935@vibeflow.local": "$2a$10$f9tk/BUqjKDCunCr0g45tO2FrPqMQ38NbV66Judb0oLfgEW5ETNmq",
+    "user_1790613101935": "$2a$10$f9tk/BUqjKDCunCr0g45tO2FrPqMQ38NbV66Judb0oLfgEW5ETNmq"
   },
   "mediaItems": [
     {
@@ -598,7 +675,7 @@
       "providerId": "mH_LFkWxpI0",
       "title": "Diljit Dosanjh: LOVER (Official Music Video) Intense | Raj Ranjodh | MoonChild Era",
       "artist": "Diljit Dosanjh",
-      "thumbnail": "https://i.ytimg.com/vi/mH_LFkWxpI0/hq720.jpg?sqp=-oaymwEgCNAFEJQDSFXyq4qpAxIIARUAAIhCGAFwAcABBrgC9xg=&rs=AOn4CLDZs7IUgBjubSgEHWIZZi-9YMcFGg",
+      "thumbnail": "https://i.ytimg.com/vi/mH_LFkWxpI0/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLCuT4MNUCpq6tvNLVRCniYCTBFVsQ",
       "duration": 188,
       "genre": "Punjabi",
       "mood": "Romantic",
@@ -623,7 +700,7 @@
       "providerId": "3K66ntQkJko",
       "title": "LOVER: Diljit Dosanjh (Official Audio) Intense | Raj Ranjodh | MoonChild Era | Latest Song 2021",
       "artist": "Diljit Dosanjh",
-      "thumbnail": "https://i.ytimg.com/vi/3K66ntQkJko/hq720.jpg?sqp=-oaymwEgCNAFEJQDSFXyq4qpAxIIARUAAIhCGAFwAcABBrgC9xg=&rs=AOn4CLCuIkmN3J2hBduLRtsc9WLC27jUKQ",
+      "thumbnail": "https://i.ytimg.com/vi/3K66ntQkJko/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLDBMUFcryj4kgcGsbWD_rE7WP9rsw",
       "duration": 190,
       "genre": "Punjabi",
       "mood": "Romantic",
@@ -648,7 +725,7 @@
       "providerId": "aoIhamvZKdQ",
       "title": "Lover",
       "artist": "Diljit Dosanjh",
-      "thumbnail": "https://i.ytimg.com/vi/aoIhamvZKdQ/hq720.jpg?sqp=-oaymwEgCNAFEJQDSFXyq4qpAxIIARUAAIhCGAFwAcABBrgC9xg=&rs=AOn4CLB7MH66hmupKdmuNdvFvAPw9_vnCw",
+      "thumbnail": "https://i.ytimg.com/vi/aoIhamvZKdQ/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLAjDtL_h3VQIOOV-3_JqdncGSlRcw",
       "duration": 188,
       "genre": "Punjabi",
       "mood": "Romantic",
@@ -672,7 +749,7 @@
       "providerId": "y2fgw1Oqz28",
       "title": "Lag Ja Gale Ki Phir Ye Haseen Raat Ho Na Ho Video Song | Lata Mangeshkar | Woh Kaun Thi Songs",
       "artist": "SuperHit Gaane",
-      "thumbnail": "https://i.ytimg.com/vi/y2fgw1Oqz28/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBqLzl_8DDgiV7O-rBhjg6gQg4KgB&rs=AOn4CLAUVOKbxPmc2e8M0TFc267Q9ntTsw&usqp=CBU",
+      "thumbnail": "https://i.ytimg.com/vi/y2fgw1Oqz28/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLB3K74yGmWKrWOrnSS4JlVHXbd0OQ",
       "duration": 264,
       "genre": "Hindi Retro",
       "mood": "Calm & Peaceful",
@@ -719,7 +796,7 @@
       "providerId": "P4ofSL-n3s0",
       "title": "लग जा गले से फिर | लता मंगेशकर हिट्स | लता मंगेशकर हिट्स | वो कौन थी? (1964)",
       "artist": "Saregama Karaoke",
-      "thumbnail": "https://i.ytimg.com/vi/P4ofSL-n3s0/hq720.jpg?sqp=-oaymwEgCNAFEJQDSFXyq4qpAxIIARUAAIhCGAFwAcABBrgC8xg=&rs=AOn4CLBxcqXdaYUku23nCewHNLywoU_uGg",
+      "thumbnail": "https://i.ytimg.com/vi/P4ofSL-n3s0/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLBDM5ZjqS1pgG9-b1SlYux6eFj3lg",
       "duration": 273,
       "genre": "Pop",
       "mood": "Calm & Peaceful",
@@ -786,7 +863,7 @@
       "providerId": "zK2Vq",
       "title": "Chill Lo-fi Hip-Hop Beats FREE Lofi Hip Hop Chillhop Music Mix",
       "artist": "jameslax",
-      "thumbnail": "https://audius-discovery-2.altego.net/content/QmdCNrMfkngNoMjYk5TFqtErmp8APdFqidn1EjCEVjyiw7/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/QmdCNrMfkngNoMjYk5TFqtErmp8APdFqidn1EjCEVjyiw7/480x480.jpg",
       "duration": 5175,
       "genre": "Lo-Fi & Chill",
       "mood": "Focus & Study",
@@ -841,7 +918,7 @@
       "providerId": "Q71Vw",
       "title": "Lofi Hip Hop Mix Study  Beats",
       "artist": "iconoschill",
-      "thumbnail": "https://audius-content-5.figment.io/content/QmViAwyengBrXhJVxgEkZPALJMZPWdziYGxbWtDwS15P5b/480x480.jpg",
+      "thumbnail": "https://val015.open-audio-validator.com/content/QmViAwyengBrXhJVxgEkZPALJMZPWdziYGxbWtDwS15P5b/480x480.jpg",
       "duration": 5037,
       "genre": "Lo-Fi & Chill",
       "mood": "Focus & Study",
@@ -901,7 +978,7 @@
       "providerId": "WxPYv",
       "title": "Sphere",
       "artist": "DJ Whacked",
-      "thumbnail": "https://val009.open-audio-validator.com/content/QmSfiX8NLnJrEMfvJC2adtrtAprDaT38QnSH6vBu33146U/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/QmSfiX8NLnJrEMfvJC2adtrtAprDaT38QnSH6vBu33146U/480x480.jpg",
       "duration": 237,
       "genre": "EDM & Electronic",
       "mood": "Party & Dance",
@@ -1041,7 +1118,7 @@
       "providerId": "blQ8b",
       "title": "Arijit Singh - Tum Hi Ho (fingerstyle cover)",
       "artist": "Yulio",
-      "thumbnail": "https://audius-creator-11.theblueprint.xyz/content/Qme468sKVmV5p5mTTgQQQZpNhkDV2jkuJyx1D61rpW3AQd/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/Qme468sKVmV5p5mTTgQQQZpNhkDV2jkuJyx1D61rpW3AQd/480x480.jpg",
       "duration": 241,
       "genre": "Bollywood",
       "mood": "Calm & Peaceful",
@@ -1058,7 +1135,7 @@
         "audius_master",
         "alternative"
       ],
-      "playbackCount": 7843
+      "playbackCount": 7844
     },
     {
       "id": "audius-3OVWk",
@@ -1096,7 +1173,7 @@
       "providerId": "blr1k",
       "title": "Arijit Singh - Tum Hi Ho (fingerstyle cover) - AlipBaTa",
       "artist": "hadiid surya sanjaya",
-      "thumbnail": "https://audius.zeogrid.com/content/QmW3UKmRP2sfnBNJyVUDbRevohLJv7fsFWfjnKkvugbJv3/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/QmW3UKmRP2sfnBNJyVUDbRevohLJv7fsFWfjnKkvugbJv3/480x480.jpg",
       "duration": 241,
       "genre": "Bollywood",
       "mood": "Calm & Peaceful",
@@ -1114,7 +1191,7 @@
         "audius_master",
         "pop"
       ],
-      "playbackCount": 762
+      "playbackCount": 763
     },
     {
       "id": "audius-gzJ05Rp",
@@ -1122,7 +1199,7 @@
       "providerId": "gzJ05Rp",
       "title": "Love Vibes  Atif Aslam, Arijit Singh, Jubin NautiyaHindi Mashup",
       "artist": "NFThunk",
-      "thumbnail": "https://audius-creator-11.theblueprint.xyz/content/01JRWJZBAE0N4H643P85CCW309/480x480.jpg",
+      "thumbnail": "https://val019.open-audio-validator.com/content/01JRWJZBAE0N4H643P85CCW309/480x480.jpg",
       "duration": 1307,
       "genre": "Hip-Hop",
       "mood": "Romantic",
@@ -2264,7 +2341,7 @@
       "providerId": "Ja10V6Y",
       "title": "Coldplay - Clocks (Jazcardan Remix)",
       "artist": "Jazcardan",
-      "thumbnail": "https://val008.open-audio-validator.com/content/baeaaaiqsea6bt5vpmdyv4mxx7zi4viwtrk2uvazfgamdg5rmdg25ys364rw2s/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/baeaaaiqsea6bt5vpmdyv4mxx7zi4viwtrk2uvazfgamdg5rmdg25ys364rw2s/480x480.jpg",
       "duration": 322,
       "genre": "EDM & Electronic",
       "mood": "Romantic",
@@ -2326,7 +2403,7 @@
       "providerId": "9R77pXa",
       "title": "Havana Coldplay ",
       "artist": "Dom Talles Myers ",
-      "thumbnail": "https://audius-03.staked.cloud/content/01J4Q7CBAFCYFE4VCS4TKWHHC8/480x480.jpg",
+      "thumbnail": "https://val016.open-audio-validator.com/content/01J4Q7CBAFCYFE4VCS4TKWHHC8/480x480.jpg",
       "duration": 183,
       "genre": "Hip-Hop",
       "mood": "Spiritual & Devotional",
@@ -2353,7 +2430,7 @@
       "providerId": "VvZx9",
       "title": "Big Sean - Joyride (feat. Chris Martin of Coldplay)",
       "artist": "Unreleased Gems",
-      "thumbnail": "https://v.monophonic.digital/content/QmYfz8f4NdzTxGwY6i7GmN1RBGd4TrJ1QUFnJkYgd2cz4A/480x480.jpg",
+      "thumbnail": "https://val005.open-audio-validator.com/content/QmYfz8f4NdzTxGwY6i7GmN1RBGd4TrJ1QUFnJkYgd2cz4A/480x480.jpg",
       "duration": 202,
       "genre": "Hip-Hop",
       "mood": "Uplifting & Happy",
@@ -3889,7 +3966,7 @@
         "punjabi",
         "full_length"
       ],
-      "playbackCount": 18800020
+      "playbackCount": 18800833
     },
     {
       "id": "jiosaavn-vLSaC03b",
@@ -3919,7 +3996,7 @@
         "punjabi",
         "full_length"
       ],
-      "playbackCount": 21734089
+      "playbackCount": 21734688
     },
     {
       "id": "jiosaavn-vj2tW1iy",
@@ -3977,7 +4054,7 @@
         "punjabi",
         "full_length"
       ],
-      "playbackCount": 25597767
+      "playbackCount": 25598273
     },
     {
       "id": "jiosaavn-PaHsQs3A",
@@ -4005,7 +4082,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 119080
+      "playbackCount": 119081
     },
     {
       "id": "jiosaavn-bYm3rH-V",
@@ -4034,7 +4111,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 4392001
+      "playbackCount": 4392014
     },
     {
       "id": "jiosaavn-VeD-sy0U",
@@ -4093,7 +4170,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 213354830
+      "playbackCount": 213355169
     },
     {
       "id": "jiosaavn-7I9urT8B",
@@ -4125,7 +4202,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 2101624
+      "playbackCount": 2101649
     },
     {
       "id": "jiosaavn-p-IVNEqy",
@@ -4156,7 +4233,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 3520288
+      "playbackCount": 3520293
     },
     {
       "id": "jiosaavn-6ud4bdIj",
@@ -4219,7 +4296,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 188838
+      "playbackCount": 188844
     },
     {
       "id": "jiosaavn-0xVIENY1",
@@ -4249,7 +4326,7 @@
         "kannada",
         "full_length"
       ],
-      "playbackCount": 8556335
+      "playbackCount": 8556374
     },
     {
       "id": "jiosaavn-_fGUKeDL",
@@ -4342,7 +4419,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 213354939
+      "playbackCount": 213355278
     },
     {
       "id": "jiosaavn-EbFWakDs",
@@ -4381,7 +4458,7 @@
       "providerId": "TFr6G5zveS8",
       "title": "लग जा गले - साधना, लता मंगेशकर, वो कौन थी रोमांटिक गीत",
       "artist": "Ultra Bollywood",
-      "thumbnail": "https://i.ytimg.com/vi/TFr6G5zveS8/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBqLzl_8DDgjPuOCnBhjg6gQg4KgB&rs=AOn4CLAJ5SwNpV_T6IyI46Wv-lGpUSQAfA&usqp=CBU",
+      "thumbnail": "https://i.ytimg.com/vi/TFr6G5zveS8/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLDD8naCrHRW-12A6aJj6OfpRpr2ew",
       "duration": 259,
       "genre": "Bollywood",
       "mood": "Calm & Peaceful",
@@ -5088,7 +5165,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 59588613
+      "playbackCount": 59590442
     },
     {
       "id": "jiosaavn-1gHtmQ3x",
@@ -5117,7 +5194,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 59588321
+      "playbackCount": 59590150
     },
     {
       "id": "jiosaavn-Bt07_OpM",
@@ -5148,7 +5225,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 373025148
+      "playbackCount": 373026234
     },
     {
       "id": "jiosaavn-yXCLyL-9",
@@ -5180,7 +5257,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 373025148
+      "playbackCount": 373026234
     },
     {
       "id": "jiosaavn-aRZbUYD7",
@@ -5209,7 +5286,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 373023783
+      "playbackCount": 373024869
     },
     {
       "id": "jiosaavn-7CwLvXc6",
@@ -6580,7 +6657,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 184789838
+      "playbackCount": 184790681
     },
     {
       "id": "jiosaavn-riNBfJ3P",
@@ -6609,7 +6686,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 184789944
+      "playbackCount": 184790787
     },
     {
       "id": "jiosaavn-59Id4Y_9",
@@ -6641,7 +6718,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 154546269
+      "playbackCount": 154547178
     },
     {
       "id": "jiosaavn-d-O4NgD6",
@@ -6670,7 +6747,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 154546242
+      "playbackCount": 154547151
     },
     {
       "id": "jiosaavn-fY2ah9K7",
@@ -6699,7 +6776,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 127523324
+      "playbackCount": 127524080
     },
     {
       "id": "jiosaavn-05BTlVwi",
@@ -6732,7 +6809,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 88204252
+      "playbackCount": 88205128
     },
     {
       "id": "jiosaavn-wI9ZDFkF",
@@ -6762,7 +6839,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 88203412
+      "playbackCount": 88204288
     },
     {
       "id": "jiosaavn-L7I1fpSU",
@@ -6794,7 +6871,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 237460862
+      "playbackCount": 237461745
     },
     {
       "id": "jiosaavn-koWi7GRH",
@@ -6825,7 +6902,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 237460862
+      "playbackCount": 237461745
     },
     {
       "id": "jiosaavn-a782ndqh",
@@ -6856,7 +6933,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 237460862
+      "playbackCount": 237461745
     },
     {
       "id": "jiosaavn--1SyiQS8",
@@ -6887,7 +6964,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 237460862
+      "playbackCount": 237461745
     },
     {
       "id": "itunes-6815568283",
@@ -7275,7 +7352,7 @@
       "providerId": "kl8ZgWw",
       "title": "Tere Hawaale | Laal Singh Chaddha _ Aamir,Kareena _ Arijit,Shilpa _ Pritam,Amitabh,Advait",
       "artist": "Mxz.06z",
-      "thumbnail": "https://val019.open-audio-validator.com/content/Qmc45nDLknqXtmbwmdKXbx4PvPjd7TqtDKDS8HdwXePYUZ/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/Qmc45nDLknqXtmbwmdKXbx4PvPjd7TqtDKDS8HdwXePYUZ/480x480.jpg",
       "duration": 331,
       "genre": "Bollywood",
       "mood": "Calm & Peaceful",
@@ -7302,7 +7379,7 @@
       "providerId": "my89Xyr",
       "title": "Arijit Singh Special | New Romantic Bollywood Mashup music ",
       "artist": "NFThunk",
-      "thumbnail": "https://val005.open-audio-validator.com/content/01JRJ0WKMQ251499CD10J29TF0/480x480.jpg",
+      "thumbnail": "https://audius-content-9.figment.io/content/01JRJ0WKMQ251499CD10J29TF0/480x480.jpg",
       "duration": 345,
       "genre": "Bollywood",
       "mood": "Romantic",
@@ -7332,7 +7409,7 @@
       "providerId": "qRVXqKM",
       "title": "Mashup of Arijit Singh | New Romantic Mashup Non-Stop Love Songs",
       "artist": "NFThunk",
-      "thumbnail": "https://audius-creator-10.theblueprint.xyz/content/01JR7VGZKMCFJQJQX55N7H139K/480x480.jpg",
+      "thumbnail": "https://audius-content-2.figment.io/content/01JR7VGZKMCFJQJQX55N7H139K/480x480.jpg",
       "duration": 338,
       "genre": "Bollywood",
       "mood": "Romantic",
@@ -7361,7 +7438,7 @@
       "providerId": "oP8am",
       "title": "Muskurahat - Arijit Singh",
       "artist": "Aj",
-      "thumbnail": "https://val019.open-audio-validator.com/content/QmVNXf9pM5soSNPFbFsgYLbRMES4cgEnZGXaiMzeipNmuU/480x480.jpg",
+      "thumbnail": "https://audius-content-1.figment.io/content/QmVNXf9pM5soSNPFbFsgYLbRMES4cgEnZGXaiMzeipNmuU/480x480.jpg",
       "duration": 277,
       "genre": "Bollywood",
       "mood": "Calm & Peaceful",
@@ -7409,7 +7486,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 237460862
+      "playbackCount": 237461745
     },
     {
       "id": "jiosaavn-H9YLxfq3",
@@ -7439,7 +7516,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 237460862
+      "playbackCount": 237461745
     },
     {
       "id": "yt-RVOUAUMvx7A",
@@ -8065,7 +8142,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 237460862
+      "playbackCount": 237461745
     },
     {
       "id": "jiosaavn-d8-bwe9M",
@@ -8095,7 +8172,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 237460862
+      "playbackCount": 237461745
     },
     {
       "id": "jiosaavn-HFIok7C3",
@@ -8125,7 +8202,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 237460863
+      "playbackCount": 237461746
     },
     {
       "id": "jiosaavn-qZtKBMZ_",
@@ -8154,7 +8231,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 237458957
+      "playbackCount": 237459840
     },
     {
       "id": "yt-KMz2pTfRIxw",
@@ -10718,7 +10795,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 237460862
+      "playbackCount": 237461745
     },
     {
       "id": "jiosaavn-mnHeGZv-",
@@ -10747,7 +10824,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 237460862
+      "playbackCount": 237461745
     },
     {
       "id": "jiosaavn-AuXtuzZk",
@@ -10779,7 +10856,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 237460862
+      "playbackCount": 237461745
     },
     {
       "id": "jiosaavn-qcEf8GY8",
@@ -10809,7 +10886,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 237460862
+      "playbackCount": 237461745
     },
     {
       "id": "itunes-6772887736",
@@ -11347,7 +11424,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 237460862
+      "playbackCount": 237461745
     },
     {
       "id": "jiosaavn-lnig1Z0j",
@@ -11377,7 +11454,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 237460862
+      "playbackCount": 237461745
     },
     {
       "id": "jiosaavn-wW3g85C5",
@@ -11408,7 +11485,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 237460862
+      "playbackCount": 237461745
     },
     {
       "id": "jiosaavn-Ss8Tgn5k",
@@ -11437,7 +11514,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 237460862
+      "playbackCount": 237461745
     },
     {
       "id": "jiosaavn-PxiZdFH7",
@@ -11466,7 +11543,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 237460862
+      "playbackCount": 237461745
     },
     {
       "id": "jiosaavn--Y4hNkFa",
@@ -11499,7 +11576,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 37438191
+      "playbackCount": 37438887
     },
     {
       "id": "jiosaavn-4NRpZd1v",
@@ -11617,7 +11694,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 174938712
+      "playbackCount": 174939694
     },
     {
       "id": "jiosaavn-wcsDiSsA",
@@ -11647,7 +11724,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 111803858
+      "playbackCount": 111804815
     },
     {
       "id": "jiosaavn-tyW5d6RB",
@@ -11680,7 +11757,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 113087336
+      "playbackCount": 113088293
     },
     {
       "id": "jiosaavn-Itm0k7b5",
@@ -12877,7 +12954,7 @@
       "providerId": "jNYQz3M",
       "title": "_Sawan Aaya Hai_ FULL VIDEO Song _ Arijit Singh _ Bipasha Basu _ Imran Abbas Naqvi(MP3_320K)",
       "artist": "NooB",
-      "thumbnail": "https://v.monophonic.digital/content/QmdmkqsuRrN46T3mGjKm1ZjoQ9UGamQj2MR1nJTRcMbWYv/480x480.jpg",
+      "thumbnail": "https://audius-content-9.figment.io/content/QmdmkqsuRrN46T3mGjKm1ZjoQ9UGamQj2MR1nJTRcMbWYv/480x480.jpg",
       "duration": 196,
       "genre": "Bollywood",
       "mood": "Calm & Peaceful",
@@ -12929,7 +13006,7 @@
       "providerId": "aBB7a",
       "title": "Nashe Si Chadh Gayi - Arijit Singh - 320Kbps",
       "artist": "DaggyBuoy",
-      "thumbnail": "https://v.monophonic.digital/content/QmdCnPVkNifbVL6c7zSBLxz7bKti8oyQJug4F6zidNqVPa/480x480.jpg",
+      "thumbnail": "https://audius-discovery-1.altego.net/content/QmdCnPVkNifbVL6c7zSBLxz7bKti8oyQJug4F6zidNqVPa/480x480.jpg",
       "duration": 238,
       "genre": "Bollywood",
       "mood": "Calm & Peaceful",
@@ -12982,7 +13059,7 @@
       "providerId": "YRbX6rp",
       "title": "Feeling of Love Mashup | Best of Arijit Singh Songs",
       "artist": "NFThunk",
-      "thumbnail": "https://audius-creator-4.theblueprint.xyz/content/01JJ3Y06EWN0R8GHSGTW6MZK68/480x480.jpg",
+      "thumbnail": "https://val002.open-audio-validator.com/content/01JJ3Y06EWN0R8GHSGTW6MZK68/480x480.jpg",
       "duration": 4106,
       "genre": "Hip-Hop",
       "mood": "Romantic",
@@ -13013,7 +13090,7 @@
       "providerId": "Oo8Gjx4",
       "title": "Heart Touching Mashup Song | Arijit Singh, Javed Ali | NewMashup",
       "artist": "NFThunk",
-      "thumbnail": "https://v.monophonic.digital/content/01JQ68T03Q1VEAQP1ZSDEW816P/480x480.jpg",
+      "thumbnail": "https://audius-content-1.figment.io/content/01JQ68T03Q1VEAQP1ZSDEW816P/480x480.jpg",
       "duration": 274,
       "genre": "Bollywood",
       "mood": "Romantic",
@@ -13046,7 +13123,7 @@
       "providerId": "1Ej4pOW",
       "title": "Alone Version Ishq Mashup | Faheem Abdul, Arijit Singh & Emraan ",
       "artist": "NFThunk",
-      "thumbnail": "https://v.monophonic.digital/content/01JJNSHHTCV4F0K9ENWS72YTH8/480x480.jpg",
+      "thumbnail": "https://audius-content-14.figment.io/content/01JJNSHHTCV4F0K9ENWS72YTH8/480x480.jpg",
       "duration": 245,
       "genre": "Bollywood",
       "mood": "Romantic",
@@ -13079,7 +13156,7 @@
       "providerId": "l5yq6",
       "title": "Bollywood Hits Songs2021 Live - Arijit Singh_ Armaan Malik_Atif Aslam_Neha Kakkar(M4A_128K)_1",
       "artist": "Biju",
-      "thumbnail": "https://audius-creator-3.theblueprint.xyz/content/QmfUSeUcbDmqFx6h7G2Zpg8qXF4KWyS8EDwAzrAu317d8L/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/QmfUSeUcbDmqFx6h7G2Zpg8qXF4KWyS8EDwAzrAu317d8L/480x480.jpg",
       "duration": 2,
       "genre": "Bollywood",
       "mood": "Calm & Peaceful",
@@ -13107,7 +13184,7 @@
       "providerId": "vWqYO",
       "title": "Arijit Singh_ Agar Tum Sath Ho _ Alka Yagnik_ A.R. Rehman_ Irshad Kamil(MP3_160K)",
       "artist": "Emash Chakma",
-      "thumbnail": "https://val008.open-audio-validator.com/content/QmVkyHe9f26V6guEaavCyqyRfHqN8L7p5QbxfSSuGAmSc8/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/QmVkyHe9f26V6guEaavCyqyRfHqN8L7p5QbxfSSuGAmSc8/480x480.jpg",
       "duration": 341,
       "genre": "Bollywood",
       "mood": "Nostalgic",
@@ -13134,7 +13211,7 @@
       "providerId": "aN9YEPr",
       "title": "Apna Bana Le - Bhediya _ Varun Dhawan, Kriti Sanon_ Sachin-Jigar, Arijit Singh, Amitabh Bhattacharya",
       "artist": "Mxz.06z",
-      "thumbnail": "https://audius-content-9.figment.io/content/QmS1wVakQRuokacNZEEofV79Y7ydp6Dqjtdav7R8m5wrsx/480x480.jpg",
+      "thumbnail": "https://audius.zeogrid.com/content/QmS1wVakQRuokacNZEEofV79Y7ydp6Dqjtdav7R8m5wrsx/480x480.jpg",
       "duration": 204,
       "genre": "Bollywood",
       "mood": "Calm & Peaceful",
@@ -13160,7 +13237,7 @@
       "providerId": "y5oNx",
       "title": "Marjaavaan_ Thodi Jagah Video _ Riteish D, Sidharth M, Tara S _ Arijit Singh _ Tanishk Bagchi",
       "artist": "Sk Shohag",
-      "thumbnail": "https://val012.open-audio-validator.com/content/QmYcnpeqgEAaEihLp8WCGMXYJwWhVsvFQqk2iwj7K9887C/480x480.jpg",
+      "thumbnail": "https://audius-creator-17.theblueprint.xyz/content/QmYcnpeqgEAaEihLp8WCGMXYJwWhVsvFQqk2iwj7K9887C/480x480.jpg",
       "duration": 194,
       "genre": "Bollywood",
       "mood": "Calm & Peaceful",
@@ -13186,7 +13263,7 @@
       "providerId": "NPXj1g0",
       "title": "We Rollin_320(PagalWorld.com.se)",
       "artist": "ARIJIT SINGH ",
-      "thumbnail": "https://audius-05.staked.cloud/content/QmV6eeDb9JUkgaWCtYc6jGcDgthzhDf4P82t3qnBSdpz3q/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/QmV6eeDb9JUkgaWCtYc6jGcDgthzhDf4P82t3qnBSdpz3q/480x480.jpg",
       "duration": 199,
       "genre": "Bollywood",
       "mood": "Spiritual & Devotional",
@@ -13215,7 +13292,7 @@
       "providerId": "5QrJrWY",
       "title": "Jhoome Jo Pathaan",
       "artist": "arijit singh",
-      "thumbnail": "https://val009.open-audio-validator.com/content/QmTs7pbV2iMi3oiZDi1cjsG7jkwEm81knihvW7h4pjBY2R/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/QmTs7pbV2iMi3oiZDi1cjsG7jkwEm81knihvW7h4pjBY2R/480x480.jpg",
       "duration": 203,
       "genre": "Bollywood",
       "mood": "Spiritual & Devotional",
@@ -13242,7 +13319,7 @@
       "providerId": "XkxqpqJ",
       "title": "Tera Yaar Hoon Main - Sonu Ke Titu Ki Sweety",
       "artist": "ARIJIT SINGH ",
-      "thumbnail": "https://audius-creator-8.theblueprint.xyz/content/QmNfhfQKVXJew8wcCTRwEcjCLkNsDQszztavcLQArhQ1Tv/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/QmNfhfQKVXJew8wcCTRwEcjCLkNsDQszztavcLQArhQ1Tv/480x480.jpg",
       "duration": 265,
       "genre": "Bollywood",
       "mood": "Calm & Peaceful",
@@ -13636,7 +13713,7 @@
       "providerId": "6200E",
       "title": "ARIJIT_SINGH_VERSION__Bekhayali_(LYRICAL)___Kabir_Singh___Shahid_K,Kiara_A___San (1)",
       "artist": "Ropon",
-      "thumbnail": "https://val009.open-audio-validator.com/content/QmPRuUo4c2F4stfBDdv5ok9JtiBcTVNbiacgAawjFwD1Z7/480x480.jpg",
+      "thumbnail": "https://audius-content-6.figment.io/content/QmPRuUo4c2F4stfBDdv5ok9JtiBcTVNbiacgAawjFwD1Z7/480x480.jpg",
       "duration": 316,
       "genre": "Bollywood",
       "mood": "Calm & Peaceful",
@@ -13662,7 +13739,7 @@
       "providerId": "Bxbb9",
       "title": "ARIJIT_SINGH_VERSION__Bekhayali_(LYRICAL)___Kabir_Singh___Shahid_K,Kiara_A___San",
       "artist": "Ropon",
-      "thumbnail": "https://v.monophonic.digital/content/QmcSTTMW6rgL5BqsbfHrbtaVG9ksLqv11ptaNZWQm1FFyk/480x480.jpg",
+      "thumbnail": "https://audius-content-5.figment.io/content/QmcSTTMW6rgL5BqsbfHrbtaVG9ksLqv11ptaNZWQm1FFyk/480x480.jpg",
       "duration": 316,
       "genre": "Bollywood",
       "mood": "Calm & Peaceful",
@@ -13687,7 +13764,7 @@
       "providerId": "0OZlm",
       "title": "01_Soch_Na_Sake_-_Version_1_Airlift_(Arijit_Singh)_320Kbps",
       "artist": "Pankaj Singh",
-      "thumbnail": "https://val005.open-audio-validator.com/content/QmZBTveVWxAToaFfrLDobyfmcYpmfEZHXBTkUnhbPtdAew/480x480.jpg",
+      "thumbnail": "https://audius-creator-16.theblueprint.xyz/content/QmZBTveVWxAToaFfrLDobyfmcYpmfEZHXBTkUnhbPtdAew/480x480.jpg",
       "duration": 281,
       "genre": "Hip-Hop",
       "mood": "Calm & Peaceful",
@@ -13714,7 +13791,7 @@
       "providerId": "1BZZY",
       "title": "Arijit_Singh___Lambiyaan_Si_Judaiyaan__Full_Song___Raabta___Sushant_Rajput,_Krit",
       "artist": "Ropon",
-      "thumbnail": "https://audius-creator-9.theblueprint.xyz/content/QmafVu3GfgEQ2CAnynJF3gxEo1Qfjucta7jfEx8cqX4VBm/480x480.jpg",
+      "thumbnail": "https://audius-creator-10.theblueprint.xyz/content/QmafVu3GfgEQ2CAnynJF3gxEo1Qfjucta7jfEx8cqX4VBm/480x480.jpg",
       "duration": 217,
       "genre": "Bollywood",
       "mood": "Calm & Peaceful",
@@ -13739,7 +13816,7 @@
       "providerId": "O7VQz",
       "title": "TERA FITOOR Full Song Lyrics MovieGeniusArijit Singh",
       "artist": "raja123",
-      "thumbnail": "https://v.monophonic.digital/content/QmPawtg14tFDNDs4BsgttScR6cbegeAqkgdYRsCTRRiCXV/480x480.jpg",
+      "thumbnail": "https://audius-creator-9.theblueprint.xyz/content/QmPawtg14tFDNDs4BsgttScR6cbegeAqkgdYRsCTRRiCXV/480x480.jpg",
       "duration": 332,
       "genre": "EDM & Electronic",
       "mood": "Party & Dance",
@@ -26026,7 +26103,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 213354775
+      "playbackCount": 213355114
     },
     {
       "id": "jiosaavn-t7RHHpF5",
@@ -34869,7 +34946,7 @@
         "punjabi",
         "full_length"
       ],
-      "playbackCount": 26408659
+      "playbackCount": 26409180
     },
     {
       "id": "jiosaavn-dmP9KfvQ",
@@ -34995,7 +35072,7 @@
       "provider": "jiosaavn",
       "providerId": "rcfx8i4G",
       "title": "Something Just Like This",
-      "artist": "The Chainsmokers, Coldplay - Memories...Do Not Open",
+      "artist": "The Chainsmokers, Coldplay ft. Daya - Memories...Do Not Open",
       "album": "Memories...Do Not Open",
       "thumbnail": "https://c.saavncdn.com/211/Memories-Do-Not-Open-English-2017-500x500.jpg",
       "duration": 247,
@@ -35017,7 +35094,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 68237507
+      "playbackCount": 68237572
     },
     {
       "id": "jiosaavn-Grohf5-o",
@@ -35046,7 +35123,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 68300742
+      "playbackCount": 68300807
     },
     {
       "id": "jiosaavn-j5-V3BSp",
@@ -35074,7 +35151,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 40112402
+      "playbackCount": 40112439
     },
     {
       "id": "jiosaavn-CI0JYs8W",
@@ -35102,7 +35179,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 10399507
+      "playbackCount": 10399551
     },
     {
       "id": "jiosaavn-HvqTQlx4",
@@ -35130,7 +35207,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 10399446
+      "playbackCount": 10399490
     },
     {
       "id": "jiosaavn-DXroj0Sq",
@@ -35158,7 +35235,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 5141346
+      "playbackCount": 5141361
     },
     {
       "id": "jiosaavn-DYBuG4Ko",
@@ -35186,7 +35263,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 5141346
+      "playbackCount": 5141361
     },
     {
       "id": "jiosaavn-vtNzrsdh",
@@ -35214,7 +35291,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 7411598
+      "playbackCount": 7411611
     },
     {
       "id": "jiosaavn-0yCYhNLi",
@@ -35242,7 +35319,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 7414015
+      "playbackCount": 7414028
     },
     {
       "id": "jiosaavn-7HHn30_S",
@@ -35270,7 +35347,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 7411560
+      "playbackCount": 7411573
     },
     {
       "id": "jiosaavn-Xsx9Na63",
@@ -35298,7 +35375,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 4754499
+      "playbackCount": 4754510
     },
     {
       "id": "jiosaavn-rZI8a96R",
@@ -35326,7 +35403,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 4754029
+      "playbackCount": 4754040
     },
     {
       "id": "jiosaavn-kxQttW9E",
@@ -35354,7 +35431,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 2809529
+      "playbackCount": 2809538
     },
     {
       "id": "jiosaavn-accPyhnJ",
@@ -35382,7 +35459,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 2809166
+      "playbackCount": 2809175
     },
     {
       "id": "jiosaavn-B8zj6Yv2",
@@ -35410,7 +35487,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 2809305
+      "playbackCount": 2809314
     },
     {
       "id": "jiosaavn-MNsqx6q1",
@@ -35438,7 +35515,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 3311526
+      "playbackCount": 3311533
     },
     {
       "id": "jiosaavn-Z0od0koB",
@@ -35466,7 +35543,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 3690298
+      "playbackCount": 3690310
     },
     {
       "id": "jiosaavn-buB6n2M_",
@@ -35494,7 +35571,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 3690248
+      "playbackCount": 3690260
     },
     {
       "id": "jiosaavn-0jhJlnqk",
@@ -35578,7 +35655,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 129588
+      "playbackCount": 129589
     },
     {
       "id": "jiosaavn-z8FxUPUI",
@@ -35606,7 +35683,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 135349
+      "playbackCount": 135351
     },
     {
       "id": "jiosaavn-KQlvV8DT",
@@ -35662,7 +35739,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 23074
+      "playbackCount": 23075
     },
     {
       "id": "jiosaavn-pjfymWpK",
@@ -35690,7 +35767,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 135349
+      "playbackCount": 135351
     },
     {
       "id": "jiosaavn-zWCCZJlc",
@@ -35719,7 +35796,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 4730523
+      "playbackCount": 4730526
     },
     {
       "id": "jiosaavn-hR_g8vWe",
@@ -35747,7 +35824,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 4730542
+      "playbackCount": 4730545
     },
     {
       "id": "jiosaavn-mjyZMTJM",
@@ -35776,7 +35853,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 2147459
+      "playbackCount": 2147460
     },
     {
       "id": "jiosaavn-0RmGRfYw",
@@ -35804,7 +35881,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 1311749
+      "playbackCount": 1311750
     },
     {
       "id": "jiosaavn-07Ulb2mu",
@@ -35833,7 +35910,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 1311727
+      "playbackCount": 1311728
     },
     {
       "id": "jiosaavn-bRM3_jIj",
@@ -35861,7 +35938,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 355406
+      "playbackCount": 355408
     },
     {
       "id": "jiosaavn-POZaqHzo",
@@ -35919,7 +35996,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 51542
+      "playbackCount": 51543
     },
     {
       "id": "jiosaavn-uSd-iBPs",
@@ -35948,7 +36025,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 51542
+      "playbackCount": 51543
     },
     {
       "id": "jiosaavn-FuW-rggg",
@@ -36006,7 +36083,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 1975840
+      "playbackCount": 1975841
     },
     {
       "id": "jiosaavn-Lcz54D8m",
@@ -36034,14 +36111,14 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 1975884
+      "playbackCount": 1975885
     },
     {
       "id": "jiosaavn-usKMer0b",
       "provider": "jiosaavn",
       "providerId": "usKMer0b",
       "title": "Higher Power",
-      "artist": "Coldplay ft. Travie Mccoy - Higher Power",
+      "artist": "Coldplay - Higher Power",
       "album": "Higher Power",
       "thumbnail": "https://c.saavncdn.com/883/Higher-Power-English-2021-20211015134721-500x500.jpg",
       "duration": 211,
@@ -36070,7 +36147,7 @@
       "provider": "jiosaavn",
       "providerId": "yxhVDdcq",
       "title": "Higher Power",
-      "artist": "Coldplay ft. Travie Mccoy - Music Of The Spheres",
+      "artist": "Coldplay - Music Of The Spheres",
       "album": "Music Of The Spheres",
       "thumbnail": "https://c.saavncdn.com/971/Music-Of-The-Spheres-English-2021-20211214194035-500x500.jpg",
       "duration": 206,
@@ -36120,7 +36197,7 @@
         "english",
         "full_length"
       ],
-      "playbackCount": 1347755
+      "playbackCount": 1347756
     },
     {
       "id": "itunes-1122776155",
@@ -37557,7 +37634,7 @@
       "providerId": "DzlfEih1NCM",
       "title": "Coldplay - Hymn For The Weekend (Lyrics)",
       "artist": "DopeMusic",
-      "thumbnail": "https://i.ytimg.com/vi/DzlfEih1NCM/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLDrmuuIIYW2Uv8MTXcL5-t6fDwp_g",
+      "thumbnail": "https://i.ytimg.com/vi/DzlfEih1NCM/hq720.jpg?sqp=-oaymwEgCNAFEJQDSFXyq4qpAxIIARUAAIhCGAFwAcABBrgC9xg=&rs=AOn4CLA0LkCcJnttYFU9EFhDPb6uYDSnbQ",
       "duration": 253,
       "genre": "Pop",
       "mood": "Calm & Peaceful",
@@ -37577,7 +37654,7 @@
       "providerId": "q7mlB-adMBc",
       "title": "@coldplay - Yellow (Lyrics)",
       "artist": "Dan Music",
-      "thumbnail": "https://i.ytimg.com/vi/q7mlB-adMBc/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLCJlNcOHdyAG1sZLrGqdU-S5aa_Vg",
+      "thumbnail": "https://i.ytimg.com/vi/q7mlB-adMBc/hq720.jpg?sqp=-oaymwEgCNAFEJQDSFXyq4qpAxIIARUAAIhCGAFwAcABBrgC9xg=&rs=AOn4CLCugonsT7Wu3vCUclX1h8n0ukVqaw",
       "duration": 269,
       "genre": "Pop",
       "mood": "Calm & Peaceful",
@@ -37688,7 +37765,7 @@
       "providerId": "dyZ6K",
       "title": "Coldplay Underworld Mashup",
       "artist": "Mash",
-      "thumbnail": "https://audius-content-3.figment.io/content/QmVGH82r4CJnJbRnZNrSNgk8FNK3gacZKi3gtEKzyXP7YK/480x480.jpg",
+      "thumbnail": "https://audius-creator-10.theblueprint.xyz/content/QmVGH82r4CJnJbRnZNrSNgk8FNK3gacZKi3gtEKzyXP7YK/480x480.jpg",
       "duration": 202,
       "genre": "EDM & Electronic",
       "mood": "Party & Dance",
@@ -37744,7 +37821,7 @@
       "providerId": "vG1yV",
       "title": "Yellow Coldplay (Deep House Cover) - Melissa Danielle ",
       "artist": "Melissa Danielle ",
-      "thumbnail": "https://audius-figment-1-validator-19.figment.io/content/QmNw8qsSNvN2UZy1QKmQd7WVGsviiMxqDQuZeFFwp7kZk6/480x480.jpg",
+      "thumbnail": "https://audius-content-1.figment.io/content/QmNw8qsSNvN2UZy1QKmQd7WVGsviiMxqDQuZeFFwp7kZk6/480x480.jpg",
       "duration": 185,
       "genre": "EDM & Electronic",
       "mood": "Focus & Study",
@@ -37770,7 +37847,7 @@
       "providerId": "4jr6a",
       "title": "A Coldplay In Hell Check The Clock Bro",
       "artist": "GremlinsFeetPics",
-      "thumbnail": "https://v.monophonic.digital/content/QmVaE4e4oHqDp6oY4vMBb8grGVNnR4BSiPu3o2MobzwbDu/480x480.jpg",
+      "thumbnail": "https://val001.open-audio-validator.com/content/QmVaE4e4oHqDp6oY4vMBb8grGVNnR4BSiPu3o2MobzwbDu/480x480.jpg",
       "duration": 255,
       "genre": "EDM & Electronic",
       "mood": "Spiritual & Devotional",
@@ -37797,7 +37874,7 @@
       "providerId": "YZd17",
       "title": "Coldplay clocks - Rogue Dubstep Remix (Remixed by LAZZAZ)",
       "artist": "MOTORON",
-      "thumbnail": "https://val011.open-audio-validator.com/content/QmNwwqPva4NB2cDmWGzDTSRs67AQ1zZBHjh4g26gzCFwBX/480x480.jpg",
+      "thumbnail": "https://val012.open-audio-validator.com/content/QmNwwqPva4NB2cDmWGzDTSRs67AQ1zZBHjh4g26gzCFwBX/480x480.jpg",
       "duration": 272,
       "genre": "EDM & Electronic",
       "mood": "Party & Dance",
@@ -37824,7 +37901,7 @@
       "providerId": "ZrV6Rma",
       "title": "Coldplay - The Scientist (Acoustic Cover) by Becca Bradley",
       "artist": "SUTSU x YGG",
-      "thumbnail": "https://audius-04.staked.cloud/content/01JWG2XNE478TVY69KNVQSQ6MM/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/01JWG2XNE478TVY69KNVQSQ6MM/480x480.jpg",
       "duration": 252,
       "genre": "Acoustic",
       "mood": "Romantic",
@@ -37849,7 +37926,7 @@
       "providerId": "l5KQw",
       "title": "Joel Corry ,Coldplay, The Chainsmokers - Need a Parade Like This ( Purple Phoenyx Mashup)",
       "artist": "PURPLE PHOENYX MUSIC",
-      "thumbnail": "https://audius-content-7.figment.io/content/Qmagzgx9Ezm2UxReWqUyFYLLsJeQ79uyeYnYaRfPA6ek31/480x480.jpg",
+      "thumbnail": "https://val019.open-audio-validator.com/content/Qmagzgx9Ezm2UxReWqUyFYLLsJeQ79uyeYnYaRfPA6ek31/480x480.jpg",
       "duration": 389,
       "genre": "EDM & Electronic",
       "mood": "Calm & Peaceful",
@@ -37874,7 +37951,7 @@
       "providerId": "lwRww",
       "title": "Something Just Like This by The Chainsmokers and Coldplay _ Cover by One Voice Children's Choir",
       "artist": "masa gaa",
-      "thumbnail": "https://val018.open-audio-validator.com/content/QmRRwmniQ7ZCfBrSWREUdMnZbxKAjfruvh3FbWjNszmqSb/480x480.jpg",
+      "thumbnail": "https://val020.open-audio-validator.com/content/QmRRwmniQ7ZCfBrSWREUdMnZbxKAjfruvh3FbWjNszmqSb/480x480.jpg",
       "duration": 138,
       "genre": "Pop",
       "mood": "Spiritual & Devotional",
@@ -37900,7 +37977,7 @@
       "providerId": "qJEVz",
       "title": "Coldplay_Paradise",
       "artist": "slayer271201",
-      "thumbnail": "https://validator.stuffisup.com/content/Qmf2U1iHQayNprKtjgRHKNU9UWWijAKcyWB3iHzZu6BER9/480x480.jpg",
+      "thumbnail": "https://audius-creator-13.theblueprint.xyz/content/Qmf2U1iHQayNprKtjgRHKNU9UWWijAKcyWB3iHzZu6BER9/480x480.jpg",
       "duration": 279,
       "genre": "Pop",
       "mood": "Calm & Peaceful",
@@ -37925,7 +38002,7 @@
       "providerId": "NQJpGNY",
       "title": "Avicii_&_Coldplay_-_Heaven_ft._Exist_Strategy_(HRH_Remix)(0)[1]",
       "artist": "Danilo Verdesia",
-      "thumbnail": "https://audius-content-2.figment.io/content/01K7RYCDFWT58BSGJ6ZQTRXNV1/480x480.jpg",
+      "thumbnail": "https://val001.open-audio-validator.com/content/01K7RYCDFWT58BSGJ6ZQTRXNV1/480x480.jpg",
       "duration": 220,
       "genre": "EDM & Electronic",
       "mood": "Party & Dance",
@@ -37953,7 +38030,7 @@
       "providerId": "MaWlX",
       "title": "coldplay_every teardrop is a waterfall_REMIX {STMPD style}",
       "artist": "PettyOwl",
-      "thumbnail": "https://v.monophonic.digital/content/QmY1F9WDeRMBHzpgdjiDLRTbzwWpGnfXEdXrMnCsLTEUcB/480x480.jpg",
+      "thumbnail": "https://audius-content-5.figment.io/content/QmY1F9WDeRMBHzpgdjiDLRTbzwWpGnfXEdXrMnCsLTEUcB/480x480.jpg",
       "duration": 326,
       "genre": "EDM & Electronic",
       "mood": "Party & Dance",
@@ -37981,7 +38058,7 @@
       "providerId": "J5No0OY",
       "title": "Cold Play - Yellow (Oliverio Luján Edit)",
       "artist": "Oliveriolujan",
-      "thumbnail": "https://v.monophonic.digital/content/baeaaaiqsea5gpi2ppvdmu52xq7seuhgftcbvhp7tjfrajd6qmw4wwpujmovmo/480x480.jpg",
+      "thumbnail": "https://audius-content-11.figment.io/content/baeaaaiqsea5gpi2ppvdmu52xq7seuhgftcbvhp7tjfrajd6qmw4wwpujmovmo/480x480.jpg",
       "duration": 312,
       "genre": "EDM & Electronic",
       "mood": "Party & Dance",
@@ -38010,7 +38087,7 @@
       "providerId": "lwAz95G",
       "title": "Citharaphobia Rockstars",
       "artist": "Scan-N-Kutt",
-      "thumbnail": "https://audius-creator-17.theblueprint.xyz/content/01JN4KR5KCAWKZJM491BH0XX4E/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/01JN4KR5KCAWKZJM491BH0XX4E/480x480.jpg",
       "duration": 316,
       "genre": "Rock",
       "mood": "Spiritual & Devotional",
@@ -38037,7 +38114,7 @@
       "providerId": "WVKgqol",
       "title": "Airless Breathing",
       "artist": "Scan-N-Kutt",
-      "thumbnail": "https://audius-creator-14.theblueprint.xyz/content/01JNEPJHX2NDG825KE58BA8PDM/480x480.jpg",
+      "thumbnail": "https://cn3.mainnet.audiusindex.org/content/01JNEPJHX2NDG825KE58BA8PDM/480x480.jpg",
       "duration": 345,
       "genre": "EDM & Electronic",
       "mood": "Party & Dance",
@@ -38063,7 +38140,7 @@
       "providerId": "1Vq6kPy",
       "title": "Delusional Souls",
       "artist": "Scan-N-Kutt",
-      "thumbnail": "https://val008.open-audio-validator.com/content/01JNEPJHYBSVRXK78JFJK9BGY1/480x480.jpg",
+      "thumbnail": "https://val011.open-audio-validator.com/content/01JNEPJHYBSVRXK78JFJK9BGY1/480x480.jpg",
       "duration": 350,
       "genre": "Pop",
       "mood": "Calm & Peaceful",
@@ -38087,7 +38164,7 @@
       "providerId": "VRwqoQQ",
       "title": "Soemthing_Just_Like_This_Top_English_Songs",
       "artist": "NFThunk",
-      "thumbnail": "https://audius-standardvc-1-validator-3.figment.io/content/01JS3ZZC393TZB54N91A42FZRN/480x480.jpg",
+      "thumbnail": "https://audius-content-10.figment.io/content/01JS3ZZC393TZB54N91A42FZRN/480x480.jpg",
       "duration": 145,
       "genre": "Pop",
       "mood": "Focus & Study",
@@ -38142,7 +38219,7 @@
       "providerId": "E734w",
       "title": "Dancing All Night",
       "artist": "The Simons Brothers Band",
-      "thumbnail": "https://val002.open-audio-validator.com/content/QmesWWXQ5cx4heoYNyCRhY7CT2ovhFo47pMgK5FgSQEwHf/480x480.jpg",
+      "thumbnail": "https://val001.open-audio-validator.com/content/QmesWWXQ5cx4heoYNyCRhY7CT2ovhFo47pMgK5FgSQEwHf/480x480.jpg",
       "duration": 223,
       "genre": "Rock",
       "mood": "Sleep & Relaxation",
@@ -38195,7 +38272,7 @@
       "providerId": "rbQm9",
       "title": "Viva la Zaza",
       "artist": "ayegraz",
-      "thumbnail": "https://val016.open-audio-validator.com/content/QmaJxo76xJLSEkvcArDGeUhEGNrEBajoXN9VPLGSJQbYoQ/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/QmaJxo76xJLSEkvcArDGeUhEGNrEBajoXN9VPLGSJQbYoQ/480x480.jpg",
       "duration": 147,
       "genre": "Hip-Hop",
       "mood": "Calm & Peaceful",
@@ -38245,7 +38322,7 @@
       "providerId": "XbwAO",
       "title": "Name That Tune #419",
       "artist": "Harvey Twyman",
-      "thumbnail": "https://audius-content-11.figment.io/content/QmQhjC6qn6Gv2GpxsnAsZJuSidkb3P3re5CJF4hPBCFTvu/480x480.jpg",
+      "thumbnail": "https://val005.open-audio-validator.com/content/QmQhjC6qn6Gv2GpxsnAsZJuSidkb3P3re5CJF4hPBCFTvu/480x480.jpg",
       "duration": 196,
       "genre": "Rock",
       "mood": "Spiritual & Devotional",
@@ -38271,7 +38348,7 @@
       "providerId": "LM0l9",
       "title": "the hardest part (piano)",
       "artist": "kanbaru (alt)",
-      "thumbnail": "https://audius-content-9.figment.io/content/QmeMKPm1Teh4KjtLncNFPHNU4fZuty72i1VPFL2zsJLmjV/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/QmeMKPm1Teh4KjtLncNFPHNU4fZuty72i1VPFL2zsJLmjV/480x480.jpg",
       "duration": 31,
       "genre": "Classical & Instrumental",
       "mood": "Romantic",
@@ -38323,7 +38400,7 @@
       "providerId": "yNBrP",
       "title": "Gone Before You Blink",
       "artist": "ZEN THAT BEAT ",
-      "thumbnail": "https://v.monophonic.digital/content/QmW4ZmBq44zASQ2EUDz9jzh7sqT798tgNikk9vkL27E3fP/480x480.jpg",
+      "thumbnail": "https://val001.open-audio-validator.com/content/QmW4ZmBq44zASQ2EUDz9jzh7sqT798tgNikk9vkL27E3fP/480x480.jpg",
       "duration": 158,
       "genre": "Pop",
       "mood": "Sleep & Relaxation",
@@ -38348,7 +38425,7 @@
       "providerId": "oWpZ5",
       "title": "Flamingoes ",
       "artist": "Arcadia Dragoons",
-      "thumbnail": "https://val018.open-audio-validator.com/content/QmdtSHj1XghpymkcspMp5FjtiSAWZmas5ByRmUXkpqdtfj/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/QmdtSHj1XghpymkcspMp5FjtiSAWZmas5ByRmUXkpqdtfj/480x480.jpg",
       "duration": 302,
       "genre": "Pop",
       "mood": "Romantic",
@@ -38373,7 +38450,7 @@
       "providerId": "Q6Am1",
       "title": "Across The Sky",
       "artist": "December Fades",
-      "thumbnail": "https://val019.open-audio-validator.com/content/QmYWxtMbHC8pkUKGscAiqhMLfc7cz7BxN5uc8YNuHGPfjD/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/QmYWxtMbHC8pkUKGscAiqhMLfc7cz7BxN5uc8YNuHGPfjD/480x480.jpg",
       "duration": 232,
       "genre": "Pop",
       "mood": "Romantic",
@@ -38402,7 +38479,7 @@
       "providerId": "4bxdyEy",
       "title": "NEON LIGHTS",
       "artist": "XX PHATZ",
-      "thumbnail": "https://val017.open-audio-validator.com/content/01HX3T20GVVQMSXMTVQSQP5PS9/480x480.jpg",
+      "thumbnail": "https://val012.open-audio-validator.com/content/01HX3T20GVVQMSXMTVQSQP5PS9/480x480.jpg",
       "duration": 120,
       "genre": "EDM & Electronic",
       "mood": "Party & Dance",
@@ -38428,7 +38505,7 @@
       "providerId": "MYRNG",
       "title": "Humanity Insanity",
       "artist": "Expedition: Oliver",
-      "thumbnail": "https://cn1.mainnet.audiusindex.org/content/QmeEeAxude4AaKF5kkcJBSWneqgiWtbDzNvjdMshrheDMh/480x480.jpg",
+      "thumbnail": "https://audius-nodes.com/content/QmeEeAxude4AaKF5kkcJBSWneqgiWtbDzNvjdMshrheDMh/480x480.jpg",
       "duration": 281,
       "genre": "Pop",
       "mood": "Calm & Peaceful",
@@ -38479,7 +38556,7 @@
       "providerId": "w23Xb",
       "title": "Begin Again",
       "artist": "ASHWYN | Ashwin Sriram",
-      "thumbnail": "https://audius-content-13.figment.io/content/Qmc6XdnAhoCnSGVBZgHvyTNbcTZKn6NvT34hQnA4ztJQZ7/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/Qmc6XdnAhoCnSGVBZgHvyTNbcTZKn6NvT34hQnA4ztJQZ7/480x480.jpg",
       "duration": 188,
       "genre": "Pop",
       "mood": "Calm & Peaceful",
@@ -38503,7 +38580,7 @@
       "providerId": "a5ZVQ",
       "title": "Paradise Fall (仙境瀑布)",
       "artist": "SAGAS",
-      "thumbnail": "https://audius-content-9.figment.io/content/QmeiTkKNBdYdf86yA4eip3TTNvyZvBHLrs7aB1EpFzVsd6/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/QmeiTkKNBdYdf86yA4eip3TTNvyZvBHLrs7aB1EpFzVsd6/480x480.jpg",
       "duration": 297,
       "genre": "Pop",
       "mood": "Calm & Peaceful",
@@ -38527,7 +38604,7 @@
       "providerId": "ANExYm7",
       "title": "Fix You - Coldplay (Boyce Avenue feat. Tyler Ward acoustic cover) on Spotify & Apple",
       "artist": "tinkerblaze",
-      "thumbnail": "https://audius-01.staked.cloud/content/01K2130EDFKWDKKS89PTEG6JPH/480x480.jpg",
+      "thumbnail": "https://audius-content-2.figment.io/content/01K2130EDFKWDKKS89PTEG6JPH/480x480.jpg",
       "duration": 290,
       "genre": "Pop",
       "mood": "Romantic",
@@ -38553,7 +38630,7 @@
       "providerId": "AxYlpkq",
       "title": "\"Fallen Kingdom\" - Parody of Coldplay's Viva la Vida ",
       "artist": "Wolfix",
-      "thumbnail": "https://audius-creator-8.theblueprint.xyz/content/QmZkf8VrTY67s1bL9XHzFh7vkgpnZ3ConiMW52Nz2BABnv/480x480.jpg",
+      "thumbnail": "https://cn4.mainnet.audiusindex.org/content/QmZkf8VrTY67s1bL9XHzFh7vkgpnZ3ConiMW52Nz2BABnv/480x480.jpg",
       "duration": 288,
       "genre": "Pop",
       "mood": "Romantic",
@@ -38580,7 +38657,7 @@
       "providerId": "dK282",
       "title": "Something Just Like This by The Chainsmokers and Coldplay _ Cover by One Voice Children's Choir",
       "artist": "sintingaww",
-      "thumbnail": "https://v.monophonic.digital/content/QmRRwmniQ7ZCfBrSWREUdMnZbxKAjfruvh3FbWjNszmqSb/480x480.jpg",
+      "thumbnail": "https://val020.open-audio-validator.com/content/QmRRwmniQ7ZCfBrSWREUdMnZbxKAjfruvh3FbWjNszmqSb/480x480.jpg",
       "duration": 138,
       "genre": "Pop",
       "mood": "Spiritual & Devotional",
@@ -38605,7 +38682,7 @@
       "providerId": "W6YV9",
       "title": "Chainsmokers_Coldplay_-_Just_Like_This_CeeNaija.com_",
       "artist": "D 3rd",
-      "thumbnail": "https://val013.open-audio-validator.com/content/QmPPDFEgTbVjttFdUgFufzLxfGYexqfw1iSexE5sxgewah/480x480.jpg",
+      "thumbnail": "https://audius-creator-16.theblueprint.xyz/content/QmPPDFEgTbVjttFdUgFufzLxfGYexqfw1iSexE5sxgewah/480x480.jpg",
       "duration": 247,
       "genre": "Rock",
       "mood": "Spiritual & Devotional",
@@ -38658,7 +38735,7 @@
       "providerId": "Ex0ZJ",
       "title": "Something Just Like This by The Chainsmokers and Coldplay _ Cover by One Voice Children's Choir",
       "artist": "nordeus11",
-      "thumbnail": "https://v.monophonic.digital/content/QmNSKFnCryPj2GYnpri69fKSw1ycua5j7g52UqTyWgHKLy/480x480.jpg",
+      "thumbnail": "https://audius-creator-5.theblueprint.xyz/content/QmNSKFnCryPj2GYnpri69fKSw1ycua5j7g52UqTyWgHKLy/480x480.jpg",
       "duration": 138,
       "genre": "Pop",
       "mood": "Spiritual & Devotional",
@@ -38683,7 +38760,7 @@
       "providerId": "MYw83bx",
       "title": "Coldplay - The Scientist in the Live Lounge(MP3_320K)",
       "artist": "Enrique Jose Leonet Acuña",
-      "thumbnail": "https://audius-04.staked.cloud/content/QmZwDa2bGb93q6Essa782EGmEfcVHdxp77tuV2rnr4ecw3/480x480.jpg",
+      "thumbnail": "https://audius-creator-14.theblueprint.xyz/content/QmZwDa2bGb93q6Essa782EGmEfcVHdxp77tuV2rnr4ecw3/480x480.jpg",
       "duration": 303,
       "genre": "Rock",
       "mood": "Calm & Peaceful",
@@ -38733,7 +38810,7 @@
       "providerId": "da8KP",
       "title": "Fix you",
       "artist": "Silvya Lane",
-      "thumbnail": "https://audius-content-9.figment.io/content/QmaSqvPJ8tzpgN7MK3Eza3tXbY12HpDfZH4NvBfHDF4Rfq/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/QmaSqvPJ8tzpgN7MK3Eza3tXbY12HpDfZH4NvBfHDF4Rfq/480x480.jpg",
       "duration": 293,
       "genre": "Pop",
       "mood": "Calm & Peaceful",
@@ -38758,7 +38835,7 @@
       "providerId": "VQgAN76",
       "title": "O [Somber Remix]",
       "artist": "JOEY_YAMAN [ジョーヤマン]",
-      "thumbnail": "https://audius-creator-3.theblueprint.xyz/content/01HY8AZWPEE3X0P6AZAT13XX9R/480x480.jpg",
+      "thumbnail": "https://validator.stuffisup.com/content/01HY8AZWPEE3X0P6AZAT13XX9R/480x480.jpg",
       "duration": 233,
       "genre": "Devotional",
       "mood": "Spiritual & Devotional",
@@ -38786,7 +38863,7 @@
       "providerId": "my8kv",
       "title": "raivolord - Fix You by Coldplay cover",
       "artist": "raivolord",
-      "thumbnail": "https://val001.open-audio-validator.com/content/QmSbLppjdbSRcvujuuMZdSwS6UMqgmJETdxzhTfSd5TGgB/480x480.jpg",
+      "thumbnail": "https://val013.open-audio-validator.com/content/QmSbLppjdbSRcvujuuMZdSwS6UMqgmJETdxzhTfSd5TGgB/480x480.jpg",
       "duration": 233,
       "genre": "Rock",
       "mood": "Uplifting & Happy",
@@ -38812,7 +38889,7 @@
       "providerId": "xPWV9",
       "title": "Something Just Like This by The Chainsmokers and Coldplay _ Cover by One Voice Children's Choir",
       "artist": "adif",
-      "thumbnail": "https://audius-content-12.figment.io/content/QmSkwmn9fTQn6757Xh9TmFUGJ3sqojm6VX6uTA2yTVH4PY/480x480.jpg",
+      "thumbnail": "https://val009.open-audio-validator.com/content/QmSkwmn9fTQn6757Xh9TmFUGJ3sqojm6VX6uTA2yTVH4PY/480x480.jpg",
       "duration": 138,
       "genre": "EDM & Electronic",
       "mood": "Spiritual & Devotional",
@@ -38865,7 +38942,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 197794962
+      "playbackCount": 197851266
     },
     {
       "id": "jiosaavn-4zdt6swN",
@@ -39062,7 +39139,7 @@
       "providerId": "q4Q7o",
       "title": "Pal___%5BSlowed_And_Reverb%5D_-_Arijit_Singh___Shreya_Ghoshal___Lofi_Audio_Song___10_PM_LOFi(256k)",
       "artist": "Usman1",
-      "thumbnail": "https://audius-creator-4.theblueprint.xyz/content/QmSKYJYdSMcWnED2MvsypJkpnjcs7NT3tNXWDcTpWwCVPi/480x480.jpg",
+      "thumbnail": "https://val002.open-audio-validator.com/content/QmSKYJYdSMcWnED2MvsypJkpnjcs7NT3tNXWDcTpWwCVPi/480x480.jpg",
       "duration": 274,
       "genre": "Bollywood",
       "mood": "Focus & Study",
@@ -39120,7 +39197,7 @@
       "providerId": "j97lV",
       "title": "Pal___%5BSlowed_And_Reverb%5D_-_Arijit_Singh___Shreya_Ghoshal___Lofi_Audio_Song___10_PM_LOFi(256k)",
       "artist": "Muhammadusman1616",
-      "thumbnail": "https://v.monophonic.digital/content/QmYWfnhiAGnZk4FN2PkiTeFFAUH4uJPkiDiRb112oEPmqn/480x480.jpg",
+      "thumbnail": "https://cn4.mainnet.audiusindex.org/content/QmYWfnhiAGnZk4FN2PkiTeFFAUH4uJPkiDiRb112oEPmqn/480x480.jpg",
       "duration": 274,
       "genre": "Bollywood",
       "mood": "Focus & Study",
@@ -39148,7 +39225,7 @@
       "providerId": "j95vM",
       "title": "Mast_Magan_%5BSlowed_Reverb%5D_Chinmayi_Sripada___Arijit_Singh____Textaudio_Lyrics__Lofi_Music_Channel(256k)",
       "artist": "Usman1",
-      "thumbnail": "https://v.monophonic.digital/content/QmSKYJYdSMcWnED2MvsypJkpnjcs7NT3tNXWDcTpWwCVPi/480x480.jpg",
+      "thumbnail": "https://val016.open-audio-validator.com/content/QmSKYJYdSMcWnED2MvsypJkpnjcs7NT3tNXWDcTpWwCVPi/480x480.jpg",
       "duration": 322,
       "genre": "Bollywood",
       "mood": "Focus & Study",
@@ -39203,7 +39280,7 @@
       "providerId": "gJ09p",
       "title": "Mast_Magan_%5BSlowed_Reverb%5D_Chinmayi_Sripada___Arijit_Singh____Textaudio_Lyrics__Lofi_Music_Channel(256k)",
       "artist": "Muhammadusman1616",
-      "thumbnail": "https://validator.soundmaxx.xyz/content/QmYWfnhiAGnZk4FN2PkiTeFFAUH4uJPkiDiRb112oEPmqn/480x480.jpg",
+      "thumbnail": "https://val020.open-audio-validator.com/content/QmYWfnhiAGnZk4FN2PkiTeFFAUH4uJPkiDiRb112oEPmqn/480x480.jpg",
       "duration": 322,
       "genre": "Bollywood",
       "mood": "Focus & Study",
@@ -39231,7 +39308,7 @@
       "providerId": "0OoBgGV",
       "title": "Martin Garrix & Arijit Singh - Angels For Each Other [RMX] ",
       "artist": "CHILLBIRD",
-      "thumbnail": "https://audius.rickyrombo.com/content/01JP97TS3SYHCK3ZEBJJM87YHK/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/01JP97TS3SYHCK3ZEBJJM87YHK/480x480.jpg",
       "duration": 206,
       "genre": "Bollywood",
       "mood": "Focus & Study",
@@ -39259,7 +39336,7 @@
       "providerId": "YVV2p",
       "title": "Dhokha Arijit Singh 320 Kbps",
       "artist": "ovoy",
-      "thumbnail": "https://val012.open-audio-validator.com/content/QmQEHEgChrS2m7yk2vSFdCVLmveL5gy2CUEYK8MmpWfs13/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/QmQEHEgChrS2m7yk2vSFdCVLmveL5gy2CUEYK8MmpWfs13/480x480.jpg",
       "duration": 245,
       "genre": "Bollywood",
       "mood": "Calm & Peaceful",
@@ -39285,7 +39362,7 @@
       "providerId": "Ym7Gr",
       "title": "Slowly_X_Tose_Naina_song_ringtone__(getmp3.pro)",
       "artist": "ARIJIT SINGH ",
-      "thumbnail": "https://audius-content-3.figment.io/content/Qma6Fq7E9fskHAKuPENCPgrBTcw9yJzFTkVBMEw7VH8eQP/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/Qma6Fq7E9fskHAKuPENCPgrBTcw9yJzFTkVBMEw7VH8eQP/480x480.jpg",
       "duration": 33,
       "genre": "EDM & Electronic",
       "mood": "Sad & Emotional",
@@ -39313,7 +39390,7 @@
       "providerId": "PjomlxJ",
       "title": "Agar Tum Saath Ho - Alka Yagnik, Arijit Singh",
       "artist": "Shajudeen KM",
-      "thumbnail": "https://v.monophonic.digital/content/QmVCeF9LaT4qdgJZCM8XxJBqNLDuZPjedpbd1ANrEvRWkw/480x480.jpg",
+      "thumbnail": "https://audius-content-8.figment.io/content/QmVCeF9LaT4qdgJZCM8XxJBqNLDuZPjedpbd1ANrEvRWkw/480x480.jpg",
       "duration": 341,
       "genre": "EDM & Electronic",
       "mood": "Party & Dance",
@@ -39340,7 +39417,7 @@
       "providerId": "KdgVO",
       "title": "ARIJIT_SINGH_VERSION__Bekhayali_Full_Song___Kabir_Singh___Shahid_K,Kiara_A___Sandeep_Reddy_V__Irshad(1080p)",
       "artist": "Milon",
-      "thumbnail": "https://audius-creator-13.theblueprint.xyz/content/QmXzkskx3S9UuzRzKgWUXJjz1vxxe387cBXdqvwgounkTZ/480x480.jpg",
+      "thumbnail": "https://audius-creator-5.theblueprint.xyz/content/QmXzkskx3S9UuzRzKgWUXJjz1vxxe387cBXdqvwgounkTZ/480x480.jpg",
       "duration": 354,
       "genre": "Bollywood",
       "mood": "Focus & Study",
@@ -39367,7 +39444,7 @@
       "providerId": "REgzK",
       "title": "Tera_Fitoor_Lyrics____Arijit_Singh____Genius____Tera_fitoor_Jabse_Chade_Gaya_ra.(128k)",
       "artist": "Md. Shopon hossen",
-      "thumbnail": "https://audius-content-2.figment.io/content/QmNnh3Tp9dXv9atkawPxzaZCnoYo3cB7anc5T3Xiba2pKX/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/QmNnh3Tp9dXv9atkawPxzaZCnoYo3cB7anc5T3Xiba2pKX/480x480.jpg",
       "duration": 303,
       "genre": "Bollywood",
       "mood": "Calm & Peaceful",
@@ -39393,7 +39470,7 @@
       "providerId": "2jd6p",
       "title": "Hai_ishq_mera_Sarfira_Fasana_Arijit_Singh_Full_Mp3_song(128k)",
       "artist": "Zidibaloch",
-      "thumbnail": "https://audius-content-10.figment.io/content/QmSJsAE855ihpy6gYeeU6v1BiuHphs5beq7WLapyHhUQ2y/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/QmSJsAE855ihpy6gYeeU6v1BiuHphs5beq7WLapyHhUQ2y/480x480.jpg",
       "duration": 350,
       "genre": "Bollywood",
       "mood": "Romantic",
@@ -39445,7 +39522,7 @@
       "providerId": "oaqJJWg",
       "title": "Dil Jhoom -Gadar 2 | Arijit Singh",
       "artist": "Purushotam Parajuli",
-      "thumbnail": "https://val012.open-audio-validator.com/content/01HC6NH0BGGA4G1VST0F277PVJ/480x480.jpg",
+      "thumbnail": "https://val001.open-audio-validator.com/content/01HC6NH0BGGA4G1VST0F277PVJ/480x480.jpg",
       "duration": 300,
       "genre": "Bollywood",
       "mood": "Workout & Energy",
@@ -39501,7 +39578,7 @@
       "providerId": "jaVGa",
       "title": "Pal_Pal_Dil_Ke_Paas_-_Arijit_Singh",
       "artist": "Tanvir",
-      "thumbnail": "https://v.monophonic.digital/content/QmRMFp5J7zkngeSx77trujMU62v2DwwPsGnZTqpvQaYKwv/480x480.jpg",
+      "thumbnail": "https://audius-creator-2.theblueprint.xyz/content/QmRMFp5J7zkngeSx77trujMU62v2DwwPsGnZTqpvQaYKwv/480x480.jpg",
       "duration": 255,
       "genre": "Bollywood",
       "mood": "Romantic",
@@ -39528,7 +39605,7 @@
       "providerId": "1Eb3gY",
       "title": "Tanya Singgh: Yeh Kaisa Nasha Hai (Video)  Ajit Singh, Kunal S, Gittanjali S, Jeff  Bhushan Kumar",
       "artist": "sinu",
-      "thumbnail": "https://audius-content-1.figment.io/content/QmXKD4231v3b17z3STX5FpQQkrzvBNVaNG9yKr2biQTcfT/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/QmXKD4231v3b17z3STX5FpQQkrzvBNVaNG9yKr2biQTcfT/480x480.jpg",
       "duration": 195,
       "genre": "Pop",
       "mood": "Calm & Peaceful",
@@ -39553,7 +39630,7 @@
       "providerId": "NRvp4",
       "title": "Chhod Diya (Lyrics) - Arijit Singh, Kanika Kapoor __ Baazaar __ ( 128kbps )",
       "artist": "tushar",
-      "thumbnail": "https://audius-nodes.com/content/QmZKid86Gw1NQ74ZpGEM5u4v6GAgejGpzEt1ZehBt6WUdu/480x480.jpg",
+      "thumbnail": "https://val007.open-audio-validator.com/content/QmZKid86Gw1NQ74ZpGEM5u4v6GAgejGpzEt1ZehBt6WUdu/480x480.jpg",
       "duration": 209,
       "genre": "EDM & Electronic",
       "mood": "Party & Dance",
@@ -39745,7 +39822,7 @@
         "punjabi",
         "full_length"
       ],
-      "playbackCount": 146291
+      "playbackCount": 147532
     },
     {
       "id": "itunes-1123076921",
@@ -40199,6 +40276,193 @@
         "arijit",
         "pritam"
       ]
+    },
+    {
+      "id": "yt-pSeaHfkd3M8",
+      "provider": "youtube",
+      "providerId": "pSeaHfkd3M8",
+      "title": "Coldplay - ALL MY LOVE (Official Video)",
+      "artist": "Coldplay",
+      "thumbnail": "https://i.ytimg.com/vi/pSeaHfkd3M8/hq720.jpg?sqp=-oaymwEgCNAFEJQDSFXyq4qpAxIIARUAAIhCGAFwAcABBrgC9xg=&rs=AOn4CLB5N7-yxkb92MWmcSJOwsDwQSAj7A",
+      "duration": 240,
+      "genre": "Pop",
+      "mood": "Romantic",
+      "capabilities": [
+        "stream_embed",
+        "preview_only"
+      ],
+      "embedUrl": "https://www.youtube.com/embed/pSeaHfkd3M8",
+      "isOfflinePermitted": false,
+      "isLocal": false,
+      "confidenceScore": 0.77,
+      "tags": [
+        "love"
+      ]
+    },
+    {
+      "id": "yt-VlSEIa1zubs",
+      "provider": "youtube",
+      "providerId": "VlSEIa1zubs",
+      "title": "Coldplay - WE PRAY (TINI Version) (Official)",
+      "artist": "Coldplay",
+      "thumbnail": "https://i.ytimg.com/vi/VlSEIa1zubs/hq720.jpg?sqp=-oaymwEgCNAFEJQDSFXyq4qpAxIIARUAAIhCGAFwAcABBrgC9xg=&rs=AOn4CLDga6w8xx6K7Nb_nHurrVeciGlxjg",
+      "duration": 221,
+      "genre": "Pop",
+      "mood": "Calm & Peaceful",
+      "capabilities": [
+        "stream_embed",
+        "preview_only"
+      ],
+      "embedUrl": "https://www.youtube.com/embed/VlSEIa1zubs",
+      "isOfflinePermitted": false,
+      "isLocal": false,
+      "confidenceScore": 0.72,
+      "tags": []
+    },
+    {
+      "id": "jiosaavn-9wazC0po",
+      "provider": "jiosaavn",
+      "providerId": "9wazC0po",
+      "title": "Zaalima",
+      "artist": "Arijit Singh, Harshdeep Kaur - Wedding Love Songs",
+      "album": "Wedding Love Songs",
+      "thumbnail": "https://c.saavncdn.com/809/Wedding-Love-Songs-Hindi-2026-20251230172703-500x500.jpg",
+      "duration": 299,
+      "genre": "Bollywood",
+      "mood": "Focus & Study",
+      "language": "Hindi",
+      "releaseYear": 2026,
+      "capabilities": [
+        "stream_direct",
+        "offline_download"
+      ],
+      "streamUrl": "https://aac.saavncdn.com/809/1851624de76b35731d60774dad626526_160.mp4",
+      "isOfflinePermitted": true,
+      "isLocal": false,
+      "confidenceScore": 0.85,
+      "tags": [
+        "deep",
+        "love",
+        "arijit",
+        "jiosaavn",
+        "hindi",
+        "full_length"
+      ],
+      "playbackCount": 197851266
+    },
+    {
+      "id": "jiosaavn-dw5XKaT9",
+      "provider": "jiosaavn",
+      "providerId": "dw5XKaT9",
+      "title": "Zaalima",
+      "artist": "Arijit Singh, Harshdeep Kaur - Feel Good Bollywood",
+      "album": "Feel Good Bollywood",
+      "thumbnail": "https://c.saavncdn.com/659/Feel-Good-Bollywood-Hindi-2026-20260904111022-500x500.jpg",
+      "duration": 299,
+      "genre": "Bollywood",
+      "mood": "Focus & Study",
+      "language": "Hindi",
+      "releaseYear": 2026,
+      "capabilities": [
+        "stream_direct",
+        "offline_download"
+      ],
+      "streamUrl": "https://aac.saavncdn.com/659/b296391caea0cb72c5b72deb930a154d_160.mp4",
+      "isOfflinePermitted": true,
+      "isLocal": false,
+      "confidenceScore": 0.93,
+      "tags": [
+        "deep",
+        "feel good",
+        "bollywood",
+        "arijit",
+        "jiosaavn",
+        "hindi",
+        "full_length"
+      ],
+      "playbackCount": 197851187
+    },
+    {
+      "id": "jiosaavn-iJjB-afM",
+      "provider": "jiosaavn",
+      "providerId": "iJjB-afM",
+      "title": "Zaalima",
+      "artist": "Arijit Singh, Harshdeep Kaur - World Music Day 2026",
+      "album": "World Music Day 2026",
+      "thumbnail": "https://c.saavncdn.com/157/World-Music-Day-2026-Hindi-2026-20260619182741-500x500.jpg",
+      "duration": 299,
+      "genre": "Bollywood",
+      "mood": "Focus & Study",
+      "language": "Hindi",
+      "releaseYear": 2026,
+      "capabilities": [
+        "stream_direct",
+        "offline_download"
+      ],
+      "streamUrl": "https://aac.saavncdn.com/157/8da0773fc87401ed5fba79c8e9e78d3f_160.mp4",
+      "isOfflinePermitted": true,
+      "isLocal": false,
+      "confidenceScore": 0.85,
+      "tags": [
+        "deep",
+        "arijit",
+        "jiosaavn",
+        "hindi",
+        "full_length"
+      ],
+      "playbackCount": 197851266
+    },
+    {
+      "id": "jiosaavn-bvLCgjqv",
+      "provider": "jiosaavn",
+      "providerId": "bvLCgjqv",
+      "title": "Zaalima",
+      "artist": "Arijit Singh, Harshdeep Kaur - Best of 2025",
+      "album": "Best of 2025",
+      "thumbnail": "https://c.saavncdn.com/960/Best-of-2025-Hindi-2025-20251231141050-500x500.jpg",
+      "duration": 299,
+      "genre": "Bollywood",
+      "mood": "Focus & Study",
+      "language": "Hindi",
+      "releaseYear": 2025,
+      "capabilities": [
+        "stream_direct",
+        "offline_download"
+      ],
+      "streamUrl": "https://aac.saavncdn.com/960/93fcdbb7bfd475fe2fbec55ad4fcae4b_160.mp4",
+      "isOfflinePermitted": true,
+      "isLocal": false,
+      "confidenceScore": 0.85,
+      "tags": [
+        "deep",
+        "arijit",
+        "jiosaavn",
+        "hindi",
+        "full_length"
+      ],
+      "playbackCount": 197851266
+    },
+    {
+      "id": "yt-liSbkrbNj6Y",
+      "provider": "youtube",
+      "providerId": "liSbkrbNj6Y",
+      "title": "Sanam Re - Arijit Singh (Lyrics) | Lyrical Bam Hindi",
+      "artist": "LYRICAL BAM HINDI",
+      "thumbnail": "https://i.ytimg.com/vi/liSbkrbNj6Y/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLCJHxSVI4CBeMJGPwkJOqsCXORxMA",
+      "duration": 270,
+      "genre": "Bollywood",
+      "mood": "Calm & Peaceful",
+      "capabilities": [
+        "stream_embed",
+        "preview_only"
+      ],
+      "embedUrl": "https://www.youtube.com/embed/liSbkrbNj6Y",
+      "isOfflinePermitted": false,
+      "isLocal": false,
+      "confidenceScore": 0.77,
+      "tags": [
+        "arijit"
+      ]
     }
   ],
   "playlists": [
@@ -40374,6 +40638,34 @@
       "items": [],
       "createdAt": "2026-09-28T16:07:28.851Z",
       "updatedAt": "2026-09-28T16:07:28.851Z"
+    },
+    {
+      "id": "pl-1790613103110",
+      "userId": "usr-1790613102060",
+      "title": "Auto's Favorites",
+      "description": "Personal cloud playlist synced across all your devices.",
+      "coverArt": "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=600&q=80",
+      "isSmart": false,
+      "isPrivate": false,
+      "isShareable": true,
+      "itemCount": 0,
+      "items": [],
+      "createdAt": "2026-09-28T16:31:43.110Z",
+      "updatedAt": "2026-09-28T16:31:43.110Z"
+    },
+    {
+      "id": "pl-1790613116554",
+      "userId": "demo-user-id",
+      "title": "My Personal Hits Test",
+      "description": "Automated test custom playlist",
+      "coverArt": "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=600&q=80",
+      "isSmart": false,
+      "isPrivate": false,
+      "isShareable": true,
+      "itemCount": 0,
+      "items": [],
+      "createdAt": "2026-09-28T16:31:56.554Z",
+      "updatedAt": "2026-09-28T16:31:56.555Z"
     }
   ],
   "favorites": [],
