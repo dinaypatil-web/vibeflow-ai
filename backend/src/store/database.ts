@@ -447,12 +447,13 @@ class MemoryDatabase {
         user.email && user.email.includes('@') ? this.toCloudKey(user.email.split('@')[0]) : null
       ].filter(Boolean) as string[];
 
-      await Promise.all(keys.map(k => 
+      // Non-blocking with 1500ms timeout so Vercel lambdas never hang
+      Promise.all(keys.map(k => 
         fetch(`https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${this.CLOUD_KV_APP_KEY}/${k}/${b64}`, {
           method: 'POST',
-          signal: AbortSignal.timeout(5000)
+          signal: AbortSignal.timeout(1500)
         }).catch(() => {})
-      ));
+      )).catch(() => {});
       return true;
     } catch {
       return false;
@@ -773,13 +774,21 @@ class MemoryDatabase {
   public findUserByIdentifier(identifier: string): User | undefined {
     if (!identifier) return undefined;
     const clean = identifier.trim().toLowerCase();
+    const cleanNoSpecial = clean.replace(/[\._\-]/g, '');
     return this.data.users.find(u => {
       const email = (u.email || '').trim().toLowerCase();
       const username = (u.username || '').trim().toLowerCase();
       const name = (u.name || '').trim().toLowerCase();
       const id = (u.id || '').trim().toLowerCase();
       const emailPrefix = email.includes('@') ? email.split('@')[0] : '';
-      return email === clean || username === clean || name === clean || id === clean || emailPrefix === clean;
+      return email === clean || 
+             username === clean || 
+             name === clean || 
+             id === clean || 
+             emailPrefix === clean ||
+             username.replace(/[\._\-]/g, '') === cleanNoSpecial ||
+             emailPrefix.replace(/[\._\-]/g, '') === cleanNoSpecial ||
+             name.replace(/[\s\._\-]/g, '') === cleanNoSpecial;
     });
   }
 
@@ -790,6 +799,20 @@ class MemoryDatabase {
   public findUserById(id: string): User | undefined {
     if (!id) return undefined;
     return this.data.users.find(u => u.id === id);
+  }
+
+  public updatePassword(userIdOrIdentifier: string, passwordHash: string): boolean {
+    const user = this.findUserById(userIdOrIdentifier) || this.findUserByIdentifier(userIdOrIdentifier);
+    if (!user) return false;
+    this.data.passwords[user.id] = passwordHash;
+    if (user.email) {
+      this.data.passwords[user.email.toLowerCase()] = passwordHash;
+    }
+    if (user.username) {
+      this.data.passwords[user.username.toLowerCase()] = passwordHash;
+    }
+    this.saveToDisk();
+    return true;
   }
 
   public createUser(user: User, passwordHash: string): User {

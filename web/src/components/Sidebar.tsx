@@ -136,8 +136,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenAuth }) => {
             </div>
             <button
               onClick={logout}
-              title="Sign Out"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-surface-800 transition-all opacity-70 group-hover:opacity-100"
+              title="Sign Out of VibeFlow AI"
+              className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/15 border border-transparent hover:border-rose-500/30 transition-all shrink-0 active:scale-95"
             >
               <LogOut className="w-4 h-4" />
             </button>

@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import {
   Radio, Mail, Lock, User, Eye, EyeOff, Loader2, Sparkles,
   Music, Headphones, Waves, AlertCircle, ChevronRight, X,
-  CheckCircle2, Globe, Shield, KeyRound, Trash2, Users
+  CheckCircle2, Globe, Shield, KeyRound, Trash2, Users, LogOut, Key, ArrowLeft
 } from 'lucide-react';
 import { usePlayerStore, SavedCredential } from '../store/playerStore';
 
-type AuthMode = 'login' | 'register';
+type AuthMode = 'login' | 'register' | 'forgot';
 
 interface AuthModalProps {
   onClose?: () => void;
@@ -24,7 +24,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, required = false 
   const { 
     login, 
     register, 
+    resetPassword,
     loginDemo, 
+    logout,
     authLoading, 
     authError, 
     clearAuthError, 
@@ -40,6 +42,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, required = false 
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -60,10 +63,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, required = false 
     }
   }, [mode, savedCredentials]);
 
-  // Close on successful login
+  // Close on successful login/reset transition
   useEffect(() => {
     if (user && success) {
-      setTimeout(() => onClose?.(), 600);
+      const t = setTimeout(() => onClose?.(), 700);
+      return () => clearTimeout(t);
     }
   }, [user, success, onClose]);
 
@@ -71,10 +75,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, required = false 
     if (mode === 'login') {
       if (!email.trim()) return 'Please enter your username or email address';
       if (!password) return 'Password is required';
-    } else {
+    } else if (mode === 'register') {
       if (!name.trim()) return 'Your full name is required';
       if (!email.trim() && !username.trim()) return 'An email address or username is required';
       if (!password || password.length < 6) return 'Password must be at least 6 characters';
+    } else if (mode === 'forgot') {
+      if (!email.trim()) return 'Please enter your username or email address';
+      if (!password || password.length < 6) return 'New password must be at least 6 characters';
+      if (confirmPassword && password !== confirmPassword) return 'Passwords do not match';
     }
     return null;
   };
@@ -88,10 +96,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, required = false 
     try {
       if (mode === 'login') {
         await login(email.trim(), password.trim(), rememberMe);
-      } else {
+      } else if (mode === 'register') {
         const rawUser = username.trim() || (!email.includes('@') ? email.trim() : email.split('@')[0]);
         const rawEmail = email.includes('@') ? email.trim() : `${rawUser}@vibeflow.local`;
         await register(name.trim(), rawEmail, password.trim(), rawUser, rememberMe);
+      } else if (mode === 'forgot') {
+        await resetPassword(email.trim(), password.trim());
       }
       setSuccess(true);
     } catch {
@@ -132,6 +142,80 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, required = false 
 
   const displayError = localError || authError;
 
+  // If user is already authenticated and not transitioning from a success state, show user account profile
+  if (user && !success) {
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
+        <div className="absolute inset-0 bg-black/80 backdrop-blur-xl" onClick={required ? undefined : onClose} />
+        <div className="relative w-full max-w-md bg-surface-900 border border-white/10 rounded-3xl shadow-2xl shadow-black/50 overflow-hidden animate-in zoom-in-95 fade-in duration-300 p-7">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-brand-600 via-accent-cyan to-brand-400" />
+          
+          {!required && onClose && (
+            <button
+              onClick={onClose}
+              className="absolute top-4 right-4 z-10 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-surface-800 transition-all"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-brand-600 via-brand-500 to-accent-cyan flex items-center justify-center shadow-lg shadow-brand-500/30">
+              <Radio className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-white tracking-tight">VibeFlow AI</h1>
+              <p className="text-xs text-brand-400 font-medium">Account & Active Session</p>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-surface-850 border border-white/5 space-y-3 mb-6">
+            <div className="flex items-center gap-3.5">
+              <img
+                src={user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
+                alt=""
+                className="w-14 h-14 rounded-2xl object-cover ring-2 ring-brand-500/40 shrink-0"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-white truncate">{user.name}</h3>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-500/20 text-brand-300 font-semibold border border-brand-500/30 uppercase">
+                    {user.role || 'Member'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 truncate mt-0.5">{user.email}</p>
+                <div className="flex items-center gap-1.5 text-[11px] text-emerald-400 mt-1">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>Cloud Synced across all your devices</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <button
+              onClick={() => {
+                logout();
+                onClose?.();
+              }}
+              className="w-full py-3.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-sm rounded-2xl shadow-lg shadow-red-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Sign Out of VibeFlow AI</span>
+            </button>
+
+            <button
+              onClick={onClose}
+              className="w-full py-3 bg-surface-800 hover:bg-surface-750 border border-white/10 text-slate-300 hover:text-white font-semibold text-xs rounded-2xl transition-all"
+            >
+              Back to Player
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
       {/* Backdrop */}
@@ -171,12 +255,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, required = false 
           {/* Title */}
           <div className="mb-4">
             <h2 className="text-2xl font-bold text-white">
-              {mode === 'login' ? 'Welcome back! 🎵' : 'Join VibeFlow AI ✨'}
+              {mode === 'login' && 'Welcome back! 🎵'}
+              {mode === 'register' && 'Join VibeFlow AI ✨'}
+              {mode === 'forgot' && 'Reset Password 🔑'}
             </h2>
             <p className="text-sm text-slate-400 mt-1">
-              {mode === 'login'
-                ? 'Sign in with your saved credentials or enter your details'
-                : 'Create your account and save your music preferences'}
+              {mode === 'login' && 'Sign in with your saved credentials or enter your details'}
+              {mode === 'register' && 'Create your account and save your music preferences'}
+              {mode === 'forgot' && 'Enter your username or email address and choose a new password'}
             </p>
           </div>
 
@@ -271,7 +357,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, required = false 
             <div className="flex items-center gap-3 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 mb-4 animate-in fade-in">
               <CheckCircle2 className="w-5 h-5 shrink-0" />
               <p className="text-sm font-semibold">
-                {mode === 'login' ? 'Logged in successfully!' : 'Account created & credentials saved! Welcome to VibeFlow AI 🎉'}
+                {mode === 'login' && 'Logged in successfully!'}
+                {mode === 'register' && 'Account created & credentials saved! Welcome to VibeFlow AI 🎉'}
+                {mode === 'forgot' && 'Password reset successfully! You are now logged in 🎉'}
               </p>
             </div>
           )}
@@ -280,7 +368,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, required = false 
           {displayError && !success && (
             <div className="flex items-center gap-3 p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 mb-4 animate-in fade-in">
               <AlertCircle className="w-4 h-4 shrink-0" />
-              <p className="text-sm">{displayError}</p>
+              <div className="text-sm flex-1">
+                <p>{displayError}</p>
+                {mode === 'login' && (
+                  <p className="text-xs text-brand-300 mt-1">
+                    Forgot password or wrong details?{' '}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode('forgot');
+                        setLocalError(null);
+                        clearAuthError();
+                      }}
+                      className="underline font-semibold hover:text-white"
+                    >
+                      Reset password now
+                    </button>
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
@@ -306,7 +412,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, required = false 
                     type="text"
                     value={username}
                     onChange={e => setUsername(e.target.value.replace(/[@\s]/g, ''))}
-                    placeholder="Username (e.g. dinay_vibe)"
+                    placeholder="Username (e.g. dinay.patil)"
                     autoComplete="username"
                     className="w-full pl-11 pr-4 py-3 bg-surface-850 border border-white/10 rounded-2xl text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/40 transition-all text-white"
                   />
@@ -317,11 +423,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, required = false 
             <div className="relative">
               <Mail className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
-                type={mode === 'login' ? 'text' : 'email'}
+                type={mode === 'register' ? 'email' : 'text'}
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder={mode === 'login' ? 'Username or email address' : 'Email address (optional if username set)'}
-                autoComplete={mode === 'login' ? 'username' : 'email'}
+                placeholder={
+                  mode === 'forgot'
+                    ? 'Enter username or email address'
+                    : mode === 'login'
+                    ? 'Username or email (e.g. dinay.patil)'
+                    : 'Email address'
+                }
+                autoComplete="username"
                 className="w-full pl-11 pr-4 py-3 bg-surface-850 border border-white/10 rounded-2xl text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/40 transition-all text-white"
               />
             </div>
@@ -332,7 +444,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, required = false 
                 type={showPass ? 'text' : 'password'}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder={mode === 'register' ? 'Password (min 6 characters)' : 'Password'}
+                placeholder={
+                  mode === 'forgot'
+                    ? 'Enter new password (min 6 characters)'
+                    : mode === 'register'
+                    ? 'Password (min 6 characters)'
+                    : 'Password'
+                }
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 className="w-full pl-11 pr-12 py-3 bg-surface-850 border border-white/10 rounded-2xl text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/40 transition-all text-white"
               />
@@ -345,30 +463,65 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, required = false 
               </button>
             </div>
 
-            {/* Remember Me / Save Credentials Checkbox */}
-            <div className="flex items-center justify-between px-1 py-1">
-              <label className="flex items-center gap-2 cursor-pointer select-none">
+            {mode === 'forgot' && (
+              <div className="relative">
+                <Lock className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={e => setRememberMe(e.target.checked)}
-                  className="w-4 h-4 rounded accent-brand-500 cursor-pointer"
+                  type={showPass ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm new password"
+                  autoComplete="new-password"
+                  className="w-full pl-11 pr-4 py-3 bg-surface-850 border border-white/10 rounded-2xl text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/40 transition-all text-white"
                 />
-                <span className="text-xs text-slate-300 font-medium">
-                  {mode === 'login' ? 'Remember credentials on this device' : 'Save sign-up credentials for login'}
-                </span>
-              </label>
+              </div>
+            )}
 
-              {mode === 'login' && savedCredentials && (
+            {/* Remember Me / Forgot Password Links */}
+            {mode !== 'forgot' ? (
+              <div className="flex items-center justify-between px-1 py-1">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={e => setRememberMe(e.target.checked)}
+                    className="w-4 h-4 rounded accent-brand-500 cursor-pointer"
+                  />
+                  <span className="text-xs text-slate-300 font-medium">
+                    {mode === 'login' ? 'Remember credentials' : 'Save credentials for login'}
+                  </span>
+                </label>
+
+                {mode === 'login' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('forgot');
+                      setLocalError(null);
+                      clearAuthError();
+                    }}
+                    className="text-[11px] text-accent-cyan hover:text-cyan-300 font-semibold transition-colors"
+                  >
+                    Forgot password?
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center justify-between px-1 py-1">
                 <button
                   type="button"
-                  onClick={() => handleSelectAccount(savedCredentials)}
-                  className="text-[11px] text-brand-400 hover:text-brand-300 font-medium transition-colors"
+                  onClick={() => {
+                    setMode('login');
+                    setLocalError(null);
+                    clearAuthError();
+                  }}
+                  className="text-xs text-brand-400 hover:text-brand-300 font-semibold transition-colors flex items-center gap-1"
                 >
-                  Retrieve saved
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Back to Sign In</span>
                 </button>
-              )}
-            </div>
+              </div>
+            )}
 
             <button
               type="submit"
@@ -378,28 +531,39 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, required = false 
               {authLoading ? (
                 <><Loader2 className="w-4 h-4 animate-spin" /><span>Please wait...</span></>
               ) : (
-                <><span>{mode === 'login' ? 'Sign In' : 'Create Account'}</span><ChevronRight className="w-4 h-4" /></>
+                <>
+                  <span>
+                    {mode === 'login' && 'Sign In'}
+                    {mode === 'register' && 'Create Account'}
+                    {mode === 'forgot' && 'Reset Password & Sign In'}
+                  </span>
+                  <ChevronRight className="w-4 h-4" />
+                </>
               )}
             </button>
           </form>
 
-          {/* Divider */}
-          <div className="flex items-center gap-3 my-4">
-            <div className="h-px flex-1 bg-white/8" />
-            <span className="text-xs text-slate-500">or continue with</span>
-            <div className="h-px flex-1 bg-white/8" />
-          </div>
+          {/* Divider & Alternative actions */}
+          {mode !== 'forgot' && (
+            <>
+              <div className="flex items-center gap-3 my-4">
+                <div className="h-px flex-1 bg-white/8" />
+                <span className="text-xs text-slate-500">or continue with</span>
+                <div className="h-px flex-1 bg-white/8" />
+              </div>
 
-          {/* Demo login */}
-          <button
-            onClick={handleDemo}
-            disabled={authLoading || success}
-            className="w-full py-3 bg-surface-800 border border-white/10 hover:border-brand-500/40 hover:bg-surface-750 text-slate-200 text-sm font-semibold rounded-2xl flex items-center justify-center gap-2.5 transition-all group disabled:opacity-50"
-          >
-            <Sparkles className="w-4 h-4 text-brand-400 group-hover:text-brand-300" />
-            <span>Try Demo Account</span>
-            <span className="text-xs text-slate-500">(Instant, no sign-up)</span>
-          </button>
+              {/* Demo login */}
+              <button
+                onClick={handleDemo}
+                disabled={authLoading || success}
+                className="w-full py-3 bg-surface-800 border border-white/10 hover:border-brand-500/40 hover:bg-surface-750 text-slate-200 text-sm font-semibold rounded-2xl flex items-center justify-center gap-2.5 transition-all group disabled:opacity-50"
+              >
+                <Sparkles className="w-4 h-4 text-brand-400 group-hover:text-brand-300" />
+                <span>Try Demo Account</span>
+                <span className="text-xs text-slate-500">(Instant, no sign-up)</span>
+              </button>
+            </>
+          )}
 
           {/* Trust signals */}
           <div className="flex items-center justify-center gap-4 mt-4 text-[11px] text-slate-500">
@@ -408,9 +572,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, required = false 
           </div>
 
           {/* Toggle mode */}
-          <p className="text-center text-sm text-slate-400 mt-4">
-            {mode === 'login' ? (
-              <>Don't have an account?{' '}
+          <div className="text-center text-sm text-slate-400 mt-4">
+            {mode === 'login' && (
+              <p>
+                Don't have an account?{' '}
                 <button 
                   onClick={() => { 
                     setMode('register'); 
@@ -421,9 +586,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, required = false 
                 >
                   Create one free
                 </button>
-              </>
-            ) : (
-              <>Already have an account?{' '}
+              </p>
+            )}
+            {mode === 'register' && (
+              <p>
+                Already have an account?{' '}
                 <button 
                   onClick={() => { 
                     setMode('login'); 
@@ -434,9 +601,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, required = false 
                 >
                   Sign in
                 </button>
-              </>
+              </p>
             )}
-          </p>
+            {mode === 'forgot' && (
+              <p>
+                Remembered your password?{' '}
+                <button 
+                  onClick={() => { 
+                    setMode('login'); 
+                    setLocalError(null); 
+                    clearAuthError(); 
+                  }} 
+                  className="text-brand-400 hover:text-brand-300 font-semibold transition-colors"
+                >
+                  Sign in
+                </button>
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </div>

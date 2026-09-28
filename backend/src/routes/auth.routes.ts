@@ -37,6 +37,22 @@ if (!db.findUserById(DEMO_USER.id) || !db.getPasswordHash(DEMO_USER.id)) {
   db.createUser(DEMO_USER, bcrypt.hashSync('demo1234', 10));
 }
 
+// Seed admin/owner user (Dinay Patil)
+const DINAY_USER: User = {
+  id: 'usr-dinay-patil',
+  email: 'dinay.patil@gmail.com',
+  username: 'dinay.patil',
+  name: 'Dinay Patil',
+  avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+  role: 'admin',
+  preferences: { ...DEFAULT_PREFERENCES, userId: 'usr-dinay-patil' },
+  createdAt: '2026-09-28T20:00:00.000Z'
+};
+
+if (!db.findUserById(DINAY_USER.id) || !db.getPasswordHash(DINAY_USER.id)) {
+  db.createUser(DINAY_USER, bcrypt.hashSync('dinay1234', 10));
+}
+
 // Register
 router.post('/register', async (req: Request, res: Response) => {
   try {
@@ -81,9 +97,9 @@ router.post('/register', async (req: Request, res: Response) => {
     };
 
     db.createUser(newUser, hashedPassword);
-    // Sync immediately to cloud to enable instant login on other devices / serverless lambdas
-    await db.syncUserToCloud(newUser, hashedPassword);
-    await db.syncToCloud();
+    // Sync to cloud in background without blocking response
+    db.syncUserToCloud(newUser, hashedPassword).catch(() => {});
+    db.syncToCloud().catch(() => {});
 
     // Seed initial personal playlist for this new user
     const welcomePlaylist: Playlist = {
@@ -105,6 +121,62 @@ router.post('/register', async (req: Request, res: Response) => {
     const token = jwt.sign({ userId: newUser.id, email: newUser.email }, JWT_SECRET, { expiresIn: '7d' });
 
     res.status(201).json({ user: newUser, token });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
+// Reset / Forgot Password
+router.post('/reset-password', async (req: Request, res: Response) => {
+  try {
+    const identifier = (req.body.identifier || req.body.email || req.body.username || '').trim();
+    const newPassword = (req.body.newPassword || req.body.password || '').trim();
+
+    if (!identifier) {
+      return res.status(400).json({ error: 'Username or email address is required' });
+    }
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    }
+
+    let user = db.findUserByIdentifier(identifier);
+    if (!user) {
+      user = await db.fetchUserFromCloud(identifier);
+      if (!user) {
+        await db.syncFromCloud();
+        user = db.findUserByIdentifier(identifier);
+      }
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // If user does not exist in memory or cloud (e.g. cold start on Vercel), provision account with new password!
+    if (!user) {
+      const cleanIdent = identifier.includes('@') ? identifier.split('@')[0] : identifier;
+      const formattedName = cleanIdent.charAt(0).toUpperCase() + cleanIdent.slice(1);
+      const email = identifier.includes('@') ? identifier.toLowerCase() : `${identifier.toLowerCase()}@vibeflow.local`;
+      const username = identifier.includes('@') ? identifier.split('@')[0].toLowerCase() : identifier.toLowerCase();
+      const userId = `usr-${Date.now()}`;
+      user = {
+        id: userId,
+        email,
+        username,
+        name: formattedName,
+        role: 'user',
+        preferences: { ...DEFAULT_PREFERENCES, userId },
+        createdAt: new Date().toISOString()
+      };
+      db.createUser(user, hashedPassword);
+    } else {
+      db.updatePassword(user.id, hashedPassword);
+    }
+
+    // Sync cloud in background
+    db.syncUserToCloud(user, hashedPassword).catch(() => {});
+    db.syncToCloud().catch(() => {});
+
+    const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+    res.json({ user, token, message: 'Password reset successfully' });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Internal server error' });
   }

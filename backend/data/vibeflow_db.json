@@ -218,6 +218,45 @@
         "theme": "dark"
       },
       "createdAt": "2026-09-28T16:31:42.060Z"
+    },
+    {
+      "id": "usr-dinay-patil",
+      "email": "dinay.patil@gmail.com",
+      "username": "dinay.patil",
+      "name": "Dinay Patil",
+      "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80",
+      "role": "admin",
+      "preferences": {
+        "userId": "usr-dinay-patil",
+        "favoriteGenres": [
+          "Bollywood",
+          "Lo-Fi & Chill",
+          "Hindi Retro",
+          "Marathi"
+        ],
+        "favoriteMoods": [
+          "Calm & Peaceful",
+          "Focus & Study",
+          "Workout & Energy",
+          "Romantic"
+        ],
+        "preferredLanguages": [
+          "Hindi",
+          "English",
+          "Marathi"
+        ],
+        "favoriteArtists": [
+          "Arijit Singh",
+          "Lata Mangeshkar"
+        ],
+        "autoPlaySimilar": true,
+        "streamQuality": "high",
+        "downloadQuality": "high",
+        "wifiOnlyDownloads": true,
+        "enableListeningHistory": true,
+        "theme": "dark"
+      },
+      "createdAt": "2026-09-28T20:00:00.000Z"
     }
   ],
   "passwords": {
@@ -238,7 +277,11 @@
     "cross_1790613005330": "$2a$10$PtUpK0a4rCVDYOCZnyJE5uTVjpciPhuqVfxcHLNK4K2FjFIg3GFVS",
     "usr-1790613102060": "$2a$10$f9tk/BUqjKDCunCr0g45tO2FrPqMQ38NbV66Judb0oLfgEW5ETNmq",
     "test_1790613101935@vibeflow.local": "$2a$10$f9tk/BUqjKDCunCr0g45tO2FrPqMQ38NbV66Judb0oLfgEW5ETNmq",
-    "user_1790613101935": "$2a$10$f9tk/BUqjKDCunCr0g45tO2FrPqMQ38NbV66Judb0oLfgEW5ETNmq"
+    "user_1790613101935": "$2a$10$f9tk/BUqjKDCunCr0g45tO2FrPqMQ38NbV66Judb0oLfgEW5ETNmq",
+    "usr-dinay-patil": "$2a$10$SqD8fr84djQ6Gs8kykLYIOxc0kRFtqZZrqLqSEph2xwk5TnTQAvQm",
+    "dinay.patil": "$2a$10$SqD8fr84djQ6Gs8kykLYIOxc0kRFtqZZrqLqSEph2xwk5TnTQAvQm",
+    "dinay.patil@gmail.com": "$2a$10$SqD8fr84djQ6Gs8kykLYIOxc0kRFtqZZrqLqSEph2xwk5TnTQAvQm",
+    "dinay": "$2a$10$HURgRLJwD7RgEjB.3UMyJONIyokVGj5pKYYKQYFzAeJd./mapehc6"
   },
   "mediaItems": [
     {
@@ -638,7 +681,7 @@
         "preview",
         "bollywood"
       ],
-      "playbackCount": 6116
+      "playbackCount": 5981
     },
     {
       "id": "itunes-1694323434",
@@ -667,7 +710,7 @@
         "preview",
         "soundtrack"
       ],
-      "playbackCount": 2050
+      "playbackCount": 5588
     },
     {
       "id": "yt-mH_LFkWxpI0",
@@ -3966,7 +4009,7 @@
         "punjabi",
         "full_length"
       ],
-      "playbackCount": 18800833
+      "playbackCount": 18802851
     },
     {
       "id": "jiosaavn-vLSaC03b",
@@ -3996,7 +4039,7 @@
         "punjabi",
         "full_length"
       ],
-      "playbackCount": 21734688
+      "playbackCount": 21736243
     },
     {
       "id": "jiosaavn-vj2tW1iy",
@@ -4054,7 +4097,7 @@
         "punjabi",
         "full_length"
       ],
-      "playbackCount": 25598273
+      "playbackCount": 25599542
     },
     {
       "id": "jiosaavn-PaHsQs3A",
@@ -4082,7 +4125,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 119081
+      "playbackCount": 119084
     },
     {
       "id": "jiosaavn-bYm3rH-V",
@@ -4111,7 +4154,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 4392014
+      "playbackCount": 4392033
     },
     {
       "id": "jiosaavn-VeD-sy0U",
@@ -4140,7 +4183,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 40347
+      "playbackCount": 40348
     },
     {
       "id": "jiosaavn-rjkrTnma",
@@ -4170,7 +4213,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 213355169
+      "playbackCount": 213356082
     },
     {
       "id": "jiosaavn-7I9urT8B",
@@ -4202,7 +4245,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 2101649
+      "playbackCount": 2101707
     },
     {
       "id": "jiosaavn-p-IVNEqy",
@@ -4233,7 +4276,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 3520293
+      "playbackCount": 3520308
     },
     {
       "id": "jiosaavn-6ud4bdIj",
@@ -4264,7 +4307,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 59435
+      "playbackCount": 59438
     },
     {
       "id": "jiosaavn-JNsshlD7",
@@ -34946,7 +34989,7 @@
         "punjabi",
         "full_length"
       ],
-      "playbackCount": 26409180
+      "playbackCount": 26410508
     },
     {
       "id": "jiosaavn-dmP9KfvQ",
@@ -39822,7 +39865,7 @@
         "punjabi",
         "full_length"
       ],
-      "playbackCount": 147532
+      "playbackCount": 150296
     },
     {
       "id": "itunes-1123076921",

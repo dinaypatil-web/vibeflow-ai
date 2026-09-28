@@ -52,7 +52,16 @@ const ALL_LANGUAGES = [
 ];
 
 export const SettingsView: React.FC = () => {
-  const { user, updatePreferences, spotifyAccount, setSpotifyConnectModalOpen, disconnectSpotifyAccount, theme, setTheme } = usePlayerStore();
+  const { 
+    user, 
+    logout, 
+    updatePreferences, 
+    spotifyAccount, 
+    setSpotifyConnectModalOpen, 
+    disconnectSpotifyAccount, 
+    theme, 
+    setTheme 
+  } = usePlayerStore();
   const [audioQuality, setAudioQuality] = useState<'standard' | 'high' | 'lossless'>('high');
   const [wifiOnly, setWifiOnly] = useState(true);
   const [historyTracking, setHistoryTracking] = useState(true);
@@ -170,23 +179,38 @@ export const SettingsView: React.FC = () => {
       </div>
 
       {/* Account Card */}
-      <section className="p-6 rounded-3xl bg-surface-850 border border-white/5 flex items-center justify-between gap-4">
+      <section className="p-6 rounded-3xl bg-surface-850 border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <img
             src={user?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
             alt=""
-            className="w-14 h-14 rounded-2xl object-cover ring-2 ring-brand-500/40"
+            className="w-14 h-14 rounded-2xl object-cover ring-2 ring-brand-500/40 shrink-0"
           />
           <div>
-            <h3 className="text-base font-bold text-white">{user?.name || 'Aarav Sharma'}</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-bold text-white">{user?.name || 'Aarav Sharma'}</h3>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-500/20 text-brand-300 font-semibold border border-brand-500/30 uppercase">
+                {user?.role || 'Member'}
+              </span>
+            </div>
             <p className="text-xs text-slate-400">
               {user?.username ? `@${user.username} • ` : ''}{user?.email || 'demo@vibeflow.ai'}
             </p>
             <span className="inline-block mt-1 text-[11px] text-emerald-400 font-semibold">
-              ✓ Verified VibeFlow AI Account
+              ✓ Verified VibeFlow AI Account • Cloud Synced
             </span>
           </div>
         </div>
+
+        {user && (
+          <button
+            onClick={logout}
+            className="px-4 py-2.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 hover:text-white text-xs font-bold transition-all flex items-center gap-2 self-start sm:self-auto active:scale-95 shadow-sm"
+          >
+            <LogOut className="w-4 h-4 text-rose-400" />
+            <span>Sign Out</span>
+          </button>
+        )}
       </section>
 
       {/* Music & Discovery Preferences */}

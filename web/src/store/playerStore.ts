@@ -142,6 +142,7 @@ interface PlayerState {
   removeSavedAccount: (identifier: string) => void;
   login: (identifier: string, password: string, rememberMe?: boolean) => Promise<void>;
   register: (name: string, email: string, password: string, username?: string, rememberMe?: boolean) => Promise<void>;
+  resetPassword: (identifier: string, newPassword: string) => Promise<User>;
   loginDemo: () => Promise<void>;
   logout: () => void;
   clearAuthError: () => void;
@@ -698,6 +699,99 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       }
 
       set({ authLoading: false, authError: err.message || 'Registration failed' });
+      throw err;
+    }
+  },
+
+  resetPassword: async (identifier: string, newPassword: string) => {
+    set({ authLoading: true, authError: null });
+    const cleanId = (identifier || '').trim();
+    const cleanPass = (newPassword || '').trim();
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: cleanId, newPassword: cleanPass })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Password reset failed');
+
+      get().setUser(data.user, data.token);
+
+      // Save/update user in local directory with new password
+      try {
+        const localUsersRaw = localStorage.getItem(LS_LOCAL_USERS) || '[]';
+        const localUsers: any[] = JSON.parse(localUsersRaw);
+        const idx = localUsers.findIndex(u => {
+          const uObj = u.user || u;
+          return uObj.id === data.user.id || 
+                 (uObj.email && uObj.email.toLowerCase() === (data.user.email || '').toLowerCase()) ||
+                 (uObj.username && uObj.username.toLowerCase() === (data.user.username || '').toLowerCase());
+        });
+        const entry = {
+          user: data.user,
+          id: data.user.id,
+          name: data.user.name,
+          email: data.user.email,
+          username: data.user.username,
+          password: cleanPass,
+          updatedAt: new Date().toISOString()
+        };
+        if (idx >= 0) localUsers[idx] = entry;
+        else localUsers.push(entry);
+        localStorage.setItem(LS_LOCAL_USERS, JSON.stringify(localUsers));
+
+        // Update saved credentials
+        const cred: SavedCredential = {
+          identifier: cleanId,
+          email: data.user.email,
+          username: data.user.username || cleanId,
+          name: data.user.name || cleanId,
+          password: cleanPass,
+          rememberMe: true,
+          savedAt: new Date().toISOString()
+        };
+        const updatedAccounts = persistSavedCredentials(cred);
+        set({ savedCredentials: cred, savedAccounts: updatedAccounts });
+      } catch {}
+
+      set({ authLoading: false, authError: null });
+      return data.user;
+    } catch (err: any) {
+      // Local fallback if offline or network failure
+      try {
+        const localUsersRaw = localStorage.getItem(LS_LOCAL_USERS) || '[]';
+        const localUsers: any[] = JSON.parse(localUsersRaw);
+        const idx = localUsers.findIndex(u => {
+          const uObj = u.user || u;
+          const uEmail = (uObj.email || u.email || '').toLowerCase();
+          const uUser = (uObj.username || u.username || '').toLowerCase();
+          const target = cleanId.toLowerCase();
+          return target === uEmail || target === uUser;
+        });
+        if (idx >= 0) {
+          const userObj = localUsers[idx].user || localUsers[idx];
+          localUsers[idx].password = cleanPass;
+          localStorage.setItem(LS_LOCAL_USERS, JSON.stringify(localUsers));
+          const cred: SavedCredential = {
+            identifier: cleanId,
+            email: userObj.email,
+            username: userObj.username || cleanId,
+            name: userObj.name || cleanId,
+            password: cleanPass,
+            rememberMe: true,
+            savedAt: new Date().toISOString()
+          };
+          const updatedAccounts = persistSavedCredentials(cred);
+          set({ savedCredentials: cred, savedAccounts: updatedAccounts });
+          const token = `local-jwt-${Date.now()}`;
+          get().setUser(userObj, token);
+          set({ authLoading: false, authError: null });
+          return userObj;
+        }
+      } catch {}
+
+      set({ authLoading: false, authError: err.message || 'Password reset failed' });
       throw err;
     }
   },
