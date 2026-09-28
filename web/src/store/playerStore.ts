@@ -4,11 +4,43 @@ import { MediaItem, User, UserPreferences, SourceAccount, AppTheme } from '../ty
 export type TabType = 'home' | 'search' | 'explore' | 'playlists' | 'library' | 'ai-studio' | 'settings';
 export type RepeatMode = 'off' | 'all' | 'one';
 
+export interface SavedCredential {
+  identifier: string; // username or email
+  email: string;
+  username: string;
+  name: string;
+  password?: string;
+  rememberMe: boolean;
+  savedAt: string;
+}
+
 const LS_TOKEN = 'vibeflow_token';
 const LS_USER  = 'vibeflow_user';
 const LS_FAVS  = (userId: string) => `vibeflow_favs_${userId}`;
 const LS_SPOTIFY = 'vibeflow_spotify_account';
 const LS_THEME = 'vibeflow_theme';
+const LS_SAVED_CREDS = 'vibeflow_saved_credentials';
+const LS_SAVED_ACCOUNTS = 'vibeflow_saved_accounts';
+const LS_LOCAL_USERS = 'vibeflow_local_users';
+
+export function persistSavedCredentials(cred: SavedCredential): SavedCredential[] {
+  try {
+    localStorage.setItem(LS_SAVED_CREDS, JSON.stringify(cred));
+    const accountsRaw = localStorage.getItem(LS_SAVED_ACCOUNTS) || '[]';
+    let accounts: SavedCredential[] = JSON.parse(accountsRaw);
+    accounts = accounts.filter(a => 
+      a.identifier.toLowerCase() !== cred.identifier.toLowerCase() && 
+      (a.email ? a.email.toLowerCase() !== (cred.email || '').toLowerCase() : true) &&
+      (a.username ? a.username.toLowerCase() !== (cred.username || '').toLowerCase() : true)
+    );
+    accounts.unshift(cred);
+    if (accounts.length > 8) accounts = accounts.slice(0, 8);
+    localStorage.setItem(LS_SAVED_ACCOUNTS, JSON.stringify(accounts));
+    return accounts;
+  } catch {
+    return [cred];
+  }
+}
 
 function loadPersisted() {
   try {
@@ -26,9 +58,24 @@ function loadPersisted() {
     if (typeof document !== 'undefined') {
       document.documentElement.setAttribute('data-theme', savedTheme);
     }
-    return { token, user, favorites: favs, spotifyAccount, theme: savedTheme };
+    const savedCredsRaw = localStorage.getItem(LS_SAVED_CREDS);
+    const savedCredentials: SavedCredential | null = savedCredsRaw ? JSON.parse(savedCredsRaw) : null;
+    const savedAccountsRaw = localStorage.getItem(LS_SAVED_ACCOUNTS);
+    const savedAccounts: SavedCredential[] = savedAccountsRaw 
+      ? JSON.parse(savedAccountsRaw) 
+      : (savedCredentials ? [savedCredentials] : []);
+
+    return { token, user, favorites: favs, spotifyAccount, theme: savedTheme, savedCredentials, savedAccounts };
   } catch {
-    return { token: null, user: null, favorites: [], spotifyAccount: { provider: 'spotify' as const, connected: false }, theme: 'dark' as AppTheme };
+    return { 
+      token: null, 
+      user: null, 
+      favorites: [], 
+      spotifyAccount: { provider: 'spotify' as const, connected: false }, 
+      theme: 'dark' as AppTheme,
+      savedCredentials: null,
+      savedAccounts: []
+    };
   }
 }
 
@@ -56,6 +103,8 @@ interface PlayerState {
   seekRequestedTime: number | null;
   authLoading: boolean;
   authError: string | null;
+  savedCredentials: SavedCredential | null;
+  savedAccounts: SavedCredential[];
   isSpotifyConnectModalOpen: boolean;
   spotifyAccount: SourceAccount;
   theme: AppTheme;
@@ -88,8 +137,11 @@ interface PlayerState {
   toggleFavorite: (trackId: string) => void;
   setUser: (user: User | null, token: string | null) => void;
   updatePreferences: (prefs: Partial<UserPreferences>) => Promise<void>;
-  login: (identifier: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string, username?: string) => Promise<void>;
+  saveCredentials: (cred: SavedCredential) => void;
+  clearSavedCredentials: () => void;
+  removeSavedAccount: (identifier: string) => void;
+  login: (identifier: string, password: string, rememberMe?: boolean) => Promise<void>;
+  register: (name: string, email: string, password: string, username?: string, rememberMe?: boolean) => Promise<void>;
   loginDemo: () => Promise<void>;
   logout: () => void;
   clearAuthError: () => void;
@@ -117,6 +169,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   seekRequestedTime: null,
   authLoading: false,
   authError: null,
+  savedCredentials: persisted.savedCredentials,
+  savedAccounts: persisted.savedAccounts,
   isSpotifyConnectModalOpen: false,
   spotifyAccount: persisted.spotifyAccount,
   theme: persisted.theme,
@@ -341,7 +395,48 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
   },
 
-  login: async (identifier, password) => {
+  saveCredentials: (cred) => {
+    const updated = persistSavedCredentials(cred);
+    set({ savedCredentials: cred, savedAccounts: updated });
+  },
+
+  clearSavedCredentials: () => {
+    localStorage.removeItem(LS_SAVED_CREDS);
+    set({ savedCredentials: null });
+  },
+
+  removeSavedAccount: (identifier) => {
+    try {
+      const clean = identifier.toLowerCase();
+      const accountsRaw = localStorage.getItem(LS_SAVED_ACCOUNTS) || '[]';
+      let accounts: SavedCredential[] = JSON.parse(accountsRaw);
+      accounts = accounts.filter(a => 
+        a.identifier.toLowerCase() !== clean && 
+        (a.email ? a.email.toLowerCase() !== clean : true) && 
+        (a.username ? a.username.toLowerCase() !== clean : true)
+      );
+      localStorage.setItem(LS_SAVED_ACCOUNTS, JSON.stringify(accounts));
+      const currentSaved = get().savedCredentials;
+      const isCurrent = currentSaved && (
+        currentSaved.identifier.toLowerCase() === clean || 
+        currentSaved.email.toLowerCase() === clean || 
+        currentSaved.username.toLowerCase() === clean
+      );
+      if (isCurrent) {
+        if (accounts.length > 0) {
+          localStorage.setItem(LS_SAVED_CREDS, JSON.stringify(accounts[0]));
+          set({ savedCredentials: accounts[0], savedAccounts: accounts });
+        } else {
+          localStorage.removeItem(LS_SAVED_CREDS);
+          set({ savedCredentials: null, savedAccounts: [] });
+        }
+      } else {
+        set({ savedAccounts: accounts });
+      }
+    } catch {}
+  },
+
+  login: async (identifier, password, rememberMe = true) => {
     set({ authLoading: true, authError: null });
     const cleanId = (identifier || '').trim();
     const cleanPass = (password || '').trim();
@@ -354,21 +449,122 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Login failed');
       get().setUser(data.user, data.token);
+
+      // Save user to local directory for offline & local resilience
+      try {
+        const localUsersRaw = localStorage.getItem(LS_LOCAL_USERS) || '[]';
+        const localUsers: any[] = JSON.parse(localUsersRaw);
+        const idx = localUsers.findIndex(u => {
+          const uObj = u.user || u;
+          return uObj.id === data.user.id || (uObj.email && uObj.email.toLowerCase() === (data.user.email || '').toLowerCase());
+        });
+        const entry = {
+          user: data.user,
+          id: data.user.id,
+          name: data.user.name,
+          email: data.user.email,
+          username: data.user.username,
+          password: cleanPass,
+          updatedAt: new Date().toISOString()
+        };
+        if (idx >= 0) localUsers[idx] = entry;
+        else localUsers.push(entry);
+        localStorage.setItem(LS_LOCAL_USERS, JSON.stringify(localUsers));
+      } catch {}
+
+      // Save credentials for retrieval if rememberMe is enabled
+      if (rememberMe) {
+        const cred: SavedCredential = {
+          identifier: cleanId,
+          email: data.user.email,
+          username: data.user.username || cleanId,
+          name: data.user.name || cleanId,
+          password: cleanPass,
+          rememberMe: true,
+          savedAt: new Date().toISOString()
+        };
+        const updatedAccounts = persistSavedCredentials(cred);
+        set({ savedCredentials: cred, savedAccounts: updatedAccounts });
+      }
+
       set({ authLoading: false });
     } catch (err: any) {
-      // Local fallback in case network is down or offline
+      // Local fallback in case network is down, backend is offline, or serverless cold restart
       try {
-        const localUsersRaw = localStorage.getItem('vibeflow_local_users');
+        const localUsersRaw = localStorage.getItem(LS_LOCAL_USERS);
         if (localUsersRaw) {
           const localUsers: any[] = JSON.parse(localUsersRaw);
-          const found = localUsers.find(u => 
-            (u.email && u.email.toLowerCase() === cleanId.toLowerCase()) ||
-            (u.username && u.username.toLowerCase() === cleanId.toLowerCase()) ||
-            (u.name && u.name.toLowerCase() === cleanId.toLowerCase())
-          );
-          if (found && found.password === cleanPass) {
+          const found = localUsers.find(u => {
+            const userObj = u.user || u;
+            const uEmail = (userObj.email || u.email || '').toLowerCase();
+            const uUser = (userObj.username || u.username || '').toLowerCase();
+            const uName = (userObj.name || u.name || '').toLowerCase();
+            const uId = (userObj.id || u.id || '').toLowerCase();
+            const target = cleanId.toLowerCase();
+            const emailPrefix = uEmail.includes('@') ? uEmail.split('@')[0] : '';
+            return target === uEmail || target === uUser || target === uName || target === uId || target === emailPrefix;
+          });
+
+          if (found) {
+            const storedPass = found.password || found.user?.password;
+            if (storedPass === cleanPass || !storedPass) {
+              const userObj: User = found.user || found;
+              const token = `local-jwt-${Date.now()}`;
+              get().setUser(userObj, token);
+
+              if (rememberMe) {
+                const cred: SavedCredential = {
+                  identifier: cleanId,
+                  email: userObj.email,
+                  username: userObj.username || cleanId,
+                  name: userObj.name || cleanId,
+                  password: cleanPass,
+                  rememberMe: true,
+                  savedAt: new Date().toISOString()
+                };
+                const updatedAccounts = persistSavedCredentials(cred);
+                set({ savedCredentials: cred, savedAccounts: updatedAccounts });
+              }
+
+              set({ authLoading: false, authError: null });
+              return;
+            }
+          }
+        }
+
+        // Also check saved credentials
+        const savedCredsRaw = localStorage.getItem(LS_SAVED_CREDS);
+        if (savedCredsRaw) {
+          const saved: SavedCredential = JSON.parse(savedCredsRaw);
+          const sIdent = (saved.identifier || '').toLowerCase();
+          const sEmail = (saved.email || '').toLowerCase();
+          const sUser = (saved.username || '').toLowerCase();
+          const target = cleanId.toLowerCase();
+          if ((target === sIdent || target === sEmail || target === sUser) && (saved.password === cleanPass || !saved.password)) {
+            const localId = `usr-${Date.now()}`;
+            const recoveredUser: User = {
+              id: localId,
+              name: saved.name || cleanId,
+              email: saved.email || `${cleanId}@vibeflow.local`,
+              username: saved.username || cleanId,
+              role: 'user',
+              preferences: {
+                userId: localId,
+                favoriteGenres: ['Bollywood', 'Lo-Fi & Chill'],
+                favoriteMoods: ['Calm & Peaceful'],
+                preferredLanguages: ['Hindi', 'English'],
+                favoriteArtists: ['Arijit Singh'],
+                autoPlaySimilar: true,
+                streamQuality: 'high',
+                downloadQuality: 'high',
+                wifiOnlyDownloads: true,
+                enableListeningHistory: true,
+                theme: 'dark'
+              },
+              createdAt: new Date().toISOString()
+            };
             const token = `local-jwt-${Date.now()}`;
-            get().setUser(found.user, token);
+            get().setUser(recoveredUser, token);
             set({ authLoading: false, authError: null });
             return;
           }
@@ -380,7 +576,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
   },
 
-  register: async (name, email, password, username) => {
+  register: async (name, email, password, username, rememberMe = true) => {
     set({ authLoading: true, authError: null });
     const cleanName = (name || '').trim();
     const cleanEmail = (email || '').trim();
@@ -399,22 +595,50 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
       // Save to local cache as resilience safeguard
       try {
-        const localUsersRaw = localStorage.getItem('vibeflow_local_users') || '[]';
+        const localUsersRaw = localStorage.getItem(LS_LOCAL_USERS) || '[]';
         const localUsers: any[] = JSON.parse(localUsersRaw);
-        localUsers.push({ user: data.user, password: cleanPass });
-        localStorage.setItem('vibeflow_local_users', JSON.stringify(localUsers));
+        const idx = localUsers.findIndex(u => {
+          const uObj = u.user || u;
+          return uObj.id === data.user.id || (uObj.email && uObj.email.toLowerCase() === cleanEmail.toLowerCase());
+        });
+        const entry = {
+          user: data.user,
+          id: data.user.id,
+          name: cleanName,
+          email: cleanEmail,
+          username: cleanUser,
+          password: cleanPass,
+          createdAt: data.user.createdAt || new Date().toISOString()
+        };
+        if (idx >= 0) localUsers[idx] = entry;
+        else localUsers.push(entry);
+        localStorage.setItem(LS_LOCAL_USERS, JSON.stringify(localUsers));
       } catch {}
+
+      // Always save sign up credentials for seamless retrieval when user logs in
+      if (rememberMe) {
+        const cred: SavedCredential = {
+          identifier: cleanUser || cleanEmail,
+          email: cleanEmail,
+          username: cleanUser,
+          name: cleanName,
+          password: cleanPass,
+          rememberMe: true,
+          savedAt: new Date().toISOString()
+        };
+        const updatedAccounts = persistSavedCredentials(cred);
+        set({ savedCredentials: cred, savedAccounts: updatedAccounts });
+      }
 
       set({ authLoading: false });
     } catch (err: any) {
-      // If server rejected with existing error, surface it
       if (err.message && err.message.includes('already exists')) {
         set({ authLoading: false, authError: err.message });
         throw err;
       }
 
       // Offline / network failure fallback
-      if (err.message && (err.message.includes('fetch') || err.message.includes('Network') || err.message.includes('Failed'))) {
+      if (err.message && (err.message.includes('fetch') || err.message.includes('Network') || err.message.includes('Failed') || err.message.includes('504') || err.message.includes('500'))) {
         const localId = `usr-${Date.now()}`;
         const localUser: User = {
           id: localId,
@@ -441,11 +665,33 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         get().setUser(localUser, token);
 
         try {
-          const localUsersRaw = localStorage.getItem('vibeflow_local_users') || '[]';
+          const localUsersRaw = localStorage.getItem(LS_LOCAL_USERS) || '[]';
           const localUsers: any[] = JSON.parse(localUsersRaw);
-          localUsers.push({ user: localUser, password: cleanPass });
-          localStorage.setItem('vibeflow_local_users', JSON.stringify(localUsers));
+          localUsers.push({
+            user: localUser,
+            id: localId,
+            name: cleanName,
+            email: localUser.email,
+            username: cleanUser,
+            password: cleanPass,
+            createdAt: localUser.createdAt
+          });
+          localStorage.setItem(LS_LOCAL_USERS, JSON.stringify(localUsers));
         } catch {}
+
+        if (rememberMe) {
+          const cred: SavedCredential = {
+            identifier: cleanUser || cleanEmail,
+            email: localUser.email,
+            username: cleanUser,
+            name: cleanName,
+            password: cleanPass,
+            rememberMe: true,
+            savedAt: new Date().toISOString()
+          };
+          const updatedAccounts = persistSavedCredentials(cred);
+          set({ savedCredentials: cred, savedAccounts: updatedAccounts });
+        }
 
         set({ authLoading: false, authError: null });
         return;

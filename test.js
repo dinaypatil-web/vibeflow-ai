@@ -41,6 +41,43 @@ async function runTests() {
     token = data.token;
   });
 
+  // 2b. User Registration & Credential Retrieval
+  const testEmail = `test_${Date.now()}@vibeflow.local`;
+  const testUsername = `user_${Date.now()}`;
+  const testPass = 'VibeFlowPass2026!';
+  await test('Sign Up Account Creation & Credential Persistence', async () => {
+    const data = await fetchJSON(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Auto Tester',
+        email: testEmail,
+        username: testUsername,
+        password: testPass
+      })
+    });
+    if (!data.user || !data.token) throw new Error('Registration failed to return user or token');
+    if (data.user.email !== testEmail) throw new Error('User email mismatch');
+  });
+
+  await test('Sign In with Email Identifier', async () => {
+    const data = await fetchJSON(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: testEmail, password: testPass })
+    });
+    if (!data.user || !data.token) throw new Error('Login with email failed');
+  });
+
+  await test('Sign In with Username Identifier', async () => {
+    const data = await fetchJSON(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: testUsername, password: testPass })
+    });
+    if (!data.user || !data.token) throw new Error('Login with username failed');
+  });
+
   // 3. Media catalog & live search
   await test('Media Search & Catalog Retrieval (Live Multi-Source)', async () => {
     const data = await fetchJSON(`${API_BASE}/media/search?q=Coldplay`);

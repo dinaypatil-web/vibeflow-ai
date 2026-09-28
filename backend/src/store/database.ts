@@ -562,7 +562,8 @@ class MemoryDatabase {
       const username = (u.username || '').trim().toLowerCase();
       const name = (u.name || '').trim().toLowerCase();
       const id = (u.id || '').trim().toLowerCase();
-      return email === clean || username === clean || name === clean || id === clean;
+      const emailPrefix = email.includes('@') ? email.split('@')[0] : '';
+      return email === clean || username === clean || name === clean || id === clean || emailPrefix === clean;
     });
   }
 
@@ -580,7 +581,11 @@ class MemoryDatabase {
       user.username = (user.email ? user.email.split('@')[0] : user.name.replace(/\s+/g, '')).toLowerCase();
     }
     // Update if already exists, else push
-    const existingIndex = this.data.users.findIndex(u => u.id === user.id || u.email.toLowerCase() === user.email.toLowerCase());
+    const existingIndex = this.data.users.findIndex(u => 
+      u.id === user.id || 
+      (u.email && user.email && u.email.toLowerCase() === user.email.toLowerCase()) ||
+      (u.username && user.username && u.username.toLowerCase() === user.username.toLowerCase())
+    );
     if (existingIndex >= 0) {
       this.data.users[existingIndex] = { ...this.data.users[existingIndex], ...user };
     } else {
@@ -620,7 +625,9 @@ class MemoryDatabase {
     }
     const user = this.findUserByIdentifier(userIdOrIdentifier);
     if (user) {
-      return this.data.passwords[user.id] || (user.email ? this.data.passwords[user.email.toLowerCase()] : undefined);
+      return this.data.passwords[user.id] || 
+        (user.email ? this.data.passwords[user.email.toLowerCase()] : undefined) ||
+        (user.username ? this.data.passwords[user.username.toLowerCase()] : undefined);
     }
     return undefined;
   }

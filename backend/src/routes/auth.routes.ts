@@ -25,6 +25,7 @@ const DEFAULT_PREFERENCES: UserPreferences = {
 const DEMO_USER: User = {
   id: 'demo-user-id',
   email: 'demo@vibeflow.ai',
+  username: 'demo',
   name: 'Aarav Sharma',
   avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
   role: 'user',
@@ -32,7 +33,7 @@ const DEMO_USER: User = {
   createdAt: new Date().toISOString()
 };
 
-if (!db.findUserById(DEMO_USER.id)) {
+if (!db.findUserById(DEMO_USER.id) || !db.getPasswordHash(DEMO_USER.id)) {
   db.createUser(DEMO_USER, bcrypt.hashSync('demo1234', 10));
 }
 
@@ -121,7 +122,7 @@ router.post('/login', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Invalid username/email or password' });
     }
 
-    const hash = db.getPasswordHash(user.id);
+    const hash = db.getPasswordHash(user.id) || db.getPasswordHash(identifier) || (user.email ? db.getPasswordHash(user.email) : undefined);
     if (!hash) {
       return res.status(401).json({ error: 'Invalid username/email or password' });
     }
