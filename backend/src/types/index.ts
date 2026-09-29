@@ -51,6 +51,7 @@ export interface MediaItem {
   mood: MoodCategory;
   language?: string;
   releaseYear?: number;
+  releaseDate?: string; // Complete ISO or YYYY-MM-DD date
   capabilities: PlaybackCapability[];
   streamUrl?: string;
   embedUrl?: string;

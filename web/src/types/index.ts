@@ -24,6 +24,7 @@ export interface Album {
   artist: string;
   thumbnail: string;
   releaseYear?: number;
+  releaseDate?: string; // Complete date (YYYY-MM-DD)
   trackCount?: number;
   genre?: string;
   albumUrl?: string;
@@ -73,6 +74,7 @@ export interface MediaItem {
   mood: MoodCategory;
   language?: string;
   releaseYear?: number;
+  releaseDate?: string; // Complete ISO or YYYY-MM-DD date
   capabilities: PlaybackCapability[];
   streamUrl?: string;
   embedUrl?: string;

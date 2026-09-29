@@ -306,6 +306,24 @@ export class YouTubeProviderAdapter implements ProviderAdapter {
       }
     }
 
+function parseRelativeTimeToDate(str?: string): string {
+  if (!str) return new Date().toISOString().split('T')[0];
+  const now = Date.now();
+  const m = str.match(/(\d+)\s*(second|minute|hour|day|week|month|year)/i);
+  if (!m) return new Date().toISOString().split('T')[0];
+  const n = parseInt(m[1], 10);
+  const unit = m[2].toLowerCase();
+  let ms = 0;
+  if (unit.startsWith('second')) ms = n * 1000;
+  else if (unit.startsWith('minute')) ms = n * 60 * 1000;
+  else if (unit.startsWith('hour')) ms = n * 3600 * 1000;
+  else if (unit.startsWith('day')) ms = n * 86400 * 1000;
+  else if (unit.startsWith('week')) ms = n * 7 * 86400 * 1000;
+  else if (unit.startsWith('month')) ms = n * 30 * 86400 * 1000;
+  else if (unit.startsWith('year')) ms = n * 365 * 86400 * 1000;
+  return new Date(now - ms).toISOString().split('T')[0];
+}
+
     // Live YouTube search without requiring an API key
     try {
       const queriesToSearch = [query];
@@ -360,6 +378,7 @@ export class YouTubeProviderAdapter implements ProviderAdapter {
                   else if (parts.length === 3) durSecs = parts[0] * 3600 + parts[1] * 60 + parts[2];
                 }
 
+                const pubDate = parseRelativeTimeToDate(v.publishedTimeText?.simpleText);
                 const classification = AIRecommendationService.classify(title, channel, ['youtube', 'video']);
                 const mediaItem: MediaItem = {
                   id: `yt-${v.videoId}`,
@@ -371,6 +390,8 @@ export class YouTubeProviderAdapter implements ProviderAdapter {
                   duration: durSecs,
                   genre: classification.suggestedGenre,
                   mood: classification.suggestedMood,
+                  releaseDate: pubDate,
+                  releaseYear: parseInt(pubDate.split('-')[0], 10) || 2024,
                   capabilities: ['stream_embed', 'preview_only'],
                   embedUrl: `https://www.youtube.com/embed/${v.videoId}`,
                   isOfflinePermitted: false,
@@ -400,6 +421,7 @@ export class YouTubeProviderAdapter implements ProviderAdapter {
                       else if (parts.length === 3) durSecs = parts[0] * 3600 + parts[1] * 60 + parts[2];
                     }
 
+                    const pubDate = parseRelativeTimeToDate(sv.publishedTimeText?.simpleText);
                     const classification = AIRecommendationService.classify(title, channel, ['youtube', 'video']);
                     const mediaItem: MediaItem = {
                       id: `yt-${sv.videoId}`,
@@ -411,6 +433,8 @@ export class YouTubeProviderAdapter implements ProviderAdapter {
                       duration: durSecs,
                       genre: classification.suggestedGenre,
                       mood: classification.suggestedMood,
+                      releaseDate: pubDate,
+                      releaseYear: parseInt(pubDate.split('-')[0], 10) || 2024,
                       capabilities: ['stream_embed', 'preview_only'],
                       embedUrl: `https://www.youtube.com/embed/${sv.videoId}`,
                       isOfflinePermitted: false,
@@ -502,6 +526,7 @@ export class DeezerProviderAdapter implements ProviderAdapter {
         const artwork = track.album?.cover_xl || track.album?.cover_big || track.album?.cover_medium
           || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80';
 
+        const relDate = track.album?.release_date || (track.release_date ? track.release_date : undefined);
         const mediaItem: MediaItem = {
           id: `deezer-${track.id}`,
           provider: 'deezer',
@@ -513,7 +538,8 @@ export class DeezerProviderAdapter implements ProviderAdapter {
           duration: 30, // Deezer previews are exactly 30 seconds
           genre: classification.suggestedGenre,
           mood: classification.suggestedMood,
-          releaseYear: track.album?.release_date ? new Date(track.album.release_date).getFullYear() : undefined,
+          releaseDate: relDate,
+          releaseYear: relDate ? new Date(relDate).getFullYear() : undefined,
           capabilities: ['stream_direct', 'preview_only'],
           streamUrl: track.preview, // Direct 30s MP3 preview URL
           isOfflinePermitted: false,
@@ -600,6 +626,7 @@ export class JioSaavnProviderAdapter implements ProviderAdapter {
           cleanAlbum
         );
 
+        const saavnDate = song.more_info?.release_date || (song.year ? `${song.year}-01-01` : undefined);
         const mediaItem: MediaItem = {
           id: `jiosaavn-${song.id}`,
           provider: 'jiosaavn',
@@ -612,7 +639,8 @@ export class JioSaavnProviderAdapter implements ProviderAdapter {
           genre: classification.suggestedGenre,
           mood: classification.suggestedMood,
           language: song.language ? (song.language.charAt(0).toUpperCase() + song.language.slice(1)) : 'Hindi',
-          releaseYear: song.year ? parseInt(song.year, 10) : undefined,
+          releaseDate: saavnDate,
+          releaseYear: song.year ? parseInt(song.year, 10) : (saavnDate ? new Date(saavnDate).getFullYear() : undefined),
           capabilities: ['stream_direct', 'offline_download'],
           streamUrl,
           isOfflinePermitted: true,

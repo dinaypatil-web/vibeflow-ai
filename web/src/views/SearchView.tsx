@@ -4,12 +4,13 @@ import {
   Tv2, ArrowLeft, Sparkles, ChevronRight, Youtube, Music2,
   Headphones, Waves, Globe, Users, ListMusic, Loader2,
   AudioLines, BadgeCheck, HardDrive, Layers, Filter, Check,
+  Calendar, Info, Tag, Copy, CheckCircle, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { MediaItem, Channel, Album, MediaProvider } from "../types";
 import { api } from "../services/api";
 import { usePlayerStore } from "../store/playerStore";
 import { TrackSortControl } from "../components/TrackSortControl";
-import { sortMediaItems } from "../utils/trackSort";
+import { sortMediaItems, formatCompleteDate } from "../utils/trackSort";
 import { ALBUM_SORT_OPTIONS, sortAlbums } from "../utils/albumSort";
 import { CHANNEL_SORT_OPTIONS, sortChannels } from "../utils/channelSort";
 
@@ -151,7 +152,8 @@ const deriveAlbums = (tracks: MediaItem[]): Album[] => {
     out.push({
       id: `alb-${t.id}`, providerId: t.providerId, provider: t.provider,
       title: albumTitle, artist: t.artist, thumbnail: t.thumbnail,
-      releaseYear: t.releaseYear || 2023,
+      releaseYear: t.releaseYear || (t.releaseDate ? new Date(t.releaseDate).getFullYear() : 2023),
+      releaseDate: t.releaseDate || (t.releaseYear ? `${t.releaseYear}-01-01` : undefined),
       trackCount: seeded(albumTitle, 10) + 4, genre: t.genre,
     });
   }
@@ -171,38 +173,221 @@ const ProviderBadge: React.FC<{ provider: MediaProvider; size?: "sm" | "xs" }> =
 
 const TrackRow: React.FC<{ track: MediaItem; queueContext?: MediaItem[]; onAddToPlaylist?: (t: MediaItem) => void }> = ({ track, queueContext, onAddToPlaylist }) => {
   const { currentTrack, isPlaying, playTrack, togglePlay, favorites, toggleFavorite } = usePlayerStore();
+  const [showDetails, setShowDetails] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState(false);
+
   const isCurrent = currentTrack?.id === track.id;
   const playing = isCurrent && isPlaying;
   const isFav = favorites.includes(track.id);
-  const handlePlay = (e: React.MouseEvent) => { e.stopPropagation(); if (isCurrent) togglePlay(); else playTrack(track, queueContext); };
+
+  const handlePlay = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isCurrent) togglePlay();
+    else playTrack(track, queueContext);
+  };
+
+  const handleCopyUrl = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const url = track.streamUrl || track.embedUrl || `https://www.youtube.com/watch?v=${track.providerId}`;
+    navigator.clipboard.writeText(url);
+    setCopiedUrl(true);
+    setTimeout(() => setCopiedUrl(false), 2000);
+  };
+
+  const formattedDate = formatCompleteDate(track);
+
+  // Capability badge description
+  const capabilityLabel = useMemo(() => {
+    if (track.capabilities.includes('stream_direct') && track.duration > 40) return 'Direct Full Audio';
+    if (track.capabilities.includes('stream_embed')) return 'Video Embed';
+    if (track.capabilities.includes('preview_only')) return '30s Preview';
+    if (track.isLocal) return 'Local Audio';
+    return 'Stream Audio';
+  }, [track]);
+
   return (
-    <div className={`flex items-center gap-3 p-3 rounded-xl transition-all cursor-pointer group ${isCurrent ? "bg-brand-500/10 border border-brand-500/30" : "hover:bg-surface-800/60 border border-transparent hover:border-white/5"}`} onClick={handlePlay}>
-      <div className="relative shrink-0 w-12 h-12 rounded-lg overflow-hidden bg-surface-850">
-        <img src={track.thumbnail} alt={track.title} className="w-full h-full object-cover" loading="lazy" />
-        <div className={`absolute inset-0 bg-black/50 flex items-center justify-center transition-opacity ${playing ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
-          <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-brand-600 to-accent-cyan flex items-center justify-center shadow-lg">
-            {playing ? <Pause className="w-3.5 h-3.5 text-white fill-current" /> : <Play className="w-3.5 h-3.5 text-white fill-current translate-x-0.5" />}
+    <div className={`rounded-xl transition-all border ${isCurrent ? "bg-brand-500/10 border-brand-500/30" : "hover:bg-surface-800/60 border-transparent hover:border-white/5"}`}>
+      <div className="flex items-center gap-3 p-3 cursor-pointer group" onClick={handlePlay}>
+        <div className="relative shrink-0 w-12 h-12 rounded-lg overflow-hidden bg-surface-850">
+          <img src={track.thumbnail} alt={track.title} className="w-full h-full object-cover" loading="lazy" />
+          <div className={`absolute inset-0 bg-black/50 flex items-center justify-center transition-opacity ${playing ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
+            <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-brand-600 to-accent-cyan flex items-center justify-center shadow-lg">
+              {playing ? <Pause className="w-3.5 h-3.5 text-white fill-current" /> : <Play className="w-3.5 h-3.5 text-white fill-current translate-x-0.5" />}
+            </div>
           </div>
         </div>
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className={`text-sm font-semibold truncate ${isCurrent ? "text-brand-300" : "text-slate-100 group-hover:text-brand-300 transition-colors"}`}>{track.title}</p>
-        <p className="text-xs text-slate-400 truncate">{track.artist}</p>
-        <div className="flex items-center gap-1.5 mt-0.5">
-          <ProviderBadge provider={track.provider} />
-          <span className="text-[10px] text-slate-500">{formatDuration(track.duration)}</span>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className={`text-sm font-semibold truncate ${isCurrent ? "text-brand-300" : "text-slate-100 group-hover:text-brand-300 transition-colors"}`}>{track.title}</p>
+          </div>
+          
+          <div className="flex items-center gap-2 text-xs text-slate-400 truncate mt-0.5">
+            <span className="font-medium text-slate-300">{track.artist}</span>
+            {track.album && (
+              <>
+                <span className="text-slate-600">•</span>
+                <span className="flex items-center gap-1 text-slate-400 truncate">
+                  <Disc3 className="w-3 h-3 text-slate-500 shrink-0" />
+                  <span className="truncate">{track.album}</span>
+                </span>
+              </>
+            )}
+          </div>
+
+          {/* All Details Badges Line */}
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            <ProviderBadge provider={track.provider} />
+            <span className="text-[10px] text-slate-400 bg-surface-800 px-1.5 py-0.5 rounded flex items-center gap-1">
+              <Calendar className="w-2.5 h-2.5 text-brand-400" />
+              <span>{formattedDate}</span>
+            </span>
+            <span className="text-[10px] text-slate-500">{formatDuration(track.duration)}</span>
+            <span className="text-[10px] text-brand-300 bg-brand-950/60 border border-brand-500/20 px-1.5 py-0.5 rounded">
+              {track.genre}
+            </span>
+            <span className="text-[10px] text-slate-400 bg-surface-800 px-1.5 py-0.5 rounded hidden sm:inline">
+              {track.mood}
+            </span>
+            <span className="text-[9px] text-cyan-400 bg-cyan-950/40 border border-cyan-500/20 px-1.5 py-0.5 rounded font-mono hidden md:inline">
+              {capabilityLabel}
+            </span>
+            {track.language && (
+              <span className="text-[10px] text-slate-400 bg-surface-800 px-1 py-0.5 rounded hidden lg:inline">
+                {track.language}
+              </span>
+            )}
+            {track.attributionNote && (
+              <span className="text-[10px] text-accent-cyan bg-cyan-950/40 px-1.5 py-0.5 rounded truncate max-w-[150px]">
+                {track.attributionNote}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1 shrink-0">
+          {/* Details toggle button */}
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowDetails(prev => !prev); }}
+            className={`p-2 rounded-lg transition-colors flex items-center gap-1 text-xs ${showDetails ? "text-brand-300 bg-brand-500/20" : "text-slate-400 hover:text-slate-200 hover:bg-surface-750"}`}
+            title="Show all track details"
+          >
+            <Info className="w-4 h-4" />
+            <span className="hidden xl:inline text-[11px] font-medium">Details</span>
+            {showDetails ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          </button>
+
+          <button onClick={(e) => { e.stopPropagation(); toggleFavorite(track.id); }} className={`p-2 rounded-lg transition-colors ${isFav ? "text-accent-rose" : "text-slate-500 hover:text-slate-200 hover:bg-surface-750"}`} title="Favorite">
+            <Heart className={`w-4 h-4 ${isFav ? "fill-accent-rose" : ""}`} />
+          </button>
+          {onAddToPlaylist && (
+            <button onClick={(e) => { e.stopPropagation(); onAddToPlaylist(track); }} className="p-2 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-surface-750 transition-colors" title="Add to playlist">
+              <Plus className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
-      <div className="flex items-center gap-1 shrink-0">
-        <button onClick={(e) => { e.stopPropagation(); toggleFavorite(track.id); }} className={`p-2 rounded-lg transition-colors ${isFav ? "text-accent-rose" : "text-slate-500 hover:text-slate-200 hover:bg-surface-750"}`} title="Favorite">
-          <Heart className={`w-4 h-4 ${isFav ? "fill-accent-rose" : ""}`} />
-        </button>
-        {onAddToPlaylist && (
-          <button onClick={(e) => { e.stopPropagation(); onAddToPlaylist(track); }} className="p-2 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-surface-750 transition-colors" title="Add to playlist">
-            <Plus className="w-4 h-4" />
-          </button>
-        )}
-      </div>
+
+      {/* Expanded Complete Track Details Card */}
+      {showDetails && (
+        <div className="mx-3 mb-3 p-4 rounded-xl bg-surface-900/90 border border-white/10 text-xs space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center justify-between border-b border-white/5 pb-2">
+            <span className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+              <Info className="w-3.5 h-3.5 text-brand-400" /> Complete Track Specifications & Metadata
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleCopyUrl}
+                className="flex items-center gap-1 px-2.5 py-1 rounded bg-surface-800 hover:bg-surface-750 text-slate-300 transition-colors text-[11px]"
+                title="Copy stream or video URL"
+              >
+                {copiedUrl ? <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
+                <span>{copiedUrl ? "Copied URL!" : "Copy Stream URL"}</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div>
+              <span className="text-slate-500 block text-[10px] uppercase">Title & Artist</span>
+              <span className="font-semibold text-slate-200">{track.title}</span>
+              <span className="text-slate-400 block">{track.artist}</span>
+            </div>
+
+            <div>
+              <span className="text-slate-500 block text-[10px] uppercase">Album</span>
+              <span className="text-slate-200 font-medium">{track.album || "Single / Non-Album Release"}</span>
+            </div>
+
+            <div>
+              <span className="text-slate-500 block text-[10px] uppercase">Complete Release Date</span>
+              <span className="text-emerald-400 font-medium flex items-center gap-1 mt-0.5">
+                <Calendar className="w-3 h-3" />
+                {track.releaseDate ? track.releaseDate : (track.releaseYear ? `Year ${track.releaseYear}` : 'Recent')}
+              </span>
+            </div>
+
+            <div>
+              <span className="text-slate-500 block text-[10px] uppercase">Duration</span>
+              <span className="text-slate-200">{formatDuration(track.duration)} ({track.duration} seconds)</span>
+            </div>
+
+            <div>
+              <span className="text-slate-500 block text-[10px] uppercase">Source & Platform ID</span>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <ProviderBadge provider={track.provider} />
+                <span className="font-mono text-slate-300 text-[11px] truncate">{track.providerId}</span>
+              </div>
+            </div>
+
+            <div>
+              <span className="text-slate-500 block text-[10px] uppercase">Internal Track ID</span>
+              <span className="font-mono text-slate-400 text-[11px] select-all truncate block">{track.id}</span>
+            </div>
+
+            <div>
+              <span className="text-slate-500 block text-[10px] uppercase">Genre & Mood</span>
+              <span className="text-slate-200">{track.genre} • {track.mood}</span>
+              {track.confidenceScore && (
+                <span className="text-[10px] text-slate-500 block">AI Match Confidence: {Math.round(track.confidenceScore * 100)}%</span>
+              )}
+            </div>
+
+            <div>
+              <span className="text-slate-500 block text-[10px] uppercase">Audio Capabilities</span>
+              <span className="text-slate-300">{track.capabilities.join(", ")}</span>
+              <span className="text-[10px] text-slate-500 block">{track.isOfflinePermitted ? "Offline Caching Permitted" : "Live Streaming Protocol"}</span>
+            </div>
+
+            <div>
+              <span className="text-slate-500 block text-[10px] uppercase">Catalog Metrics & Plays</span>
+              <span className="text-slate-200">{track.playbackCount ? `${track.playbackCount.toLocaleString()} plays` : 'Catalog Track'}</span>
+              <span className="text-[10px] text-slate-500 block">{track.language ? `Language: ${track.language}` : "Global Audio"}</span>
+            </div>
+          </div>
+
+          {/* Tags */}
+          {track.tags && track.tags.length > 0 && (
+            <div className="pt-2 border-t border-white/5 flex items-center gap-1.5 flex-wrap">
+              <Tag className="w-3 h-3 text-slate-500" />
+              <span className="text-[10px] text-slate-500">Tags:</span>
+              {track.tags.map(t => (
+                <span key={t} className="text-[10px] px-1.5 py-0.5 rounded bg-surface-800 text-slate-400">
+                  #{t}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Attribution */}
+          {track.attributionNote && (
+            <div className="pt-2 border-t border-white/5 text-[11px] text-slate-400">
+              <span className="text-slate-500">Attribution: </span>
+              <span className="text-brand-300">{track.attributionNote}</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -226,23 +411,29 @@ const ChannelCard: React.FC<{ channel: Channel; onClick: (c: Channel) => void }>
   </div>
 );
 
-const AlbumCard: React.FC<{ album: Album; onClick: (a: Album) => void }> = ({ album, onClick }) => (
-  <div onClick={() => onClick(album)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-surface-800/60 border border-transparent hover:border-brand-500/20 cursor-pointer transition-all group">
-    <div className="relative shrink-0 w-14 h-14 rounded-xl overflow-hidden bg-surface-850">
-      <img src={album.thumbnail} alt={album.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
-    </div>
-    <div className="flex-1 min-w-0">
-      <p className="text-sm font-semibold text-slate-100 truncate group-hover:text-brand-300 transition-colors">{album.title}</p>
-      <p className="text-xs text-slate-400 truncate">{album.artist}</p>
-      <div className="flex items-center gap-3 mt-1">
-        {album.releaseYear && <span className="text-[11px] text-slate-500">{album.releaseYear}</span>}
-        {album.trackCount && <span className="flex items-center gap-1 text-[11px] text-slate-500"><Music className="w-3 h-3" /> {album.trackCount} tracks</span>}
-        <ProviderBadge provider={album.provider} />
+const AlbumCard: React.FC<{ album: Album; onClick: (a: Album) => void }> = ({ album, onClick }) => {
+  const dateDisplay = album.releaseDate
+    ? new Date(album.releaseDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    : (album.releaseYear ? String(album.releaseYear) : undefined);
+
+  return (
+    <div onClick={() => onClick(album)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-surface-800/60 border border-transparent hover:border-brand-500/20 cursor-pointer transition-all group">
+      <div className="relative shrink-0 w-14 h-14 rounded-xl overflow-hidden bg-surface-850">
+        <img src={album.thumbnail} alt={album.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
       </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-slate-100 truncate group-hover:text-brand-300 transition-colors">{album.title}</p>
+        <p className="text-xs text-slate-400 truncate">{album.artist}</p>
+        <div className="flex items-center gap-3 mt-1">
+          {dateDisplay && <span className="flex items-center gap-1 text-[11px] text-slate-400"><Calendar className="w-3 h-3 text-brand-400" /> {dateDisplay}</span>}
+          {album.trackCount && <span className="flex items-center gap-1 text-[11px] text-slate-500"><Music className="w-3 h-3" /> {album.trackCount} tracks</span>}
+          <ProviderBadge provider={album.provider} />
+        </div>
+      </div>
+      <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-brand-400 transition-colors shrink-0" />
     </div>
-    <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-brand-400 transition-colors shrink-0" />
-  </div>
-);
+  );
+};
 
 const EmptyState: React.FC<{ icon: React.ReactNode; message: string; sub: string }> = ({ icon, message, sub }) => (
   <div className="py-14 flex flex-col items-center text-center space-y-3 bg-surface-850/50 rounded-2xl border border-white/5">

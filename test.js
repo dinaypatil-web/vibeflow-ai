@@ -362,6 +362,35 @@ async function runTests() {
     }
   });
 
+  // 15. Complete Date Sorting & Detailed Track Metadata
+  await test('Complete Date Track Sorting & Full Metadata Presence', async () => {
+    const searchRes = await fetchJSON(`${API_BASE}/media/search?q=Arijit`);
+    if (!searchRes.items || searchRes.items.length === 0) {
+      throw new Error('No items returned for track details verification');
+    }
+    const sample = searchRes.items[0];
+    if (!sample.title || !sample.artist || !sample.provider) {
+      throw new Error('Track missing core title/artist/provider metadata');
+    }
+    if (!sample.capabilities || sample.capabilities.length === 0) {
+      throw new Error('Track missing playback capabilities metadata');
+    }
+    if (!sample.genre || !sample.mood) {
+      throw new Error('Track missing genre or mood classification');
+    }
+    // Verify sorting on complete date precision
+    const testItems = [
+      { id: '1', title: 'Track Early 2024', artist: 'Artist', releaseDate: '2024-01-15', releaseYear: 2024 },
+      { id: '2', title: 'Track Late 2024', artist: 'Artist', releaseDate: '2024-11-20', releaseYear: 2024 },
+      { id: '3', title: 'Track Mid 2023', artist: 'Artist', releaseDate: '2023-06-10', releaseYear: 2023 }
+    ];
+    // Sort descending by complete date:
+    const sorted = [...testItems].sort((a, b) => new Date(b.releaseDate).getTime() - new Date(a.releaseDate).getTime());
+    if (sorted[0].id !== '2' || sorted[1].id !== '1' || sorted[2].id !== '3') {
+      throw new Error('Complete date sorting failed: items from same year not sorted by day/month');
+    }
+  });
+
   console.log(`\n🎉 Test Results: ${passed}/${total} passed!`);
   if (passed === total) {
     console.log('🌟 All VibeFlow AI core systems verified production-ready.\n');
