@@ -3,13 +3,110 @@ import {
   Search, X, Play, Pause, Plus, Heart, Music, Disc3, Radio,
   Tv2, ArrowLeft, Sparkles, ChevronRight, Youtube, Music2,
   Headphones, Waves, Globe, Users, ListMusic, Loader2,
-  AudioLines, BadgeCheck,
+  AudioLines, BadgeCheck, HardDrive, Layers, Filter, Check,
 } from "lucide-react";
 import { MediaItem, Channel, Album, MediaProvider } from "../types";
 import { api } from "../services/api";
 import { usePlayerStore } from "../store/playerStore";
 import { TrackSortControl } from "../components/TrackSortControl";
 import { sortMediaItems } from "../utils/trackSort";
+
+export type SourceFilterId = 'all' | 'youtube' | 'spotify' | 'jiosaavn' | 'deezer' | 'soundcloud' | 'local';
+
+export interface SourceMeta {
+  id: SourceFilterId;
+  label: string;
+  shortLabel: string;
+  icon: React.ComponentType<{ className?: string }>;
+  color: string;
+  activeClass: string;
+  badgeClass: string;
+  dotColor: string;
+}
+
+export const SOURCES: SourceMeta[] = [
+  {
+    id: 'all',
+    label: 'All Sources',
+    shortLabel: 'All',
+    icon: Layers,
+    color: 'text-brand-300',
+    activeClass: 'bg-gradient-to-r from-brand-600 to-accent-cyan text-white shadow-brand-500/25 shadow-md border-transparent',
+    badgeClass: 'bg-white/20 text-white',
+    dotColor: '#06B6D4',
+  },
+  {
+    id: 'youtube',
+    label: 'YouTube',
+    shortLabel: 'YouTube',
+    icon: Youtube,
+    color: 'text-red-400',
+    activeClass: 'bg-red-600 text-white shadow-red-500/25 shadow-md border-red-500',
+    badgeClass: 'bg-white/20 text-white',
+    dotColor: '#EF4444',
+  },
+  {
+    id: 'spotify',
+    label: 'Spotify',
+    shortLabel: 'Spotify',
+    icon: Waves,
+    color: 'text-[#1DB954]',
+    activeClass: 'bg-[#1DB954] text-black font-bold shadow-[#1DB954]/25 shadow-md border-[#1DB954]',
+    badgeClass: 'bg-black/20 text-black',
+    dotColor: '#1DB954',
+  },
+  {
+    id: 'jiosaavn',
+    label: 'JioSaavn',
+    shortLabel: 'JioSaavn',
+    icon: Music2,
+    color: 'text-blue-400',
+    activeClass: 'bg-blue-600 text-white shadow-blue-500/25 shadow-md border-blue-500',
+    badgeClass: 'bg-white/20 text-white',
+    dotColor: '#3B82F6',
+  },
+  {
+    id: 'deezer',
+    label: 'Deezer',
+    shortLabel: 'Deezer',
+    icon: Headphones,
+    color: 'text-purple-300',
+    activeClass: 'bg-[#A238FF] text-white shadow-[#A238FF]/25 shadow-md border-[#A238FF]',
+    badgeClass: 'bg-white/20 text-white',
+    dotColor: '#A238FF',
+  },
+  {
+    id: 'soundcloud',
+    label: 'SoundCloud',
+    shortLabel: 'SoundCloud',
+    icon: Globe,
+    color: 'text-orange-400',
+    activeClass: 'bg-orange-500 text-white shadow-orange-500/25 shadow-md border-orange-500',
+    badgeClass: 'bg-white/20 text-white',
+    dotColor: '#F97316',
+  },
+  {
+    id: 'local',
+    label: 'Local Library',
+    shortLabel: 'Local',
+    icon: HardDrive,
+    color: 'text-cyan-300',
+    activeClass: 'bg-cyan-600 text-white shadow-cyan-500/25 shadow-md border-cyan-500',
+    badgeClass: 'bg-white/20 text-white',
+    dotColor: '#06B6D4',
+  },
+];
+
+const matchSource = (item: MediaItem, source: SourceFilterId): boolean => {
+  if (source === 'all') return true;
+  if (source === 'youtube') return item.provider === 'youtube';
+  if (source === 'spotify') return item.provider === 'spotify';
+  if (source === 'jiosaavn') return item.provider === 'jiosaavn';
+  if (source === 'deezer') return item.provider === 'deezer';
+  if (source === 'soundcloud') return item.provider === 'soundcloud' || item.provider === 'jamendo' || item.provider === 'public_domain';
+  if (source === 'local') return item.provider === 'local';
+  return false;
+};
 
 const formatDuration = (secs: number) => {
   if (!secs) return "0:00";
@@ -66,6 +163,7 @@ const ProviderBadge: React.FC<{ provider: MediaProvider; size?: "sm" | "xs" }> =
   if (provider === "deezer") return <span className={`${cls} rounded-md text-white font-bold flex items-center gap-1`} style={{ backgroundColor: "#A238FF" }}><Headphones className="w-3 h-3" /><span>Deezer</span></span>;
   if (provider === "spotify") return <span className={`${cls} rounded-md bg-[#1DB954]/90 text-black font-bold flex items-center gap-1`}><Waves className="w-3 h-3" /><span>Spotify</span></span>;
   if (provider === "soundcloud") return <span className={`${cls} rounded-md bg-orange-500/90 text-white font-bold flex items-center gap-1`}><Globe className="w-3 h-3" /><span>SC</span></span>;
+  if (provider === "local") return <span className={`${cls} rounded-md bg-cyan-700/90 text-white font-bold flex items-center gap-1`}><HardDrive className="w-3 h-3" /><span>Local</span></span>;
   return <span className={`${cls} rounded-md bg-surface-700 text-slate-300 font-bold flex items-center gap-1`}><Radio className="w-3 h-3" /><span>Open</span></span>;
 };
 
@@ -248,9 +346,9 @@ interface SearchViewProps {
 export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
   const [query, setQuery] = useState("");
   const [activeTab, setActiveTab] = useState<SearchTab>("tracks");
+  const [selectedSource, setSelectedSource] = useState<SourceFilterId>("all");
+  const [loadingSource, setLoadingSource] = useState<SourceFilterId | null>(null);
   const [tracks, setTracks] = useState<MediaItem[]>([]);
-  const [channels, setChannels] = useState<Channel[]>([]);
-  const [albums, setAlbums] = useState<Album[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [semanticHint, setSemanticHint] = useState<string | null>(null);
@@ -259,18 +357,64 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
   const [sortOption, setSortOption] = useState<string>('default');
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Compute live match count per source
+  const sourceCounts = useMemo(() => {
+    const counts: Record<SourceFilterId, number> = {
+      all: tracks.length,
+      youtube: 0,
+      spotify: 0,
+      jiosaavn: 0,
+      deezer: 0,
+      soundcloud: 0,
+      local: 0,
+    };
+    for (const t of tracks) {
+      for (const s of SOURCES) {
+        if (s.id !== 'all' && matchSource(t, s.id)) {
+          counts[s.id] = (counts[s.id] || 0) + 1;
+        }
+      }
+    }
+    return counts;
+  }, [tracks]);
+
+  // Filter items by selected source
+  const sourceFilteredTracks = useMemo(() => {
+    if (selectedSource === 'all') return tracks;
+    return tracks.filter(t => matchSource(t, selectedSource));
+  }, [tracks, selectedSource]);
+
+  const sourceFilteredAlbums = useMemo(() => {
+    return deriveAlbums(sourceFilteredTracks);
+  }, [sourceFilteredTracks]);
+
+  const sourceFilteredChannels = useMemo(() => {
+    return deriveChannels(sourceFilteredTracks);
+  }, [sourceFilteredTracks]);
+
   const sortedTracks = useMemo(() => {
-    return sortMediaItems(tracks, sortOption);
-  }, [tracks, sortOption]);
+    return sortMediaItems(sourceFilteredTracks, sortOption);
+  }, [sourceFilteredTracks, sortOption]);
+
+  const activeSourceMeta = useMemo(() => {
+    return SOURCES.find(s => s.id === selectedSource) || SOURCES[0];
+  }, [selectedSource]);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
-  const performSearch = useCallback(async (q: string) => {
+  const performSearch = useCallback(async (q: string, targetSource?: SourceFilterId) => {
     if (!q.trim()) return;
+    const effectiveSource = targetSource !== undefined ? targetSource : selectedSource;
     setLoading(true); setHasSearched(true); setSelectedChannel(null); setSelectedAlbum(null); setSemanticHint(null);
     try {
-      const trackResults = await api.search(q.trim());
-      setTracks(trackResults); setChannels(deriveChannels(trackResults)); setAlbums(deriveAlbums(trackResults));
+      let trackResults: MediaItem[] = [];
+      if (effectiveSource !== 'all') {
+        const prov = effectiveSource === 'soundcloud' ? 'soundcloud' : (effectiveSource as MediaProvider);
+        trackResults = await api.search(q.trim(), prov);
+      } else {
+        trackResults = await api.search(q.trim());
+      }
+      setTracks(trackResults);
       if (q.trim().split(/\s+/).length >= 3) {
         try {
           const nlp = await api.naturalLanguageSearch(q.trim());
@@ -279,31 +423,71 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
       }
     } catch (err) { console.error("SearchView error:", err); }
     finally { setLoading(false); }
-  }, []);
+  }, [selectedSource]);
+
+  const fetchDedicatedProviderResults = useCallback(async (src: SourceFilterId) => {
+    if (!query.trim() || src === 'all') return;
+    setLoadingSource(src);
+    try {
+      const providerParam = src === 'soundcloud' ? 'soundcloud' : (src as MediaProvider);
+      const newItems = await api.search(query.trim(), providerParam);
+      if (newItems.length > 0) {
+        setTracks(prev => {
+          const map = new Map<string, MediaItem>();
+          for (const item of [...newItems, ...prev]) {
+            map.set(item.id, item);
+          }
+          return Array.from(map.values());
+        });
+      }
+    } catch (e) {
+      console.error('Failed to fetch provider results:', e);
+    } finally {
+      setLoadingSource(null);
+    }
+  }, [query]);
+
+  const handleSourceTabClick = useCallback((src: SourceFilterId) => {
+    setSelectedSource(src);
+    // If user clicked a source tab that has 0 results in current cache and there's a query, fetch it directly
+    if (src !== 'all' && (sourceCounts[src] || 0) === 0 && query.trim()) {
+      fetchDedicatedProviderResults(src);
+    }
+  }, [sourceCounts, query, fetchDedicatedProviderResults]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") performSearch(query); };
 
   const clearSearch = () => {
-    setQuery(""); setTracks([]); setChannels([]); setAlbums([]);
+    setQuery(""); setTracks([]); setSelectedSource("all");
     setHasSearched(false); setSemanticHint(null); setSelectedChannel(null); setSelectedAlbum(null);
     inputRef.current?.focus();
   };
 
-  if (selectedChannel) return <div className="pb-4"><ChannelDetailPanel channel={selectedChannel} allTracks={tracks} onBack={() => setSelectedChannel(null)} onAddToPlaylist={onAddToPlaylist} /></div>;
-  if (selectedAlbum) return <div className="pb-4"><AlbumDetailPanel album={selectedAlbum} allTracks={tracks} onBack={() => setSelectedAlbum(null)} onAddToPlaylist={onAddToPlaylist} /></div>;
+  if (selectedChannel) return <div className="pb-4"><ChannelDetailPanel channel={selectedChannel} allTracks={sourceFilteredTracks} onBack={() => setSelectedChannel(null)} onAddToPlaylist={onAddToPlaylist} /></div>;
+  if (selectedAlbum) return <div className="pb-4"><AlbumDetailPanel album={selectedAlbum} allTracks={sourceFilteredTracks} onBack={() => setSelectedAlbum(null)} onAddToPlaylist={onAddToPlaylist} /></div>;
 
   const tabConfig: { id: SearchTab; label: string; icon: React.ReactNode; count: number }[] = [
-    { id: "tracks", label: "Tracks", icon: <Music className="w-4 h-4" />, count: tracks.length },
-    { id: "albums", label: "Albums", icon: <Disc3 className="w-4 h-4" />, count: albums.length },
-    { id: "channels", label: "Channels", icon: <Tv2 className="w-4 h-4" />, count: channels.length },
+    { id: "tracks", label: "Tracks", icon: <Music className="w-4 h-4" />, count: sourceFilteredTracks.length },
+    { id: "albums", label: "Albums", icon: <Disc3 className="w-4 h-4" />, count: sourceFilteredAlbums.length },
+    { id: "channels", label: "Channels", icon: <Tv2 className="w-4 h-4" />, count: sourceFilteredChannels.length },
   ];
 
   return (
     <div className="space-y-5 pb-4 animate-in fade-in duration-300">
-      <div className="flex items-center gap-2">
-        <Search className="w-5 h-5 text-brand-400" />
-        <h2 className="text-xl font-bold text-white tracking-tight">Search</h2>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Search className="w-5 h-5 text-brand-400" />
+          <h2 className="text-xl font-bold text-white tracking-tight">Search</h2>
+        </div>
+        {hasSearched && (
+          <div className="flex items-center gap-1.5 text-xs text-slate-400">
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: activeSourceMeta.dotColor }} />
+            <span className="font-medium text-slate-300">{activeSourceMeta.label}</span>
+          </div>
+        )}
       </div>
+
+      {/* Main Search Input */}
       <div className="relative">
         <Search className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
         <input
@@ -320,6 +504,8 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
           </button>
         </div>
       </div>
+
+      {/* Spotify Link Notice */}
       {query.includes('spotify.com') && (
         <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#1DB954]/15 border border-[#1DB954]/30 text-xs text-[#1DB954]">
           <Waves className="w-4 h-4 shrink-0" />
@@ -327,68 +513,299 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
           <span className="text-slate-300">Click Search or press Enter to extract tracks and play!</span>
         </div>
       )}
+
+      {/* AI Semantic Hint */}
       {semanticHint && (
         <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-brand-950/40 border border-brand-500/25 text-xs text-brand-200">
           <Sparkles className="w-4 h-4 text-brand-400 shrink-0 mt-0.5" />
           <div><span className="font-semibold text-white">AI: </span><span>{semanticHint}</span></div>
         </div>
       )}
+
+      {/* Initial Landing State */}
       {!hasSearched && !loading && (
-        <div className="py-14 text-center space-y-4">
-          <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-brand-600/20 to-accent-cyan/20 border border-brand-500/20 flex items-center justify-center mx-auto">
-            <Search className="w-9 h-9 text-brand-400 opacity-70" />
+        <div className="py-10 space-y-6">
+          {/* Pre-search Source Filter Selectors */}
+          <div className="bg-surface-850/60 p-4 rounded-2xl border border-white/5 space-y-2.5">
+            <div className="flex items-center gap-2 text-xs font-semibold text-slate-300 uppercase tracking-wider">
+              <Filter className="w-3.5 h-3.5 text-brand-400" />
+              <span>Search Source Preference</span>
+            </div>
+            <p className="text-xs text-slate-400">
+              Choose a specific music platform or search across all connected sources at once:
+            </p>
+            <div className="flex flex-wrap gap-2 pt-1">
+              {SOURCES.map(source => {
+                const Icon = source.icon;
+                const isSelected = selectedSource === source.id;
+                return (
+                  <button
+                    key={source.id}
+                    onClick={() => setSelectedSource(source.id)}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${
+                      isSelected
+                        ? `${source.activeClass} shadow-md`
+                        : 'bg-surface-800 text-slate-300 hover:bg-surface-750 border-white/5 hover:border-white/10'
+                    }`}
+                  >
+                    <Icon className={`w-3.5 h-3.5 ${isSelected ? '' : source.color}`} />
+                    <span>{source.label}</span>
+                    {isSelected && <Check className="w-3 h-3 ml-0.5" />}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <div>
-            <h3 className="text-base font-semibold text-slate-200">Find anything</h3>
-            <p className="text-sm text-slate-500 mt-1">Search tracks, albums, or channels across Spotify, YouTube, JioSaavn, Deezer & Local</p>
-          </div>
-          <div className="flex flex-wrap justify-center gap-2 pt-2">
-            {["Arijit Singh", "Spotify Hits", "Kesariya", "Lo-Fi Chill", "Daft Punk", "Ed Sheeran"].map(s => (
-              <button key={s} onClick={() => { setQuery(s); performSearch(s); }} className="px-3 py-1.5 rounded-full bg-surface-800 border border-white/8 text-xs text-slate-300 hover:bg-surface-750 hover:border-brand-500/30 hover:text-brand-300 transition-all">{s}</button>
-            ))}
+
+          <div className="py-6 text-center space-y-4">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-brand-600/20 to-accent-cyan/20 border border-brand-500/20 flex items-center justify-center mx-auto">
+              <Search className="w-8 h-8 text-brand-400 opacity-70" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-slate-200">Find anything</h3>
+              <p className="text-sm text-slate-500 mt-1">Search tracks, albums, or channels across Spotify, YouTube, JioSaavn, Deezer & Local</p>
+            </div>
+            <div className="flex flex-wrap justify-center gap-2 pt-2">
+              {["Arijit Singh", "Spotify Hits", "Kesariya", "Lo-Fi Chill", "Daft Punk", "Ed Sheeran"].map(s => (
+                <button
+                  key={s}
+                  onClick={() => {
+                    setQuery(s);
+                    performSearch(s);
+                  }}
+                  className="px-3 py-1.5 rounded-full bg-surface-800 border border-white/8 text-xs text-slate-300 hover:bg-surface-750 hover:border-brand-500/30 hover:text-brand-300 transition-all"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
+
+      {/* Loading Skeleton */}
       {loading && (
-        <div className="space-y-3 animate-pulse">
-          <div className="flex gap-2">{[1,2,3].map(i => <div key={i} className="h-9 w-24 rounded-xl bg-surface-800" />)}</div>
-          {[1,2,3,4,5].map(i => (
+        <div className="space-y-4 animate-pulse">
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <div key={i} className="h-9 w-24 rounded-xl bg-surface-800 shrink-0" />
+            ))}
+          </div>
+          {[1, 2, 3, 4, 5].map(i => (
             <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-surface-850/50">
               <div className="w-12 h-12 rounded-lg bg-surface-800 shrink-0" />
-              <div className="flex-1 space-y-2"><div className="h-3.5 bg-surface-800 rounded-full w-3/4" /><div className="h-3 bg-surface-800 rounded-full w-1/2" /></div>
+              <div className="flex-1 space-y-2">
+                <div className="h-3.5 bg-surface-800 rounded-full w-3/4" />
+                <div className="h-3 bg-surface-800 rounded-full w-1/2" />
+              </div>
             </div>
           ))}
         </div>
       )}
+
+      {/* Search Results with Source Tabs */}
       {hasSearched && !loading && (
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Source Filter Tabs Row */}
+          <div className="bg-surface-850/70 p-3 rounded-2xl border border-white/5 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Filter className="w-3.5 h-3.5 text-brand-400" />
+                <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                  Filter by Source
+                </span>
+                <span className="text-[11px] text-slate-500 hidden sm:inline">
+                  (Click any source tab to filter results)
+                </span>
+              </div>
+              {selectedSource !== 'all' && (
+                <button
+                  onClick={() => setSelectedSource('all')}
+                  className="text-xs text-brand-400 hover:text-brand-300 font-medium transition-colors flex items-center gap-1"
+                >
+                  <X className="w-3 h-3" />
+                  Show all sources ({tracks.length})
+                </button>
+              )}
+            </div>
+
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+              {SOURCES.map(source => {
+                const Icon = source.icon;
+                const count = sourceCounts[source.id] || 0;
+                const isSelected = selectedSource === source.id;
+                const isLoadingThis = loadingSource === source.id;
+                return (
+                  <button
+                    key={source.id}
+                    onClick={() => handleSourceTabClick(source.id)}
+                    className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold shrink-0 transition-all border ${
+                      isSelected
+                        ? `${source.activeClass} shadow-md`
+                        : 'bg-surface-800/80 hover:bg-surface-750 text-slate-400 hover:text-slate-200 border-white/5 hover:border-white/10'
+                    }`}
+                  >
+                    <Icon className={`w-3.5 h-3.5 ${isSelected ? '' : source.color}`} />
+                    <span>{source.label}</span>
+                    <span
+                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                        isSelected
+                          ? source.badgeClass
+                          : count > 0
+                          ? 'bg-surface-700 text-slate-300'
+                          : 'bg-surface-800 text-slate-600'
+                      }`}
+                    >
+                      {isLoadingThis ? <Loader2 className="w-2.5 h-2.5 animate-spin inline" /> : count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Sub-Tabs (Tracks / Albums / Channels) and Sort Control */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
             <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
               {tabConfig.map(tab => (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold shrink-0 transition-all ${activeTab === tab.id ? "bg-brand-600 text-white shadow-md shadow-brand-500/30" : "text-slate-400 hover:text-slate-200 hover:bg-surface-800"}`}>
-                  {tab.icon}<span>{tab.label}</span>
-                  {tab.count > 0 && <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === tab.id ? "bg-white/20" : "bg-surface-750 text-slate-400"}`}>{tab.count}</span>}
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold shrink-0 transition-all ${
+                    activeTab === tab.id
+                      ? "bg-brand-600 text-white shadow-md shadow-brand-500/30"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-surface-800"
+                  }`}
+                >
+                  {tab.icon}
+                  <span>{tab.label}</span>
+                  {tab.count > 0 && (
+                    <span
+                      className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full ${
+                        activeTab === tab.id ? "bg-white/20" : "bg-surface-750 text-slate-400"
+                      }`}
+                    >
+                      {tab.count}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
 
-            {activeTab === 'tracks' && tracks.length > 1 && (
+            {activeTab === 'tracks' && sourceFilteredTracks.length > 1 && (
               <TrackSortControl currentSort={sortOption} onSortChange={setSortOption} />
             )}
           </div>
 
-          <div className="flex items-center justify-between text-xs text-slate-400 px-1 py-1 bg-surface-850/60 rounded-xl border border-white/5">
-            <span>
-              Found all <strong className="text-white">{tracks.length}</strong> matching tracks, <strong className="text-white">{albums.length}</strong> albums, and <strong className="text-white">{channels.length}</strong> channels across platforms (not limited).
-            </span>
-            <span className="text-[10px] text-emerald-400 font-semibold uppercase tracking-wider hidden sm:inline">
-              Full Results
-            </span>
+          {/* Contextual Status Bar */}
+          <div className="flex items-center justify-between text-xs text-slate-400 px-3 py-2 bg-surface-850/60 rounded-xl border border-white/5">
+            <div className="flex items-center gap-2">
+              {selectedSource !== 'all' ? (
+                <>
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: activeSourceMeta.dotColor }} />
+                  <span>
+                    Showing <strong className="text-white">{activeSourceMeta.label}</strong> only: {sourceFilteredTracks.length} tracks, {sourceFilteredAlbums.length} albums, {sourceFilteredChannels.length} channels
+                  </span>
+                </>
+              ) : (
+                <span>
+                  Found all <strong className="text-white">{tracks.length}</strong> matching tracks across platforms (not limited).
+                </span>
+              )}
+            </div>
+            {selectedSource !== 'all' ? (
+              <button
+                onClick={() => setSelectedSource('all')}
+                className="text-brand-400 hover:text-brand-300 font-medium transition-colors ml-2 shrink-0"
+              >
+                Clear source filter
+              </button>
+            ) : (
+              <span className="text-[10px] text-emerald-400 font-semibold uppercase tracking-wider hidden sm:inline">
+                Full Results
+              </span>
+            )}
           </div>
 
-          {activeTab === "tracks" && (sortedTracks.length > 0 ? <div className="space-y-1">{sortedTracks.map(t => <TrackRow key={t.id} track={t} queueContext={sortedTracks} onAddToPlaylist={onAddToPlaylist} />)}</div> : <EmptyState icon={<Music className="w-8 h-8" />} message="No tracks found" sub="Try a different search term" />)}
-          {activeTab === "albums" && (albums.length > 0 ? <div className="space-y-1">{albums.map(a => <AlbumCard key={a.id} album={a} onClick={setSelectedAlbum} />)}</div> : <EmptyState icon={<Disc3 className="w-8 h-8" />} message="No albums found" sub="Search by album name or artist" />)}
-          {activeTab === "channels" && (channels.length > 0 ? <div className="space-y-1">{channels.map(c => <ChannelCard key={c.id} channel={c} onClick={setSelectedChannel} />)}</div> : <EmptyState icon={<Tv2 className="w-8 h-8" />} message="No channels found" sub="Search by artist or channel name" />)}
+          {/* Empty State for Selected Source */}
+          {sourceFilteredTracks.length === 0 && (
+            <div className="py-12 flex flex-col items-center text-center space-y-3 bg-surface-850/50 rounded-2xl border border-white/5">
+              <div className="w-12 h-12 rounded-full bg-surface-800 flex items-center justify-center text-slate-400">
+                <activeSourceMeta.icon className={`w-6 h-6 ${activeSourceMeta.color}`} />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-200">
+                  No {activeTab} found from {activeSourceMeta.label} for "{query}"
+                </p>
+                {selectedSource !== 'all' && tracks.length > 0 && (
+                  <p className="text-xs text-slate-400 mt-1">
+                    There are {tracks.length} results available on other sources.
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-wrap justify-center gap-2 pt-2">
+                {selectedSource !== 'all' && (
+                  <button
+                    onClick={() => fetchDedicatedProviderResults(selectedSource)}
+                    disabled={loadingSource === selectedSource}
+                    className="px-3.5 py-1.5 rounded-xl bg-surface-800 hover:bg-surface-750 border border-white/10 text-xs text-slate-200 font-medium transition-all flex items-center gap-1.5"
+                  >
+                    {loadingSource === selectedSource ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 text-brand-400" />}
+                    Search {activeSourceMeta.label} directly
+                  </button>
+                )}
+                {selectedSource !== 'all' && tracks.length > 0 && (
+                  <button
+                    onClick={() => setSelectedSource('all')}
+                    className="px-3.5 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-xs text-white font-medium transition-all"
+                  >
+                    View all sources ({tracks.length})
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Active Content View */}
+          {sourceFilteredTracks.length > 0 && (
+            <>
+              {activeTab === "tracks" && (
+                sortedTracks.length > 0 ? (
+                  <div className="space-y-1">
+                    {sortedTracks.map(t => (
+                      <TrackRow key={t.id} track={t} queueContext={sortedTracks} onAddToPlaylist={onAddToPlaylist} />
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState icon={<Music className="w-8 h-8" />} message="No tracks found" sub="Try a different search term" />
+                )
+              )}
+
+              {activeTab === "albums" && (
+                sourceFilteredAlbums.length > 0 ? (
+                  <div className="space-y-1">
+                    {sourceFilteredAlbums.map(a => (
+                      <AlbumCard key={a.id} album={a} onClick={setSelectedAlbum} />
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState icon={<Disc3 className="w-8 h-8" />} message="No albums found" sub="Search by album name or artist" />
+                )
+              )}
+
+              {activeTab === "channels" && (
+                sourceFilteredChannels.length > 0 ? (
+                  <div className="space-y-1">
+                    {sourceFilteredChannels.map(c => (
+                      <ChannelCard key={c.id} channel={c} onClick={setSelectedChannel} />
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState icon={<Tv2 className="w-8 h-8" />} message="No channels found" sub="Search by artist or channel name" />
+                )
+              )}
+            </>
+          )}
         </div>
       )}
     </div>

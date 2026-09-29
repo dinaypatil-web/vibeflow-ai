@@ -1138,6 +1138,9 @@ export class ProviderRegistry {
           directResults = await audiusAdapter.search(qTrimmed, provLimit);
         } else if (providerFilter === 'soundcloud') {
           directResults = await soundcloudAdapter.search(qTrimmed, provLimit);
+        } else if (providerFilter === 'local') {
+          const localAdapter = this.adapters.get('local');
+          directResults = localAdapter ? await localAdapter.search(qTrimmed, provLimit) : [];
         }
 
         const localMatches = db.getAllMediaItems().filter(i => 
