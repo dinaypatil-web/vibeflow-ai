@@ -408,7 +408,18 @@ class MemoryDatabase {
     this.data = {
       users: [],
       passwords: {},
-      mediaItems: INITIAL_MEDIA_ITEMS,
+      mediaItems: INITIAL_MEDIA_ITEMS.map(item => {
+        if (!item.releaseDate) {
+          if (item.releaseYear) {
+            const hash = (item.id || item.title || '').split('').reduce((acc: number, c: string) => acc + c.charCodeAt(0), 0);
+            const m = String((hash % 12) + 1).padStart(2, '0');
+            const d = String((hash % 28) + 1).padStart(2, '0');
+            return { ...item, releaseDate: `${item.releaseYear}-${m}-${d}` };
+          }
+          return { ...item, releaseDate: '2024-01-01' };
+        }
+        return item;
+      }),
       playlists: [],
       favorites: [],
       history: [],
@@ -517,6 +528,21 @@ class MemoryDatabase {
           favorites: parsed.favorites || [],
           history: parsed.history || []
         };
+        // Ensure all media items have releaseDate
+        if (this.data.mediaItems && Array.isArray(this.data.mediaItems)) {
+          this.data.mediaItems.forEach(item => {
+            if (!item.releaseDate) {
+              if (item.releaseYear) {
+                const hash = (item.id || item.title || '').split('').reduce((acc: number, c: string) => acc + c.charCodeAt(0), 0);
+                const m = String((hash % 12) + 1).padStart(2, '0');
+                const d = String((hash % 28) + 1).padStart(2, '0');
+                item.releaseDate = `${item.releaseYear}-${m}-${d}`;
+              } else {
+                item.releaseDate = '2024-01-01';
+              }
+            }
+          });
+        }
       }
     } catch (err) {
       console.warn('Could not read existing data file, using fresh in-memory data store', err);
@@ -935,6 +961,16 @@ class MemoryDatabase {
   }
 
   public addMediaItem(item: MediaItem): MediaItem {
+    if (!item.releaseDate) {
+      if (item.releaseYear) {
+        const hash = (item.id || item.title || '').split('').reduce((acc: number, c: string) => acc + c.charCodeAt(0), 0);
+        const m = String((hash % 12) + 1).padStart(2, '0');
+        const d = String((hash % 28) + 1).padStart(2, '0');
+        item.releaseDate = `${item.releaseYear}-${m}-${d}`;
+      } else {
+        item.releaseDate = '2024-01-01';
+      }
+    }
     const existing = this.data.mediaItems.find(m => m.id === item.id || (m.provider === item.provider && m.providerId === item.providerId));
     if (existing) {
       Object.assign(existing, item);

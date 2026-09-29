@@ -1,4 +1,4 @@
-import { MediaItem } from '../types';
+import { MediaItem } from '../types/index';
 
 export type SortField = 'default' | 'title' | 'artist' | 'duration' | 'date' | 'year' | 'genre' | 'mood' | 'provider';
 export type SortDirection = 'asc' | 'desc';
@@ -31,14 +31,14 @@ export const SORT_OPTIONS: SortOption[] = [
 export function parseTrackCompleteDate(item: MediaItem): number {
   if (item.releaseDate) {
     const t = new Date(item.releaseDate).getTime();
-    if (!isNaN(t)) return t;
+    if (!isNaN(t) && t > 0) return t;
+  }
+  if (item.releaseYear) {
+    return new Date(item.releaseYear, 5, 15).getTime();
   }
   if (item.addedAt) {
     const t = new Date(item.addedAt).getTime();
-    if (!isNaN(t)) return t;
-  }
-  if (item.releaseYear) {
-    return new Date(item.releaseYear, 0, 1).getTime();
+    if (!isNaN(t) && t > 0) return t;
   }
   return 0;
 }
@@ -88,7 +88,10 @@ export function sortMediaItems(items: MediaItem[], optionId: string): MediaItem[
       case 'year': {
         const timeA = parseTrackCompleteDate(a);
         const timeB = parseTrackCompleteDate(b);
-        return opt.direction === 'asc' ? timeA - timeB : timeB - timeA;
+        if (timeA !== timeB) {
+          return opt.direction === 'asc' ? timeA - timeB : timeB - timeA;
+        }
+        return (a.title || '').localeCompare(b.title || '');
       }
       case 'genre': {
         const cmp = (a.genre || '').localeCompare(b.genre || '', undefined, { sensitivity: 'base' });

@@ -121,6 +121,8 @@ router.get('/channel/:channelName/tracks', async (req: Request, res: Response) =
                 id: `yt-channel-${di.providerId}`,
                 provider: provider || 'youtube',
                 artist: channelName,
+                releaseDate: di.releaseDate || (di.releaseYear ? `${di.releaseYear}-05-15` : '2023-01-01'),
+                releaseYear: di.releaseYear || (di.releaseDate ? parseInt(di.releaseDate.split('-')[0], 10) : 2023),
                 capabilities: ['stream_direct', 'stream_embed', 'preview_only']
               };
               map.set(bridged.id, bridged);
