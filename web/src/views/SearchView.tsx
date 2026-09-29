@@ -10,6 +10,8 @@ import { api } from "../services/api";
 import { usePlayerStore } from "../store/playerStore";
 import { TrackSortControl } from "../components/TrackSortControl";
 import { sortMediaItems } from "../utils/trackSort";
+import { ALBUM_SORT_OPTIONS, sortAlbums } from "../utils/albumSort";
+import { CHANNEL_SORT_OPTIONS, sortChannels } from "../utils/channelSort";
 
 export type SourceFilterId = 'all' | 'youtube' | 'spotify' | 'jiosaavn' | 'deezer' | 'soundcloud' | 'local';
 
@@ -511,6 +513,8 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [selectedAlbum, setSelectedAlbum] = useState<Album | null>(null);
   const [sortOption, setSortOption] = useState<string>('default');
+  const [albumSortOption, setAlbumSortOption] = useState<string>('default');
+  const [channelSortOption, setChannelSortOption] = useState<string>('default');
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Compute live match count per source
@@ -551,6 +555,14 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
   const sortedTracks = useMemo(() => {
     return sortMediaItems(sourceFilteredTracks, sortOption);
   }, [sourceFilteredTracks, sortOption]);
+
+  const sortedAlbums = useMemo(() => {
+    return sortAlbums(sourceFilteredAlbums, albumSortOption);
+  }, [sourceFilteredAlbums, albumSortOption]);
+
+  const sortedChannels = useMemo(() => {
+    return sortChannels(sourceFilteredChannels, channelSortOption);
+  }, [sourceFilteredChannels, channelSortOption]);
 
   const activeSourceMeta = useMemo(() => {
     return SOURCES.find(s => s.id === selectedSource) || SOURCES[0];
@@ -615,6 +627,7 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
 
   const clearSearch = () => {
     setQuery(""); setTracks([]); setSelectedSource("all");
+    setSortOption("default"); setAlbumSortOption("default"); setChannelSortOption("default");
     setHasSearched(false); setSemanticHint(null); setSelectedChannel(null); setSelectedAlbum(null);
     inputRef.current?.focus();
   };
@@ -879,7 +892,13 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
             </div>
 
             {activeTab === 'tracks' && sourceFilteredTracks.length > 1 && (
-              <TrackSortControl currentSort={sortOption} onSortChange={setSortOption} />
+              <TrackSortControl currentSort={sortOption} onSortChange={setSortOption} title="Sort Tracks By" />
+            )}
+            {activeTab === 'albums' && sourceFilteredAlbums.length > 1 && (
+              <TrackSortControl currentSort={albumSortOption} onSortChange={setAlbumSortOption} options={ALBUM_SORT_OPTIONS} title="Sort Albums By" />
+            )}
+            {activeTab === 'channels' && sourceFilteredChannels.length > 1 && (
+              <TrackSortControl currentSort={channelSortOption} onSortChange={setChannelSortOption} options={CHANNEL_SORT_OPTIONS} title="Sort Channels By" />
             )}
           </div>
 
@@ -968,9 +987,9 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
               )}
 
               {activeTab === "albums" && (
-                sourceFilteredAlbums.length > 0 ? (
+                sortedAlbums.length > 0 ? (
                   <div className="space-y-1">
-                    {sourceFilteredAlbums.map(a => (
+                    {sortedAlbums.map(a => (
                       <AlbumCard key={a.id} album={a} onClick={setSelectedAlbum} />
                     ))}
                   </div>
@@ -980,9 +999,9 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
               )}
 
               {activeTab === "channels" && (
-                sourceFilteredChannels.length > 0 ? (
+                sortedChannels.length > 0 ? (
                   <div className="space-y-1">
-                    {sourceFilteredChannels.map(c => (
+                    {sortedChannels.map(c => (
                       <ChannelCard key={c.id} channel={c} onClick={setSelectedChannel} />
                     ))}
                   </div>

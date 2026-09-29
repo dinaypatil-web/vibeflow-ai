@@ -4,14 +4,23 @@ import {
   ArrowUp, 
   ArrowDown, 
   Check, 
-  SlidersHorizontal,
   ChevronDown
 } from 'lucide-react';
 import { SORT_OPTIONS, SortOption } from '../utils/trackSort';
 
-interface TrackSortControlProps {
+export interface GenericSortOptionItem {
+  id: string;
+  field: string;
+  direction: 'asc' | 'desc';
+  label: string;
+  shortLabel: string;
+}
+
+export interface TrackSortControlProps {
   currentSort: string;
   onSortChange: (sortId: string) => void;
+  options?: GenericSortOptionItem[];
+  title?: string;
   className?: string;
   compact?: boolean;
 }
@@ -19,13 +28,15 @@ interface TrackSortControlProps {
 export const TrackSortControl: React.FC<TrackSortControlProps> = ({
   currentSort,
   onSortChange,
+  options = SORT_OPTIONS,
+  title = 'Sort By',
   className = '',
   compact = false
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const activeOption = SORT_OPTIONS.find(o => o.id === currentSort) || SORT_OPTIONS[0];
+  const activeOption = options.find(o => o.id === currentSort) || options[0];
 
   // Close on outside click
   useEffect(() => {
@@ -46,7 +57,7 @@ export const TrackSortControl: React.FC<TrackSortControlProps> = ({
     if (activeOption.field === 'default') return;
 
     const oppositeDirection = activeOption.direction === 'asc' ? 'desc' : 'asc';
-    const oppositeOption = SORT_OPTIONS.find(
+    const oppositeOption = options.find(
       o => o.field === activeOption.field && o.direction === oppositeDirection
     );
 
@@ -67,7 +78,7 @@ export const TrackSortControl: React.FC<TrackSortControlProps> = ({
               ? 'bg-brand-500/15 border-brand-500/40 text-brand-300 font-semibold shadow-xs'
               : 'bg-surface-800 hover:bg-surface-750 border-white/10 text-slate-300 hover:text-white'
           }`}
-          title="Sort tracks based on attributes"
+          title={title}
         >
           <ArrowUpDown className="w-3.5 h-3.5 text-brand-400" />
           <span>
@@ -98,7 +109,7 @@ export const TrackSortControl: React.FC<TrackSortControlProps> = ({
         <div className="absolute right-0 mt-2 w-64 bg-surface-900/95 backdrop-blur-xl border border-white/15 rounded-2xl shadow-2xl shadow-black/60 p-2 z-50 animate-in fade-in zoom-in-95 duration-200">
           <div className="px-2.5 py-1.5 border-b border-white/5 flex items-center justify-between">
             <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-              Sort Tracks By
+              {title}
             </span>
             {currentSort !== 'default' && (
               <button
@@ -115,7 +126,7 @@ export const TrackSortControl: React.FC<TrackSortControlProps> = ({
           </div>
 
           <div className="mt-1 max-h-64 overflow-y-auto space-y-0.5 scrollbar-thin">
-            {SORT_OPTIONS.map((opt) => {
+            {options.map((opt) => {
               const isSelected = opt.id === currentSort;
               return (
                 <button
