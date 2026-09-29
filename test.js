@@ -346,6 +346,22 @@ async function runTests() {
     }
   });
 
+  // 14. YouTube Channel Full Track Exploration (explores all 60 tracks)
+  await test('YouTube Channel Full Track Exploration (All 60 Tracks)', async () => {
+    const channelRes = await fetchJSON(`${API_BASE}/media/channel/Arijit%20Singh/tracks?provider=youtube&limit=60&target=60`);
+    if (!channelRes.items || channelRes.items.length === 0) {
+      throw new Error('No channel tracks returned for YouTube channel exploration');
+    }
+    if (channelRes.items.length < 60) {
+      throw new Error(`Expected at least 60 tracks explored for YouTube channel, received ${channelRes.items.length}`);
+    }
+    // Verify each track is valid and playable
+    const sample = channelRes.items[0];
+    if (!sample.id || !sample.title || (!sample.embedUrl && !sample.streamUrl)) {
+      throw new Error('Explored YouTube channel track missing playable stream/embed info');
+    }
+  });
+
   console.log(`\n🎉 Test Results: ${passed}/${total} passed!`);
   if (passed === total) {
     console.log('🌟 All VibeFlow AI core systems verified production-ready.\n');

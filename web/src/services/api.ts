@@ -64,11 +64,12 @@ export const api = {
   },
 
   // Explore all tracks for a specific channel / artist
-  getChannelTracks: async (channelName: string, provider?: MediaProvider): Promise<MediaItem[]> => {
+  getChannelTracks: async (channelName: string, provider?: MediaProvider, limit = 60): Promise<MediaItem[]> => {
     try {
       const params = new URLSearchParams();
       if (provider) params.append('provider', provider);
-      params.append('limit', '100');
+      params.append('limit', limit.toString());
+      params.append('target', limit.toString());
       const res = await fetch(`${API_BASE}/media/channel/${encodeURIComponent(channelName)}/tracks?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
@@ -78,7 +79,7 @@ export const api = {
       console.warn('getChannelTracks error, falling back to search:', e);
     }
     // Fallback to provider or general search
-    return await api.search(channelName, provider, undefined, undefined, 100);
+    return await api.search(channelName, provider, undefined, undefined, limit);
   },
 
   // Get all items

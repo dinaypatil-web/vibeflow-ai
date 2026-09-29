@@ -308,21 +308,40 @@ export class YouTubeProviderAdapter implements ProviderAdapter {
 
     // Live YouTube search without requiring an API key
     try {
-      const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=EgIQAQ%253D%253D`;
-      const res = await fetch(searchUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept-Language': 'en-US,en;q=0.9'
-        }
-      });
-      if (res.ok) {
-        const html = await res.text();
-        const jsonMatch = html.match(/ytInitialData\s*=\s*({.+?});<\/script>/);
-        if (jsonMatch) {
+      const queriesToSearch = [query];
+      const targetLimit = limit && limit > 0 ? limit : 60;
+      if (targetLimit > 20) {
+        queriesToSearch.push(
+          `${query} songs`,
+          `${query} hits`,
+          `${query} official tracks`,
+          `${query} music video`,
+          `${query} top songs`,
+          `${query} playlist`
+        );
+      }
+
+      const liveYtItems: MediaItem[] = [];
+      const seenVideoIds = new Set<string>();
+
+      await Promise.all(queriesToSearch.map(async (searchQ) => {
+        try {
+          const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQ)}&sp=EgIQAQ%253D%253D`;
+          const res = await fetch(searchUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Accept-Language': 'en-US,en;q=0.9'
+            },
+            signal: AbortSignal.timeout(6000)
+          });
+          if (!res.ok) return;
+
+          const html = await res.text();
+          const jsonMatch = html.match(/ytInitialData\s*=\s*({.+?});<\/script>/);
+          if (!jsonMatch) return;
+
           const data = JSON.parse(jsonMatch[1]);
           const sections = data.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
-          const liveYtItems: MediaItem[] = [];
-          const seenVideoIds = new Set<string>();
 
           for (const section of sections) {
             const itemContents = section.itemSectionRenderer?.contents || [];
@@ -331,7 +350,7 @@ export class YouTubeProviderAdapter implements ProviderAdapter {
               if (v && v.videoId && !seenVideoIds.has(v.videoId)) {
                 seenVideoIds.add(v.videoId);
                 const title = v.title?.runs?.[0]?.text || v.title?.simpleText || 'YouTube Video';
-                const channel = v.ownerText?.runs?.[0]?.text || 'YouTube Creator';
+                const channel = v.ownerText?.runs?.[0]?.text || query || 'YouTube Creator';
                 const thumb = v.thumbnail?.thumbnails?.slice(-1)[0]?.url || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`;
                 
                 let durSecs = 240;
@@ -361,7 +380,6 @@ export class YouTubeProviderAdapter implements ProviderAdapter {
                 };
                 db.addMediaItem(mediaItem);
                 liveYtItems.push(mediaItem);
-                if (limit && liveYtItems.length >= limit) break;
               }
 
               // Also check shelfRenderer (e.g. popular videos shelf)
@@ -372,7 +390,7 @@ export class YouTubeProviderAdapter implements ProviderAdapter {
                   if (sv && sv.videoId && !seenVideoIds.has(sv.videoId)) {
                     seenVideoIds.add(sv.videoId);
                     const title = sv.title?.runs?.[0]?.text || sv.title?.simpleText || 'YouTube Video';
-                    const channel = sv.ownerText?.runs?.[0]?.text || 'YouTube Creator';
+                    const channel = sv.ownerText?.runs?.[0]?.text || query || 'YouTube Creator';
                     const thumb = sv.thumbnail?.thumbnails?.slice(-1)[0]?.url || `https://i.ytimg.com/vi/${sv.videoId}/hqdefault.jpg`;
                     
                     let durSecs = 240;
@@ -402,18 +420,18 @@ export class YouTubeProviderAdapter implements ProviderAdapter {
                     };
                     db.addMediaItem(mediaItem);
                     liveYtItems.push(mediaItem);
-                    if (limit && liveYtItems.length >= limit) break;
                   }
                 }
               }
             }
-            if (limit && liveYtItems.length >= limit) break;
           }
-
-          if (liveYtItems.length > 0) {
-            return liveYtItems;
-          }
+        } catch {
+          // Ignore individual query failures
         }
+      }));
+
+      if (liveYtItems.length > 0) {
+        return limit ? liveYtItems.slice(0, limit) : liveYtItems;
       }
     } catch (err) {
       console.warn('Live YouTube web search failed, checking curated catalog:', err);

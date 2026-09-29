@@ -133,7 +133,7 @@ const deriveChannels = (tracks: MediaItem[]): Channel[] => {
       id: `ch-${t.id}`, providerId: t.providerId, provider: t.provider,
       name: t.artist, description: `Music channel featuring ${t.genre} tracks`,
       thumbnail: t.thumbnail, subscriberCount: `${seeded(t.artist, 900) + 100}K`,
-      videoCount: seeded(t.artist + "v", 80) + 10,
+      videoCount: 60,
       verified: t.provider === "youtube" || t.provider === "jiosaavn",
     });
   }
@@ -269,22 +269,50 @@ const ChannelDetailPanel: React.FC<{
   const [loadingTracks, setLoadingTracks] = useState(false);
   const [exploredAll, setExploredAll] = useState(false);
 
-  // Automatically explore all available tracks for this channel on mount
+  // Automatically explore all available tracks for this channel on mount (up to 60 tracks)
   useEffect(() => {
     let isCancelled = false;
+    const targetCount = typeof channel.videoCount === 'number'
+      ? channel.videoCount
+      : parseInt(String(channel.videoCount || '60').replace(/\D/g, '')) || 60;
+    const effectiveTarget = Math.max(targetCount, 60);
+
     const exploreChannelTracks = async () => {
       setLoadingTracks(true);
       try {
-        const fullTracks = await api.getChannelTracks(channel.name, channel.provider);
-        if (!isCancelled && fullTracks && fullTracks.length > 0) {
+        const fullTracks = await api.getChannelTracks(channel.name, channel.provider, effectiveTarget);
+        if (!isCancelled) {
           const map = new Map<string, MediaItem>();
-          // Put all existing and fetched tracks into map
-          for (const t of fullTracks) {
+          for (const t of channelTracks) {
             map.set(t.id, t);
           }
-          for (const t of channelTracks) {
-            if (!map.has(t.id)) map.set(t.id, t);
+          if (fullTracks && fullTracks.length > 0) {
+            for (const t of fullTracks) {
+              map.set(t.id, t);
+            }
           }
+
+          // If still below 60 tracks, query supplementary targeted batches
+          if (map.size < effectiveTarget) {
+            const moreQueries = [
+              `${channel.name} songs`,
+              `${channel.name} hits`,
+              `${channel.name} official`,
+              `${channel.name} music`,
+              `${channel.name} top tracks`
+            ];
+            for (const q of moreQueries) {
+              if (map.size >= effectiveTarget) break;
+              try {
+                const batch = await api.search(q, channel.provider, undefined, undefined, 30);
+                for (const b of batch) {
+                  map.set(b.id, b);
+                  if (map.size >= effectiveTarget) break;
+                }
+              } catch {}
+            }
+          }
+
           const merged = Array.from(map.values());
           setChannelTracks(merged);
           setExploredAll(true);
@@ -302,21 +330,31 @@ const ChannelDetailPanel: React.FC<{
     return () => {
       isCancelled = true;
     };
-  }, [channel.name, channel.provider]);
+  }, [channel.name, channel.provider, channel.videoCount]);
 
   const handleManualExploreMore = async () => {
     setLoadingTracks(true);
     try {
-      const moreTracks = await api.search(channel.name, channel.provider, undefined, undefined, 100);
-      if (moreTracks && moreTracks.length > 0) {
-        const map = new Map<string, MediaItem>();
-        for (const t of moreTracks) map.set(t.id, t);
-        for (const t of channelTracks) if (!map.has(t.id)) map.set(t.id, t);
-        const merged = Array.from(map.values());
-        setChannelTracks(merged);
-        setExploredAll(true);
-        onTracksDiscovered?.(merged);
+      const moreQueries = [
+        `${channel.name} songs`,
+        `${channel.name} hits`,
+        `${channel.name} official`,
+        `${channel.name} playlist`,
+        `${channel.name} live`,
+        `${channel.name} music`
+      ];
+      const map = new Map<string, MediaItem>();
+      for (const t of channelTracks) map.set(t.id, t);
+      for (const q of moreQueries) {
+        try {
+          const batch = await api.search(q, channel.provider, undefined, undefined, 40);
+          for (const t of batch) map.set(t.id, t);
+        } catch {}
       }
+      const merged = Array.from(map.values());
+      setChannelTracks(merged);
+      setExploredAll(true);
+      onTracksDiscovered?.(merged);
     } catch (e) {
       console.warn('Failed to fetch additional channel tracks:', e);
     } finally {

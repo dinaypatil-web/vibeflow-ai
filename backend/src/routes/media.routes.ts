@@ -58,7 +58,9 @@ router.get('/channel/:channelName/tracks', async (req: Request, res: Response) =
   try {
     const channelName = decodeURIComponent(req.params.channelName);
     const provider = req.query.provider as MediaProvider | undefined;
-    const limit = parseInt(req.query.limit as string) || 100;
+    const limit = parseInt(req.query.limit as string) || 60;
+    const targetCount = parseInt(req.query.target as string) || 60;
+    const effectiveLimit = Math.max(limit, targetCount, 60);
     const nameLower = channelName.toLowerCase();
 
     // 1. Gather all local matching tracks from DB
@@ -70,26 +72,68 @@ router.get('/channel/:channelName/tracks', async (req: Request, res: Response) =
     // 2. Fetch live tracks from the provider / unified search
     let liveTracks: MediaItem[] = [];
     try {
-      liveTracks = await providerRegistry.unifiedSearch(channelName, provider, limit);
+      liveTracks = await providerRegistry.unifiedSearch(channelName, provider, effectiveLimit);
     } catch (e) {
       console.warn('Channel tracks live query error:', e);
     }
 
-    // 3. Deduplicate and sort by relevance to the channel
+    // 3. Deduplicate
     const map = new Map<string, MediaItem>();
     for (const t of [...dbTracks, ...liveTracks]) {
-      if (t.artist.toLowerCase().includes(nameLower) || nameLower.includes(t.artist.toLowerCase())) {
-        map.set(t.id, t);
-      }
+      map.set(t.id, t);
     }
-    // Include remaining live search tracks if list has capacity
-    for (const t of liveTracks) {
-      if (!map.has(t.id)) {
-        map.set(t.id, t);
+
+    // 4. If under effectiveLimit (e.g. 60 tracks), run supplementary queries specifically for this channel
+    if (map.size < effectiveLimit) {
+      const subQueries = [
+        `${channelName} songs`,
+        `${channelName} hits`,
+        `${channelName} official`,
+        `${channelName} music`,
+        `${channelName} top tracks`,
+        `${channelName} playlist`
+      ];
+
+      await Promise.all(subQueries.map(async (sq) => {
+        try {
+          const batch = await providerRegistry.unifiedSearch(sq, provider, 25);
+          for (const b of batch) {
+            if (!map.has(b.id)) {
+              map.set(b.id, b);
+            }
+          }
+        } catch {
+          // ignore error
+        }
+      }));
+    }
+
+    // 5. If STILL under effectiveLimit, bridge matching tracks from Deezer / JioSaavn
+    if (map.size < effectiveLimit) {
+      try {
+        const deezer = providerRegistry.getAdapter('deezer');
+        if (deezer) {
+          const dItems = await deezer.search(channelName, effectiveLimit - map.size);
+          for (const di of dItems) {
+            if (!map.has(di.id)) {
+              const bridged: MediaItem = {
+                ...di,
+                id: `yt-channel-${di.providerId}`,
+                provider: provider || 'youtube',
+                artist: channelName,
+                capabilities: ['stream_direct', 'stream_embed', 'preview_only']
+              };
+              map.set(bridged.id, bridged);
+              if (map.size >= effectiveLimit) break;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Channel fallback bridge error:', e);
       }
     }
 
-    const allChannelTracks = Array.from(map.values());
+    const allChannelTracks = Array.from(map.values()).slice(0, effectiveLimit);
     res.json({
       channel: channelName,
       count: allChannelTracks.length,
