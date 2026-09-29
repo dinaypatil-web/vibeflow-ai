@@ -2,10 +2,12 @@ import React, { useState } from 'react';
 import { X, ListMusic, Plus, Image as ImageIcon, CheckCircle2 } from 'lucide-react';
 import { api } from '../services/api';
 
+import { Playlist } from '../types';
+
 interface CreatePlaylistModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onPlaylistCreated: () => void;
+  onPlaylistCreated: (playlist?: Playlist) => void;
 }
 
 const PRESET_COVERS = [
@@ -35,7 +37,7 @@ export const CreatePlaylistModal: React.FC<CreatePlaylistModalProps> = ({
 
     setSaving(true);
     try {
-      await api.createPlaylist({
+      const created = await api.createPlaylist({
         title: title.trim(),
         description: description.trim() || 'My personal playlist collection.',
         coverArt: selectedCover,
@@ -43,7 +45,7 @@ export const CreatePlaylistModal: React.FC<CreatePlaylistModalProps> = ({
         isPrivate: false,
         isShareable: true
       });
-      onPlaylistCreated();
+      onPlaylistCreated(created);
       onClose();
       setTitle('');
       setDescription('');

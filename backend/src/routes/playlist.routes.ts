@@ -26,7 +26,18 @@ router.get('/', async (req: Request, res: Response) => {
   if (process.env.VERCEL) {
     try { await db.syncFromCloud(); } catch {}
   }
-  const playlists = db.getPlaylistsByUserId(userId);
+
+  // Parse client-created playlist IDs passed from frontend
+  let clientPlaylistIds: string[] = [];
+  const headerIds = req.headers['x-client-playlist-ids'];
+  if (typeof headerIds === 'string') {
+    try { clientPlaylistIds = JSON.parse(headerIds); } catch {}
+  } else if (req.query.clientPlaylistIds) {
+    try { clientPlaylistIds = JSON.parse(req.query.clientPlaylistIds as string); } 
+    catch { clientPlaylistIds = (req.query.clientPlaylistIds as string).split(','); }
+  }
+
+  const playlists = db.getPlaylistsByUserId(userId, clientPlaylistIds);
 
   // Hydrate items for smart playlists dynamically
   const hydrated = playlists.map(p => {
@@ -62,8 +73,15 @@ router.post('/', (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Playlist title is required' });
   }
 
-  const actualUserId = userId || resolveUserId(req);
+  // Prioritize verified JWT authentication over req.body.userId
+  const authUserId = resolveUserId(req);
+  const actualUserId = (authUserId && authUserId !== 'demo-user-id') 
+    ? authUserId 
+    : (userId || authUserId || 'demo-user-id');
+
   const user = db.findUserById(actualUserId) || db.findUserByIdentifier(actualUserId);
+  const canonicalUserId = user ? user.id : actualUserId;
+
   const creator = user ? {
     id: user.id,
     name: user.name,
@@ -71,9 +89,9 @@ router.post('/', (req: Request, res: Response) => {
     avatar: user.avatar,
     email: user.email
   } : {
-    id: actualUserId,
-    name: actualUserId === 'demo-user-id' ? 'Aarav Sharma' : 'Music Lover',
-    username: actualUserId === 'demo-user-id' ? 'demo' : actualUserId,
+    id: canonicalUserId,
+    name: canonicalUserId === 'demo-user-id' ? 'Aarav Sharma' : 'Music Lover',
+    username: canonicalUserId === 'demo-user-id' ? 'demo' : canonicalUserId,
     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
   };
 
@@ -94,7 +112,7 @@ router.post('/', (req: Request, res: Response) => {
 
   const newPlaylist: Playlist = {
     id: playlistId,
-    userId: actualUserId,
+    userId: canonicalUserId,
     creator,
     title,
     description: description || '',
@@ -145,8 +163,8 @@ router.get('/:id', (req: Request, res: Response) => {
   }
 
   const shareToken = (req.query.token as string) || (req.headers['x-share-token'] as string);
-  const isOwner = playlist.userId === userId;
-  const isShared = Array.isArray(playlist.sharedWith) && playlist.sharedWith.includes(userId);
+  const isOwner = db.isUserOwner(playlist, userId);
+  const isShared = db.isUserShared(playlist, userId);
   const isTokenMatch = Boolean(shareToken && playlist.shareToken === shareToken);
 
   // Requirement: Any user's playlist shall not be visible to other User unless shared
@@ -222,7 +240,7 @@ router.put('/:id', (req: Request, res: Response) => {
   if (!playlist) {
     return res.status(404).json({ error: 'Playlist not found' });
   }
-  if (playlist.userId !== userId) {
+  if (!db.isUserOwner(playlist, userId)) {
     return res.status(403).json({ error: 'Only the creator can edit playlist details' });
   }
 
@@ -238,8 +256,8 @@ router.delete('/:id', (req: Request, res: Response) => {
     return res.status(404).json({ error: 'Playlist not found' });
   }
 
-  if (playlist.userId !== userId) {
-    if (Array.isArray(playlist.sharedWith) && playlist.sharedWith.includes(userId)) {
+  if (!db.isUserOwner(playlist, userId)) {
+    if (db.isUserShared(playlist, userId)) {
       db.leaveSharedPlaylist(req.params.id, userId);
       return res.json({ success: true, message: 'Removed shared playlist from your library' });
     }

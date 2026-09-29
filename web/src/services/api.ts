@@ -31,6 +31,98 @@ export function getStoredUserId(): string {
   return 'demo-user-id';
 }
 
+const LS_CREATED_PLAYLIST_IDS = 'vibeflow_my_created_playlist_ids';
+const LS_CACHED_PLAYLISTS = 'vibeflow_cached_playlists';
+const LS_SELECTED_PLAYLIST_ID = 'vibeflow_selected_playlist_id';
+
+export function getStoredCreatedPlaylistIds(): string[] {
+  try {
+    const raw = localStorage.getItem(LS_CREATED_PLAYLIST_IDS);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalCreatedPlaylist(playlist: Playlist) {
+  try {
+    if (!playlist || !playlist.id) return;
+    // 1. Add ID to created IDs list
+    const ids = getStoredCreatedPlaylistIds();
+    if (!ids.includes(playlist.id)) {
+      ids.unshift(playlist.id);
+      localStorage.setItem(LS_CREATED_PLAYLIST_IDS, JSON.stringify(ids.slice(0, 100)));
+    }
+    // 2. Cache full playlist object
+    const cached = getLocallyCachedPlaylists();
+    const existingIdx = cached.findIndex(p => p.id === playlist.id);
+    if (existingIdx >= 0) {
+      cached[existingIdx] = { ...cached[existingIdx], ...playlist };
+    } else {
+      cached.unshift(playlist);
+    }
+    localStorage.setItem(LS_CACHED_PLAYLISTS, JSON.stringify(cached.slice(0, 100)));
+    localStorage.setItem(LS_SELECTED_PLAYLIST_ID, playlist.id);
+  } catch {}
+}
+
+export function removeLocalCreatedPlaylist(id: string) {
+  try {
+    const ids = getStoredCreatedPlaylistIds().filter(x => x !== id);
+    localStorage.setItem(LS_CREATED_PLAYLIST_IDS, JSON.stringify(ids));
+    const cached = getLocallyCachedPlaylists().filter(p => p.id !== id);
+    localStorage.setItem(LS_CACHED_PLAYLISTS, JSON.stringify(cached));
+    if (localStorage.getItem(LS_SELECTED_PLAYLIST_ID) === id) {
+      localStorage.removeItem(LS_SELECTED_PLAYLIST_ID);
+    }
+  } catch {}
+}
+
+export function getLocallyCachedPlaylists(): Playlist[] {
+  try {
+    const raw = localStorage.getItem(LS_CACHED_PLAYLISTS);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function mergeWithLocalPlaylists(serverPlaylists: Playlist[]): Playlist[] {
+  try {
+    const cached = getLocallyCachedPlaylists();
+    if (cached.length === 0) {
+      // If server returned playlists, cache any user-created ones
+      const userPlaylists = serverPlaylists.filter(p => !p.id.startsWith('playlist-'));
+      if (userPlaylists.length > 0) {
+        localStorage.setItem(LS_CACHED_PLAYLISTS, JSON.stringify(userPlaylists));
+        const ids = userPlaylists.map(p => p.id);
+        const existingIds = getStoredCreatedPlaylistIds();
+        const mergedIds = Array.from(new Set([...ids, ...existingIds]));
+        localStorage.setItem(LS_CREATED_PLAYLIST_IDS, JSON.stringify(mergedIds));
+      }
+      return serverPlaylists;
+    }
+
+    // Combine server playlists with cached ones to prevent any vanishing
+    const map = new Map<string, Playlist>();
+    // First populate from cache
+    for (const pl of cached) {
+      map.set(pl.id, pl);
+    }
+    // Then overwrite/extend with freshest server data
+    for (const pl of serverPlaylists) {
+      map.set(pl.id, pl);
+      const cIdx = cached.findIndex(c => c.id === pl.id);
+      if (cIdx >= 0) cached[cIdx] = pl;
+      else if (!pl.id.startsWith('playlist-')) cached.unshift(pl);
+    }
+    localStorage.setItem(LS_CACHED_PLAYLISTS, JSON.stringify(cached.slice(0, 100)));
+    return Array.from(map.values());
+  } catch {
+    return serverPlaylists;
+  }
+}
+
 function authHeaders(token?: string | null): HeadersInit {
   const t = token || getStoredToken();
   const h: HeadersInit = { 'Content-Type': 'application/json' };
@@ -155,20 +247,27 @@ export const api = {
     return await res.json();
   },
 
-  // Playlists — token-scoped per logged-in user
+  // Playlists — token-scoped per logged-in user with offline resilience
   getPlaylists: async (userId?: string, token?: string | null): Promise<Playlist[]> => {
     try {
       const uid = userId || getStoredUserId();
       const t = token !== undefined ? token : getStoredToken();
       const headers: HeadersInit = {};
       if (t) headers['Authorization'] = `Bearer ${t}`;
-      const res = await fetch(`${API_BASE}/playlists?userId=${uid}`, { headers });
+
+      const clientIds = getStoredCreatedPlaylistIds();
+      if (clientIds.length > 0) {
+        headers['x-client-playlist-ids'] = JSON.stringify(clientIds);
+      }
+
+      const res = await fetch(`${API_BASE}/playlists?userId=${encodeURIComponent(uid)}`, { headers });
       if (!res.ok) throw new Error('Fetch playlists failed');
       const data = await res.json();
-      return data.playlists || [];
+      const serverPlaylists: Playlist[] = data.playlists || [];
+      return mergeWithLocalPlaylists(serverPlaylists);
     } catch (err) {
-      console.warn('API getPlaylists error:', err);
-      return [];
+      console.warn('API getPlaylists error, returning locally cached playlists:', err);
+      return getLocallyCachedPlaylists();
     }
   },
 
@@ -181,10 +280,15 @@ export const api = {
       body: JSON.stringify({ ...playlistData, userId: uid })
     });
     const data = await res.json();
-    return data.playlist;
+    const created: Playlist = data.playlist;
+    if (created && created.id) {
+      saveLocalCreatedPlaylist(created);
+    }
+    return created;
   },
 
   deletePlaylist: async (id: string, token?: string | null) => {
+    removeLocalCreatedPlaylist(id);
     const t = token !== undefined ? token : getStoredToken();
     await fetch(`${API_BASE}/playlists/${id}`, {
       method: 'DELETE',
@@ -199,15 +303,24 @@ export const api = {
       headers: authHeaders(t),
       body: JSON.stringify({ mediaItemId })
     });
-    return await res.json();
+    const data = await res.json();
+    if (data.playlist) {
+      saveLocalCreatedPlaylist(data.playlist);
+    }
+    return data;
   },
 
   removeItemFromPlaylist: async (playlistId: string, mediaItemId: string, token?: string | null) => {
     const t = token !== undefined ? token : getStoredToken();
-    await fetch(`${API_BASE}/playlists/${playlistId}/items/${mediaItemId}`, {
+    const res = await fetch(`${API_BASE}/playlists/${playlistId}/items/${mediaItemId}`, {
       method: 'DELETE',
       headers: t ? { 'Authorization': `Bearer ${t}` } : {}
     });
+    const data = await res.json();
+    if (data.playlist) {
+      saveLocalCreatedPlaylist(data.playlist);
+    }
+    return data;
   },
 
   sharePlaylist: async (playlistId: string, targetIdentifier: string, token?: string | null) => {

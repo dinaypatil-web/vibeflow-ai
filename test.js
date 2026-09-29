@@ -391,6 +391,99 @@ async function runTests() {
     }
   });
 
+  // 18. Playlist Retention, Multi-Alias Resolution & Guest-to-User Claiming
+  await test('Created Playlist Permanent Retention, Multi-Alias Resolution & Session Migration', async () => {
+    // 1. Create playlist in guest mode (unauthenticated)
+    const guestPlRes = await fetchJSON(`${API_BASE}/playlists`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: 'Guest Late Night Study Session',
+        description: 'Created before signing in',
+        isSmart: false
+      })
+    });
+    if (!guestPlRes.playlist || !guestPlRes.playlist.id) {
+      throw new Error('Guest playlist creation failed');
+    }
+    const guestPlId = guestPlRes.playlist.id;
+
+    // 2. Fetch playlists as guest passing client playlist ID -> MUST be returned
+    const guestList = await fetchJSON(`${API_BASE}/playlists`, {
+      headers: { 'x-client-playlist-ids': JSON.stringify([guestPlId]) }
+    });
+    if (!guestList.playlists.some(p => p.id === guestPlId)) {
+      throw new Error('Guest created playlist not returned when fetching playlists');
+    }
+
+    // 3. User signs up / logs in
+    const testMigrateUser = `user_${Date.now()}`;
+    const testMigrateEmail = `${testMigrateUser}@vibeflow.local`;
+    const regRes = await fetchJSON(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Persistent User',
+        username: testMigrateUser,
+        email: testMigrateEmail,
+        password: 'SecurePassword2026!'
+      })
+    });
+    const loggedInUser = regRes.user;
+    const userToken = regRes.token;
+
+    // 4. Authenticated user creates a custom mixtape
+    const customPlRes = await fetchJSON(`${API_BASE}/playlists`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${userToken}`
+      },
+      body: JSON.stringify({
+        title: 'Permanent Gym Energy 2026',
+        description: 'Should never disappear',
+        isSmart: false
+      })
+    });
+    const customPlId = customPlRes.playlist.id;
+
+    // 5. Fetch playlists with token AND client playlist IDs (migrates guest playlist to user)
+    const userPlaylists = await fetchJSON(`${API_BASE}/playlists`, {
+      headers: {
+        'Authorization': `Bearer ${userToken}`,
+        'x-client-playlist-ids': JSON.stringify([guestPlId, customPlId])
+      }
+    });
+
+    // Both playlists MUST be present:
+    const hasCustom = userPlaylists.playlists.some(p => p.id === customPlId);
+    const hasMigratedGuest = userPlaylists.playlists.some(p => p.id === guestPlId);
+    if (!hasCustom) throw new Error('Authenticated custom playlist disappeared from user playlist page');
+    if (!hasMigratedGuest) throw new Error('Guest created playlist was not preserved and migrated upon signing in');
+
+    // 6. Test retrieval using user aliases (username, email, userId)
+    const byUsername = await fetchJSON(`${API_BASE}/playlists?userId=${testMigrateUser}`);
+    if (!byUsername.playlists.some(p => p.id === customPlId)) {
+      throw new Error('Playlist retrieval by username alias failed to return user playlist');
+    }
+
+    const byEmail = await fetchJSON(`${API_BASE}/playlists?userId=${testMigrateEmail}`);
+    if (!byEmail.playlists.some(p => p.id === customPlId)) {
+      throw new Error('Playlist retrieval by email alias failed to return user playlist');
+    }
+
+    const byId = await fetchJSON(`${API_BASE}/playlists?userId=${loggedInUser.id}`);
+    if (!byId.playlists.some(p => p.id === customPlId)) {
+      throw new Error('Playlist retrieval by user ID failed to return user playlist');
+    }
+
+    // 7. Verify preset curated playlists are also accessible to all users
+    const hasPreset = userPlaylists.playlists.some(p => p.id.startsWith('playlist-'));
+    if (!hasPreset) {
+      throw new Error('Curated preset playlists missing from user playlists page');
+    }
+  });
+
   console.log(`\n🎉 Test Results: ${passed}/${total} passed!`);
   if (passed === total) {
     console.log('🌟 All VibeFlow AI core systems verified production-ready.\n');

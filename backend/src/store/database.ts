@@ -983,14 +983,82 @@ class MemoryDatabase {
   }
 
   // Playlists
-  public getPlaylistsByUserId(userId: string): Playlist[] {
+  public getUserAliasSet(userIdOrIdent: string): Set<string> {
+    const idSet = new Set<string>();
+    if (!userIdOrIdent) return idSet;
+    const clean = userIdOrIdent.trim().toLowerCase();
+    idSet.add(clean);
+    const user = this.findUserById(userIdOrIdent) || this.findUserByIdentifier(userIdOrIdent);
+    if (user) {
+      if (user.id) idSet.add(user.id.toLowerCase());
+      if (user.username) idSet.add(user.username.toLowerCase());
+      if (user.email) idSet.add(user.email.toLowerCase());
+    }
+    return idSet;
+  }
+
+  public isUserOwner(playlist: Playlist, userIdOrIdent: string): boolean {
+    if (!playlist || !userIdOrIdent) return false;
+    const idSet = this.getUserAliasSet(userIdOrIdent);
+    const pUid = (playlist.userId || '').toLowerCase();
+    const pCreatorId = (playlist.creator?.id || '').toLowerCase();
+    const pCreatorUser = (playlist.creator?.username || '').toLowerCase();
+    const pCreatorEmail = (playlist.creator?.email || '').toLowerCase();
+
+    return idSet.has(pUid) || idSet.has(pCreatorId) || idSet.has(pCreatorUser) || idSet.has(pCreatorEmail);
+  }
+
+  public isUserShared(playlist: Playlist, userIdOrIdent: string): boolean {
+    if (!playlist || !userIdOrIdent || !Array.isArray(playlist.sharedWith)) return false;
+    const idSet = this.getUserAliasSet(userIdOrIdent);
+    return playlist.sharedWith.some(s => idSet.has((s || '').toLowerCase()));
+  }
+
+  public getPlaylistsByUserId(userId: string, clientPlaylistIds?: string[]): Playlist[] {
     if (!userId) return [];
+    const user = this.findUserById(userId) || this.findUserByIdentifier(userId);
+    const clientSet = new Set<string>((clientPlaylistIds || []).filter(Boolean));
+
+    // Automatically associate any client-created guest playlists with this authenticated user
+    if (user && user.id !== 'demo-user-id' && clientSet.size > 0) {
+      let modified = false;
+      for (const p of this.data.playlists) {
+        if (clientSet.has(p.id) && (p.userId === 'demo-user-id' || !p.userId)) {
+          p.userId = user.id;
+          p.creator = {
+            id: user.id,
+            name: user.name,
+            username: user.username || user.name,
+            avatar: user.avatar,
+            email: user.email
+          };
+          modified = true;
+        }
+      }
+      if (modified) {
+        this.saveToDisk();
+      }
+    }
+
     return this.data.playlists
-      .filter(p => p.userId === userId || (Array.isArray(p.sharedWith) && p.sharedWith.includes(userId)))
-      .map(p => ({
-        ...p,
-        isSharedWithMe: p.userId !== userId
-      }));
+      .filter(p => {
+        // Curated preset playlists are available for everyone
+        if (p.id.startsWith('playlist-')) return true;
+
+        const isOwner = this.isUserOwner(p, userId);
+        const isClientCreated = clientSet.has(p.id);
+        const isShared = this.isUserShared(p, userId);
+
+        return isOwner || isClientCreated || isShared;
+      })
+      .map(p => {
+        const isOwner = this.isUserOwner(p, userId) || clientSet.has(p.id);
+        const isPreset = p.id.startsWith('playlist-');
+        return {
+          ...p,
+          isSharedWithMe: !isOwner && !isPreset
+        };
+      });
   }
 
   public findPlaylistById(id: string): Playlist | undefined {
@@ -998,25 +1066,34 @@ class MemoryDatabase {
   }
 
   public createPlaylist(playlist: Playlist): Playlist {
-    if (!playlist.creator && playlist.userId) {
-      const u = this.findUserById(playlist.userId) || this.findUserByIdentifier(playlist.userId);
-      if (u) {
+    const rawUserId = playlist.userId || 'demo-user-id';
+    const user = this.findUserById(rawUserId) || this.findUserByIdentifier(rawUserId);
+    const canonicalUserId = user ? user.id : rawUserId;
+    playlist.userId = canonicalUserId;
+
+    if (!playlist.creator) {
+      if (user) {
         playlist.creator = {
-          id: u.id,
-          name: u.name,
-          username: u.username || u.name,
-          avatar: u.avatar,
-          email: u.email
+          id: user.id,
+          name: user.name,
+          username: user.username || user.name,
+          avatar: user.avatar,
+          email: user.email
         };
       } else {
         playlist.creator = {
-          id: playlist.userId,
-          name: playlist.userId === 'demo-user-id' ? 'Aarav Sharma' : 'Music Lover',
-          username: playlist.userId === 'demo-user-id' ? 'demo' : playlist.userId,
+          id: canonicalUserId,
+          name: canonicalUserId === 'demo-user-id' ? 'Aarav Sharma' : 'Music Lover',
+          username: canonicalUserId === 'demo-user-id' ? 'demo' : canonicalUserId,
           avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
         };
       }
+    } else if (user && (!playlist.creator.id || playlist.creator.id === rawUserId)) {
+      playlist.creator.id = user.id;
+      if (!playlist.creator.username) playlist.creator.username = user.username || user.name;
+      if (!playlist.creator.email) playlist.creator.email = user.email;
     }
+
     if (!Array.isArray(playlist.sharedWith)) playlist.sharedWith = [];
     if (!Array.isArray(playlist.sharedWithUsers)) playlist.sharedWithUsers = [];
     if (!playlist.shareToken) {
@@ -1033,7 +1110,7 @@ class MemoryDatabase {
     if (!playlist) {
       return { success: false, message: 'Playlist not found' };
     }
-    if (playlist.userId !== ownerUserId) {
+    if (!this.isUserOwner(playlist, ownerUserId)) {
       return { success: false, message: 'Only the creator can share this playlist' };
     }
 
@@ -1042,7 +1119,8 @@ class MemoryDatabase {
       return { success: false, message: `User "${targetIdentifier}" not found. Please verify username or email.` };
     }
 
-    if (targetUser.id === ownerUserId) {
+    const ownerAliases = this.getUserAliasSet(ownerUserId);
+    if (ownerAliases.has(targetUser.id.toLowerCase()) || ownerAliases.has((targetUser.username || '').toLowerCase())) {
       return { success: false, message: 'You already own this playlist' };
     }
 
@@ -1073,13 +1151,14 @@ class MemoryDatabase {
   public unsharePlaylist(playlistId: string, ownerUserId: string, targetUserId: string): { success: boolean; playlist?: Playlist; message?: string } {
     const playlist = this.findPlaylistById(playlistId);
     if (!playlist) return { success: false, message: 'Playlist not found' };
-    if (playlist.userId !== ownerUserId) return { success: false, message: 'Only the creator can manage sharing' };
+    if (!this.isUserOwner(playlist, ownerUserId)) return { success: false, message: 'Only the creator can manage sharing' };
 
+    const targetAliases = this.getUserAliasSet(targetUserId);
     if (playlist.sharedWith) {
-      playlist.sharedWith = playlist.sharedWith.filter(id => id !== targetUserId);
+      playlist.sharedWith = playlist.sharedWith.filter(id => !targetAliases.has(id.toLowerCase()));
     }
     if (playlist.sharedWithUsers) {
-      playlist.sharedWithUsers = playlist.sharedWithUsers.filter(u => u.id !== targetUserId);
+      playlist.sharedWithUsers = playlist.sharedWithUsers.filter(u => !targetAliases.has((u.id || '').toLowerCase()) && !targetAliases.has((u.username || '').toLowerCase()));
     }
     playlist.updatedAt = new Date().toISOString();
     this.saveToDisk();
@@ -1090,11 +1169,12 @@ class MemoryDatabase {
   public leaveSharedPlaylist(playlistId: string, userId: string): boolean {
     const playlist = this.findPlaylistById(playlistId);
     if (!playlist) return false;
+    const idSet = this.getUserAliasSet(userId);
     if (playlist.sharedWith) {
-      playlist.sharedWith = playlist.sharedWith.filter(id => id !== userId);
+      playlist.sharedWith = playlist.sharedWith.filter(id => !idSet.has(id.toLowerCase()));
     }
     if (playlist.sharedWithUsers) {
-      playlist.sharedWithUsers = playlist.sharedWithUsers.filter(u => u.id !== userId);
+      playlist.sharedWithUsers = playlist.sharedWithUsers.filter(u => !idSet.has((u.id || '').toLowerCase()) && !idSet.has((u.username || '').toLowerCase()));
     }
     this.saveToDisk();
     this.syncToCloud().catch(() => {});

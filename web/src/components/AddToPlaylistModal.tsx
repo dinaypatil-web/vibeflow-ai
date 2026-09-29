@@ -65,6 +65,9 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
         isSmart: false
       });
       await api.addItemToPlaylist(newPl.id, track.id);
+      try {
+        localStorage.setItem('vibeflow_selected_playlist_id', newPl.id);
+      } catch {}
       setNewTitle('');
       onClose();
     } catch (err) {

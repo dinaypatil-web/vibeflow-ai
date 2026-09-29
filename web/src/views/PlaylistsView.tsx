@@ -54,17 +54,32 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
       .filter(Boolean);
   }, [selectedPlaylist?.items, playlistSort]);
 
-  const fetchPlaylists = async () => {
+  const fetchPlaylists = async (preferredPlaylistId?: string) => {
     setLoading(true);
     try {
       const data = await api.getPlaylists();
-      setPlaylists(data);
-      if (data.length > 0) {
-        if (!selectedPlaylist) {
-          setSelectedPlaylist(data[0]);
-        } else {
-          const refreshed = data.find(p => p.id === selectedPlaylist.id);
-          setSelectedPlaylist(refreshed || data[0]);
+      
+      // Sort: User's personal custom playlists first (newest first), then shared with me, then preset curated playlists
+      const customPlaylists = data.filter(p => !p.id.startsWith('playlist-') && !p.isSharedWithMe)
+        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      const sharedPlaylists = data.filter(p => p.isSharedWithMe)
+        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      const presetPlaylists = data.filter(p => p.id.startsWith('playlist-'));
+      
+      const ordered = [...customPlaylists, ...sharedPlaylists, ...presetPlaylists];
+      setPlaylists(ordered);
+
+      if (ordered.length > 0) {
+        const storedSelectedId = localStorage.getItem('vibeflow_selected_playlist_id');
+        const targetId = preferredPlaylistId || selectedPlaylist?.id || storedSelectedId;
+        const matched = targetId ? ordered.find(p => p.id === targetId) : undefined;
+        // Priority: matched -> user's first custom playlist -> first playlist
+        const nextSelected = matched || customPlaylists[0] || ordered[0];
+        setSelectedPlaylist(nextSelected);
+        if (nextSelected) {
+          try {
+            localStorage.setItem('vibeflow_selected_playlist_id', nextSelected.id);
+          } catch {}
         }
       } else {
         setSelectedPlaylist(null);
@@ -76,6 +91,23 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
     }
   };
 
+  const handleSelectPlaylist = (pl: Playlist) => {
+    setSelectedPlaylist(pl);
+    try {
+      localStorage.setItem('vibeflow_selected_playlist_id', pl.id);
+    } catch {}
+  };
+
+  const handlePlaylistCreated = (newPl?: Playlist) => {
+    if (newPl) {
+      setSelectedPlaylist(newPl);
+      try {
+        localStorage.setItem('vibeflow_selected_playlist_id', newPl.id);
+      } catch {}
+    }
+    fetchPlaylists(newPl?.id);
+  };
+
   useEffect(() => {
     // Check if user arrived via a share link
     const urlParams = new URLSearchParams(window.location.search);
@@ -84,8 +116,8 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
       api.acceptShareToken(token)
         .then(res => {
           if (res.playlist) {
-            setSelectedPlaylist(res.playlist);
-            fetchPlaylists();
+            handleSelectPlaylist(res.playlist);
+            fetchPlaylists(res.playlist.id);
           }
         })
         .catch(() => {});
@@ -93,7 +125,6 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
   }, []);
 
   useEffect(() => {
-    setSelectedPlaylist(null);
     fetchPlaylists();
   }, [user?.id]);
 
@@ -108,6 +139,9 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
     if (!selectedPlaylist) return;
     if (confirm(`Delete playlist "${selectedPlaylist.title}"?`)) {
       await api.deletePlaylist(selectedPlaylist.id);
+      try {
+        localStorage.removeItem('vibeflow_selected_playlist_id');
+      } catch {}
       setSelectedPlaylist(null);
       fetchPlaylists();
     }
@@ -117,6 +151,9 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
     if (!selectedPlaylist) return;
     if (confirm(`Remove shared playlist "${selectedPlaylist.title}" from your library?`)) {
       await api.leaveSharedPlaylist(selectedPlaylist.id);
+      try {
+        localStorage.removeItem('vibeflow_selected_playlist_id');
+      } catch {}
       setSelectedPlaylist(null);
       fetchPlaylists();
     }
@@ -244,10 +281,11 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
           <div className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
             {playlists.map(pl => {
               const isSelected = selectedPlaylist?.id === pl.id;
+              const isCustom = !pl.id.startsWith('playlist-') && !pl.isSharedWithMe;
               return (
                 <div
                   key={pl.id}
-                  onClick={() => setSelectedPlaylist(pl)}
+                  onClick={() => handleSelectPlaylist(pl)}
                   className={`p-3 rounded-2xl cursor-pointer transition-all duration-200 border flex items-center gap-3.5 ${
                     isSelected
                       ? 'bg-surface-800 border-brand-500/40 shadow-md shadow-brand-500/10 ring-1 ring-brand-500/20'
@@ -260,11 +298,16 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
                     className="w-12 h-12 rounded-xl object-cover shadow-sm shrink-0"
                   />
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <h4 className="text-sm font-bold text-white truncate">{pl.title}</h4>
                       {pl.isSmart && (
                         <span className="p-0.5 rounded bg-brand-500/20 text-brand-300 text-[10px]" title="Smart Playlist">
                           <Sparkles className="w-3 h-3" />
+                        </span>
+                      )}
+                      {isCustom && (
+                        <span className="px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[9px] font-bold uppercase tracking-wider">
+                          Custom
                         </span>
                       )}
                     </div>
@@ -509,14 +552,14 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
       <SmartPlaylistModal
         isOpen={isSmartModalOpen}
         onClose={() => setIsSmartModalOpen(false)}
-        onPlaylistCreated={fetchPlaylists}
+        onPlaylistCreated={handlePlaylistCreated}
       />
 
       {/* Custom Playlist Modal */}
       <CreatePlaylistModal
         isOpen={isCustomModalOpen}
         onClose={() => setIsCustomModalOpen(false)}
-        onPlaylistCreated={fetchPlaylists}
+        onPlaylistCreated={handlePlaylistCreated}
       />
 
       {/* Share Playlist Modal */}

@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { X, Sparkles, Plus, Trash2, CheckCircle2 } from 'lucide-react';
-import { PlaylistRule, GenreCategory, MoodCategory } from '../types';
+import { Playlist, PlaylistRule, GenreCategory, MoodCategory } from '../types';
 import { api } from '../services/api';
 
 interface SmartPlaylistModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onPlaylistCreated: () => void;
+  onPlaylistCreated: (playlist?: Playlist) => void;
 }
 
 export const SmartPlaylistModal: React.FC<SmartPlaylistModalProps> = ({ 
@@ -57,7 +57,7 @@ export const SmartPlaylistModal: React.FC<SmartPlaylistModalProps> = ({
 
     setSaving(true);
     try {
-      await api.createPlaylist({
+      const created = await api.createPlaylist({
         title: title.trim(),
         description: description.trim() || 'AI-generated smart playlist tailored with dynamic rules.',
         isSmart: true,
@@ -67,7 +67,7 @@ export const SmartPlaylistModal: React.FC<SmartPlaylistModalProps> = ({
           limit
         }
       });
-      onPlaylistCreated();
+      onPlaylistCreated(created);
       onClose();
     } catch (err) {
       console.error('Failed to create smart playlist', err);
