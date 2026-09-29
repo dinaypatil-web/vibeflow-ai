@@ -324,7 +324,12 @@ const ChannelDetailPanel: React.FC<{
     }
   };
 
-  const playAll = () => { if (channelTracks.length > 0) playTrack(channelTracks[0], channelTracks); };
+  const [sortOption, setSortOption] = useState<string>('default');
+  const sortedTracks = useMemo(() => {
+    return sortMediaItems(channelTracks, sortOption);
+  }, [channelTracks, sortOption]);
+
+  const playAll = () => { if (sortedTracks.length > 0) playTrack(sortedTracks[0], sortedTracks); };
   const effectiveCount = Math.max(
     channel.videoCount ? parseInt(String(channel.videoCount).replace(/\D/g, '')) || 0 : 0,
     channelTracks.length
@@ -355,8 +360,8 @@ const ChannelDetailPanel: React.FC<{
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-3 mb-5">
-        <button onClick={playAll} disabled={channelTracks.length === 0} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-brand-600 to-accent-cyan text-white text-sm font-bold rounded-xl shadow-lg hover:brightness-110 disabled:opacity-50 active:scale-95 transition-all">
-          <Play className="w-4 h-4 fill-current" /> Play All ({channelTracks.length})
+        <button onClick={playAll} disabled={sortedTracks.length === 0} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-brand-600 to-accent-cyan text-white text-sm font-bold rounded-xl shadow-lg hover:brightness-110 disabled:opacity-50 active:scale-95 transition-all">
+          <Play className="w-4 h-4 fill-current" /> Play All ({sortedTracks.length})
         </button>
         <button
           onClick={handleManualExploreMore}
@@ -368,16 +373,21 @@ const ChannelDetailPanel: React.FC<{
         </button>
       </div>
 
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
           <AudioLines className="w-4 h-4 text-brand-400" /> All Channel Tracks ({channelTracks.length})
         </h3>
-        {loadingTracks && (
-          <span className="flex items-center gap-1.5 text-xs text-brand-400 font-medium animate-pulse">
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            <span>Retrieving all tracks from {channel.provider}...</span>
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          {loadingTracks && (
+            <span className="flex items-center gap-1.5 text-xs text-brand-400 font-medium animate-pulse">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <span>Retrieving all tracks from {channel.provider}...</span>
+            </span>
+          )}
+          {channelTracks.length > 1 && (
+            <TrackSortControl currentSort={sortOption} onSortChange={setSortOption} title="Sort Channel Tracks By" />
+          )}
+        </div>
       </div>
 
       {loadingTracks && channelTracks.length === 0 ? (
@@ -392,10 +402,10 @@ const ChannelDetailPanel: React.FC<{
             </div>
           ))}
         </div>
-      ) : channelTracks.length > 0 ? (
+      ) : sortedTracks.length > 0 ? (
         <div className="space-y-1">
-          {channelTracks.map(t => (
-            <TrackRow key={t.id} track={t} queueContext={channelTracks} onAddToPlaylist={onAddToPlaylist} />
+          {sortedTracks.map(t => (
+            <TrackRow key={t.id} track={t} queueContext={sortedTracks} onAddToPlaylist={onAddToPlaylist} />
           ))}
         </div>
       ) : (
@@ -421,6 +431,11 @@ const AlbumDetailPanel: React.FC<{
     );
   });
   const [loadingTracks, setLoadingTracks] = useState(false);
+  const [sortOption, setSortOption] = useState<string>('default');
+
+  const sortedTracks = useMemo(() => {
+    return sortMediaItems(albumTracks, sortOption);
+  }, [albumTracks, sortOption]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -447,7 +462,7 @@ const AlbumDetailPanel: React.FC<{
     return () => { isCancelled = true; };
   }, [album.artist, album.title, album.provider]);
 
-  const playAll = () => { if (albumTracks.length > 0) playTrack(albumTracks[0], albumTracks); };
+  const playAll = () => { if (sortedTracks.length > 0) playTrack(sortedTracks[0], sortedTracks); };
   return (
     <div className="animate-in fade-in slide-in-from-right-4 duration-300">
       <button onClick={onBack} className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors mb-4 group">
@@ -471,23 +486,28 @@ const AlbumDetailPanel: React.FC<{
         </div>
       </div>
       <div className="flex gap-3 mb-5">
-        <button onClick={playAll} disabled={albumTracks.length === 0} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-brand-600 to-accent-cyan text-white text-sm font-bold rounded-xl shadow-lg hover:brightness-110 disabled:opacity-50 active:scale-95 transition-all">
-          <Play className="w-4 h-4 fill-current" /> Play All ({albumTracks.length})
+        <button onClick={playAll} disabled={sortedTracks.length === 0} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-brand-600 to-accent-cyan text-white text-sm font-bold rounded-xl shadow-lg hover:brightness-110 disabled:opacity-50 active:scale-95 transition-all">
+          <Play className="w-4 h-4 fill-current" /> Play All ({sortedTracks.length})
         </button>
       </div>
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
-          <Music className="w-4 h-4 text-brand-400" /> Tracks ({albumTracks.length})
+          <Music className="w-4 h-4 text-brand-400" /> Tracks ({sortedTracks.length})
         </h3>
-        {loadingTracks && (
-          <span className="flex items-center gap-1.5 text-xs text-brand-400 font-medium animate-pulse">
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            <span>Loading album tracks...</span>
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          {loadingTracks && (
+            <span className="flex items-center gap-1.5 text-xs text-brand-400 font-medium animate-pulse">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <span>Loading album tracks...</span>
+            </span>
+          )}
+          {albumTracks.length > 1 && (
+            <TrackSortControl currentSort={sortOption} onSortChange={setSortOption} title="Sort Album Tracks By" />
+          )}
+        </div>
       </div>
-      {albumTracks.length > 0 ? (
-        <div className="space-y-1">{albumTracks.map(t => <TrackRow key={t.id} track={t} queueContext={albumTracks} onAddToPlaylist={onAddToPlaylist} />)}</div>
+      {sortedTracks.length > 0 ? (
+        <div className="space-y-1">{sortedTracks.map(t => <TrackRow key={t.id} track={t} queueContext={sortedTracks} onAddToPlaylist={onAddToPlaylist} />)}</div>
       ) : (
         <EmptyState icon={<Disc3 className="w-8 h-8" />} message="No tracks found for this album" sub="Try searching for the artist directly" />
       )}
