@@ -2,6 +2,7 @@ import {
   MediaItem, 
   Playlist, 
   User, 
+  UserSummary,
   UserPreferences,
   RecommendationResponse, 
   AIClassificationResult, 
@@ -188,6 +189,72 @@ export const api = {
       method: 'DELETE',
       headers: t ? { 'Authorization': `Bearer ${t}` } : {}
     });
+  },
+
+  sharePlaylist: async (playlistId: string, targetIdentifier: string, token?: string | null) => {
+    const t = token !== undefined ? token : getStoredToken();
+    const res = await fetch(`${API_BASE}/playlists/${playlistId}/share`, {
+      method: 'POST',
+      headers: authHeaders(t),
+      body: JSON.stringify({ target: targetIdentifier })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to share playlist');
+    return data;
+  },
+
+  unsharePlaylist: async (playlistId: string, targetUserId: string, token?: string | null) => {
+    const t = token !== undefined ? token : getStoredToken();
+    const res = await fetch(`${API_BASE}/playlists/${playlistId}/share/${targetUserId}`, {
+      method: 'DELETE',
+      headers: t ? { 'Authorization': `Bearer ${t}` } : {}
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to revoke access');
+    return data;
+  },
+
+  leaveSharedPlaylist: async (playlistId: string, token?: string | null) => {
+    const t = token !== undefined ? token : getStoredToken();
+    const res = await fetch(`${API_BASE}/playlists/${playlistId}/leave`, {
+      method: 'POST',
+      headers: authHeaders(t)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to leave shared playlist');
+    return data;
+  },
+
+  getPlaylistByShareToken: async (shareToken: string) => {
+    const res = await fetch(`${API_BASE}/playlists/share/${shareToken}`);
+    if (!res.ok) throw new Error('Shared playlist not found or link expired');
+    const data = await res.json();
+    return data.playlist as Playlist;
+  },
+
+  acceptShareToken: async (shareToken: string, token?: string | null) => {
+    const t = token !== undefined ? token : getStoredToken();
+    const res = await fetch(`${API_BASE}/playlists/share/${shareToken}/accept`, {
+      method: 'POST',
+      headers: authHeaders(t)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to accept share link');
+    return data;
+  },
+
+  searchUsers: async (query: string = '', token?: string | null): Promise<UserSummary[]> => {
+    try {
+      const t = token !== undefined ? token : getStoredToken();
+      const headers: HeadersInit = {};
+      if (t) headers['Authorization'] = `Bearer ${t}`;
+      const res = await fetch(`${API_BASE}/auth/users?q=${encodeURIComponent(query)}`, { headers });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.users || [];
+    } catch {
+      return [];
+    }
   },
 
   // Personalized feed

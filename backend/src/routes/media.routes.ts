@@ -1,10 +1,12 @@
 import { Router, Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
 import { db } from '../store/database';
 import { providerRegistry } from '../services/providerService';
 import { AIRecommendationService } from '../services/aiRecommendationService';
 import { MediaItem, MediaProvider } from '../types';
 
 const router = Router();
+const JWT_SECRET = process.env.JWT_SECRET || 'vibeflow-super-secret-key-2026';
 
 // Search across all connected sources
 router.get('/search', async (req: Request, res: Response) => {
@@ -127,6 +129,25 @@ router.post('/import-url', async (req: Request, res: Response) => {
     }
 
     const item = await providerRegistry.importFromUrl(url, customTitle, customArtist);
+    
+    // Attribute creator if user is authenticated
+    let userId = req.body.userId;
+    const auth = req.headers.authorization;
+    if (!userId && auth && auth.startsWith('Bearer ')) {
+      try {
+        const decoded = jwt.verify(auth.substring(7), JWT_SECRET) as any;
+        userId = decoded?.userId;
+      } catch {}
+    }
+    if (userId) {
+      const u = db.findUserById(userId) || db.findUserByIdentifier(userId);
+      if (u) {
+        item.createdBy = { id: u.id, name: u.name, username: u.username || u.name, avatar: u.avatar };
+        item.attributionNote = `Added by @${u.username || u.name}`;
+        db.saveToDisk();
+      }
+    }
+
     res.status(201).json({ success: true, item });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Failed to import URL' });
@@ -142,6 +163,16 @@ router.post('/local/import', (req: Request, res: Response) => {
 
   // Automatic AI classification
   const classification = AIRecommendationService.classify(title, artist || 'Unknown Artist', customTags || [], fileName);
+
+  let userId = req.body.userId;
+  const auth = req.headers.authorization;
+  if (!userId && auth && auth.startsWith('Bearer ')) {
+    try {
+      const decoded = jwt.verify(auth.substring(7), JWT_SECRET) as any;
+      userId = decoded?.userId;
+    } catch {}
+  }
+  const u = userId ? (db.findUserById(userId) || db.findUserByIdentifier(userId)) : undefined;
 
   const localItem: MediaItem = {
     id: `local-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -160,7 +191,9 @@ router.post('/local/import', (req: Request, res: Response) => {
     isOfflinePermitted: true,
     isLocal: true,
     confidenceScore: classification.confidenceScore,
-    tags: [...(classification.detectedTags || []), 'local', format || 'mp3']
+    tags: [...(classification.detectedTags || []), 'local', format || 'mp3'],
+    createdBy: u ? { id: u.id, name: u.name, username: u.username || u.name, avatar: u.avatar } : undefined,
+    attributionNote: u ? `Uploaded by @${u.username || u.name}` : undefined
   };
 
   db.addMediaItem(localItem);

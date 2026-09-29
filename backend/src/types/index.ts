@@ -30,6 +30,14 @@ export type GenreCategory =
   | 'Devotional'
   | 'Podcast & Talks';
 
+export interface UserSummary {
+  id: string;
+  name: string;
+  username: string;
+  avatar?: string;
+  email?: string;
+}
+
 export interface MediaItem {
   id: string;
   provider: MediaProvider;
@@ -54,6 +62,10 @@ export interface MediaItem {
   tags?: string[];
   playbackCount?: number;
   addedAt?: string;
+  // User attribution
+  createdBy?: UserSummary;
+  curatedFor?: UserSummary;
+  attributionNote?: string;
 }
 
 export interface PlaylistRule {
@@ -73,6 +85,7 @@ export interface SmartPlaylistDefinition {
 export interface Playlist {
   id: string;
   userId: string;
+  creator?: UserSummary;
   title: string;
   description?: string;
   coverArt?: string;
@@ -83,6 +96,10 @@ export interface Playlist {
   isPinned?: boolean;
   itemCount: number;
   items?: PlaylistItem[];
+  sharedWith?: string[]; // Array of user IDs with whom this playlist is shared
+  sharedWithUsers?: UserSummary[]; // Details of users with whom this playlist is shared
+  shareToken?: string; // Direct shareable token
+  isSharedWithMe?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -141,6 +158,7 @@ export interface RecommendationResponse {
   sectionTitle: string;
   description: string;
   reason: string;
+  curatedFor?: UserSummary;
   items: MediaItem[];
 }
 

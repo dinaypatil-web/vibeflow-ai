@@ -14,13 +14,17 @@ import {
   User as UserIcon,
   Cloud,
   LogOut,
-  LogIn
+  LogIn,
+  Share2,
+  Users,
+  ShieldCheck
 } from 'lucide-react';
 import { Playlist, PlaylistItem } from '../types';
 import { api } from '../services/api';
 import { usePlayerStore } from '../store/playerStore';
 import { SmartPlaylistModal } from '../components/SmartPlaylistModal';
 import { CreatePlaylistModal } from '../components/CreatePlaylistModal';
+import { SharePlaylistModal } from '../components/SharePlaylistModal';
 import { TrackSortControl } from '../components/TrackSortControl';
 import { sortMediaItems } from '../utils/trackSort';
 
@@ -33,6 +37,7 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
   const [isSmartModalOpen, setIsSmartModalOpen] = useState(false);
   const [isCustomModalOpen, setIsCustomModalOpen] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [playlistSort, setPlaylistSort] = useState<string>('default');
 
@@ -72,6 +77,22 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
   };
 
   useEffect(() => {
+    // Check if user arrived via a share link
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('shareToken');
+    if (token) {
+      api.acceptShareToken(token)
+        .then(res => {
+          if (res.playlist) {
+            setSelectedPlaylist(res.playlist);
+            fetchPlaylists();
+          }
+        })
+        .catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
     setSelectedPlaylist(null);
     fetchPlaylists();
   }, [user?.id]);
@@ -87,6 +108,15 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
     if (!selectedPlaylist) return;
     if (confirm(`Delete playlist "${selectedPlaylist.title}"?`)) {
       await api.deletePlaylist(selectedPlaylist.id);
+      setSelectedPlaylist(null);
+      fetchPlaylists();
+    }
+  };
+
+  const handleLeaveSharedPlaylist = async () => {
+    if (!selectedPlaylist) return;
+    if (confirm(`Remove shared playlist "${selectedPlaylist.title}" from your library?`)) {
+      await api.leaveSharedPlaylist(selectedPlaylist.id);
       setSelectedPlaylist(null);
       fetchPlaylists();
     }
@@ -238,9 +268,21 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-400 truncate mt-0.5">
-                      {pl.items?.length || pl.itemCount} tracks {pl.isSmart ? '• Dynamic' : '• Custom'}
-                    </p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-[11px] text-slate-400 truncate">
+                        {pl.items?.length || pl.itemCount} tracks
+                      </span>
+                      <span className="text-slate-600">•</span>
+                      {pl.isSharedWithMe ? (
+                        <span className="text-[10px] text-accent-cyan font-semibold truncate">
+                          Shared by {pl.creator?.name?.split(' ')[0] || 'User'}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-400 truncate">
+                          by {pl.creator?.name?.split(' ')[0] || 'You'}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -254,14 +296,14 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
             <div className="bg-surface-850 rounded-3xl p-6 border border-white/5 space-y-6">
               {/* Playlist Header */}
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-white/5">
-                <div className="flex items-center gap-4">
+                <div className="flex items-start gap-4">
                   <img
                     src={selectedPlaylist.coverArt || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=600&q=80'}
                     alt={selectedPlaylist.title}
-                    className="w-20 h-20 rounded-2xl object-cover shadow-lg ring-1 ring-white/10"
+                    className="w-20 h-20 rounded-2xl object-cover shadow-lg ring-1 ring-white/10 shrink-0"
                   />
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <h3 className="text-xl font-bold text-white">{selectedPlaylist.title}</h3>
                       {selectedPlaylist.isSmart ? (
                         <span className="px-2 py-0.5 rounded-full bg-brand-500/20 text-brand-300 border border-brand-500/30 text-[11px] font-semibold flex items-center gap-1">
@@ -273,12 +315,46 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
                           Custom Playlist
                         </span>
                       )}
+                      {selectedPlaylist.isSharedWithMe ? (
+                        <span className="px-2 py-0.5 rounded-full bg-accent-cyan/15 text-accent-cyan border border-accent-cyan/30 text-[11px] font-semibold flex items-center gap-1">
+                          <Users className="w-3 h-3" />
+                          <span>Shared With You</span>
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[11px] font-semibold flex items-center gap-1">
+                          <ShieldCheck className="w-3 h-3" />
+                          <span>Your Creation</span>
+                        </span>
+                      )}
                     </div>
-                    <p className="text-xs text-slate-400 mt-1 max-w-md">
-                      {selectedPlaylist.description || 'Personal playlist.'}
-                    </p>
-                    <p className="text-xs text-slate-500 mt-1 font-mono">
-                      {selectedPlaylist.items?.length || 0} tracks
+
+                    {/* Creator Attribution Bar */}
+                    <div className="flex flex-wrap items-center gap-2.5 mt-2 text-xs">
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-surface-800 border border-white/5">
+                        <img
+                          src={selectedPlaylist.creator?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
+                          alt=""
+                          className="w-4 h-4 rounded-full object-cover"
+                        />
+                        <span className="text-slate-400">Created by</span>
+                        <span className="font-bold text-white">{selectedPlaylist.creator?.name || 'Aarav Sharma'}</span>
+                        {selectedPlaylist.creator?.username && (
+                          <span className="text-slate-400">(@{selectedPlaylist.creator.username})</span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1 text-slate-400 font-mono text-[11px]">
+                        <span>{selectedPlaylist.items?.length || 0} tracks</span>
+                      </div>
+
+                      <div className="flex items-center gap-1 text-[11px] text-emerald-400/90 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>Retained in your access until deleted</span>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-slate-400 mt-2 max-w-lg">
+                      {selectedPlaylist.description || 'Personal playlist collection.'}
                     </p>
                   </div>
                 </div>
@@ -292,6 +368,16 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
                   >
                     <Play className="w-3.5 h-3.5 fill-current" />
                     <span>Play Mix</span>
+                  </button>
+
+                  {/* Share Playlist Button */}
+                  <button
+                    onClick={() => setIsShareModalOpen(true)}
+                    className="px-3.5 py-2 bg-gradient-to-r from-brand-600/30 to-purple-600/30 hover:from-brand-600/50 hover:to-purple-600/50 text-brand-200 hover:text-white border border-brand-500/30 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all shadow-sm"
+                    title="Share playlist with other users or copy share link"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>Share</span>
                   </button>
 
                   {/* Track Sort Control based on attributes */}
@@ -319,8 +405,16 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
                     </button>
                   </div>
 
-                  {/* Delete Playlist button (for custom playlists) */}
-                  {!selectedPlaylist.isSmart && (
+                  {/* Delete or Leave Playlist button */}
+                  {selectedPlaylist.isSharedWithMe ? (
+                    <button
+                      onClick={handleLeaveSharedPlaylist}
+                      className="p-2 rounded-xl bg-surface-800 hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 border border-white/5 transition-colors"
+                      title="Remove shared playlist from your library"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  ) : !selectedPlaylist.isSmart ? (
                     <button
                       onClick={handleDeletePlaylist}
                       className="p-2 rounded-xl bg-surface-800 hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 border border-white/5 transition-colors"
@@ -328,7 +422,7 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
-                  )}
+                  ) : null}
                 </div>
               </div>
 
@@ -423,6 +517,14 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
         isOpen={isCustomModalOpen}
         onClose={() => setIsCustomModalOpen(false)}
         onPlaylistCreated={fetchPlaylists}
+      />
+
+      {/* Share Playlist Modal */}
+      <SharePlaylistModal
+        isOpen={isShareModalOpen}
+        playlist={selectedPlaylist}
+        onClose={() => setIsShareModalOpen(false)}
+        onPlaylistUpdated={fetchPlaylists}
       />
     </div>
   );

@@ -62,6 +62,21 @@ router.post('/', (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Playlist title is required' });
   }
 
+  const actualUserId = userId || resolveUserId(req);
+  const user = db.findUserById(actualUserId) || db.findUserByIdentifier(actualUserId);
+  const creator = user ? {
+    id: user.id,
+    name: user.name,
+    username: user.username || user.name,
+    avatar: user.avatar,
+    email: user.email
+  } : {
+    id: actualUserId,
+    name: actualUserId === 'demo-user-id' ? 'Aarav Sharma' : 'Music Lover',
+    username: actualUserId === 'demo-user-id' ? 'demo' : actualUserId,
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
+  };
+
   const playlistId = `pl-${Date.now()}`;
   let initialItems: PlaylistItem[] = [];
 
@@ -79,16 +94,21 @@ router.post('/', (req: Request, res: Response) => {
 
   const newPlaylist: Playlist = {
     id: playlistId,
-    userId: userId || resolveUserId(req),
+    userId: actualUserId,
+    creator,
     title,
     description: description || '',
     coverArt: coverArt || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=600&q=80',
     isSmart: Boolean(isSmart),
     smartDefinition: smartDefinition || undefined,
-    isPrivate: Boolean(isPrivate),
+    isPrivate: isPrivate !== undefined ? Boolean(isPrivate) : true,
     isShareable: isShareable !== undefined ? Boolean(isShareable) : true,
     itemCount: initialItems.length,
     items: initialItems,
+    sharedWith: [],
+    sharedWithUsers: [],
+    shareToken: `st-${playlistId}`,
+    isSharedWithMe: false,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -97,12 +117,47 @@ router.post('/', (req: Request, res: Response) => {
   res.status(201).json({ playlist: newPlaylist });
 });
 
+// Share token preview
+router.get('/share/:token', (req: Request, res: Response) => {
+  const playlist = db.findPlaylistByShareToken(req.params.token);
+  if (!playlist) {
+    return res.status(404).json({ error: 'Shared playlist not found or link expired' });
+  }
+  res.json({ playlist });
+});
+
+// Accept shared playlist link
+router.post('/share/:token/accept', (req: Request, res: Response) => {
+  const userId = resolveUserId(req);
+  const result = db.acceptShareToken(req.params.token, userId);
+  if (!result.success) {
+    return res.status(404).json({ error: result.message });
+  }
+  res.json(result);
+});
+
 // Get playlist by ID
 router.get('/:id', (req: Request, res: Response) => {
+  const userId = resolveUserId(req);
   const playlist = db.findPlaylistById(req.params.id);
   if (!playlist) {
     return res.status(404).json({ error: 'Playlist not found' });
   }
+
+  const shareToken = (req.query.token as string) || (req.headers['x-share-token'] as string);
+  const isOwner = playlist.userId === userId;
+  const isShared = Array.isArray(playlist.sharedWith) && playlist.sharedWith.includes(userId);
+  const isTokenMatch = Boolean(shareToken && playlist.shareToken === shareToken);
+
+  // Requirement: Any user's playlist shall not be visible to other User unless shared
+  if (!isOwner && !isShared && !isTokenMatch) {
+    return res.status(403).json({ error: 'This playlist is private and has not been shared with you.' });
+  }
+
+  const enrichedPlaylist = {
+    ...playlist,
+    isSharedWithMe: !isOwner
+  };
 
   if (playlist.isSmart && playlist.smartDefinition) {
     const matched = AIRecommendationService.evaluateSmartRules(
@@ -118,23 +173,79 @@ router.get('/:id', (req: Request, res: Response) => {
       addedAt: new Date().toISOString(),
       mediaItem: m
     }));
-    return res.json({ playlist: { ...playlist, itemCount: items.length, items } });
+    return res.json({ playlist: { ...enrichedPlaylist, itemCount: items.length, items } });
   }
 
-  res.json({ playlist });
+  res.json({ playlist: enrichedPlaylist });
 });
 
-// Update playlist
-router.put('/:id', (req: Request, res: Response) => {
-  const updated = db.updatePlaylist(req.params.id, req.body);
-  if (!updated) {
+// Share playlist with another user
+router.post('/:id/share', (req: Request, res: Response) => {
+  const userId = resolveUserId(req);
+  const { target, targetIdentifier, targetUserId } = req.body;
+  const ident = (target || targetIdentifier || targetUserId || '').trim();
+  if (!ident) {
+    return res.status(400).json({ error: 'Target username, email, or user ID is required to share' });
+  }
+
+  const result = db.sharePlaylist(req.params.id, userId, ident);
+  if (!result.success) {
+    return res.status(400).json({ error: result.message });
+  }
+  res.json(result);
+});
+
+// Revoke sharing for specific user
+router.delete('/:id/share/:targetUserId', (req: Request, res: Response) => {
+  const userId = resolveUserId(req);
+  const result = db.unsharePlaylist(req.params.id, userId, req.params.targetUserId);
+  if (!result.success) {
+    return res.status(400).json({ error: result.message });
+  }
+  res.json(result);
+});
+
+// Leave / remove shared playlist for recipient
+router.post('/:id/leave', (req: Request, res: Response) => {
+  const userId = resolveUserId(req);
+  const ok = db.leaveSharedPlaylist(req.params.id, userId);
+  if (!ok) {
     return res.status(404).json({ error: 'Playlist not found' });
   }
+  res.json({ success: true, message: 'Shared playlist removed from your library' });
+});
+
+// Update playlist (owner only)
+router.put('/:id', (req: Request, res: Response) => {
+  const userId = resolveUserId(req);
+  const playlist = db.findPlaylistById(req.params.id);
+  if (!playlist) {
+    return res.status(404).json({ error: 'Playlist not found' });
+  }
+  if (playlist.userId !== userId) {
+    return res.status(403).json({ error: 'Only the creator can edit playlist details' });
+  }
+
+  const updated = db.updatePlaylist(req.params.id, req.body);
   res.json({ playlist: updated });
 });
 
-// Delete playlist
+// Delete playlist (owner deletes; recipient leaves)
 router.delete('/:id', (req: Request, res: Response) => {
+  const userId = resolveUserId(req);
+  const playlist = db.findPlaylistById(req.params.id);
+  if (!playlist) {
+    return res.status(404).json({ error: 'Playlist not found' });
+  }
+
+  if (playlist.userId !== userId) {
+    if (Array.isArray(playlist.sharedWith) && playlist.sharedWith.includes(userId)) {
+      db.leaveSharedPlaylist(req.params.id, userId);
+      return res.json({ success: true, message: 'Removed shared playlist from your library' });
+    }
+    return res.status(403).json({ error: 'Only the creator can delete this playlist' });
+  }
+
   const deleted = db.deletePlaylist(req.params.id);
   if (!deleted) {
     return res.status(404).json({ error: 'Playlist not found' });

@@ -296,4 +296,19 @@ router.put('/preferences', (req: Request, res: Response) => {
   }
 });
 
+// Search / list users for sharing
+router.get('/users', (req: Request, res: Response) => {
+  let currentUserId: string | undefined;
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    try {
+      const decoded = jwt.verify(authHeader.substring(7), JWT_SECRET) as any;
+      currentUserId = decoded?.userId;
+    } catch {}
+  }
+  const q = (req.query.q as string) || '';
+  const users = db.searchUsers(q, currentUserId);
+  res.json({ users });
+});
+
 export default router;

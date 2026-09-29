@@ -235,9 +235,22 @@ export class AIRecommendationService {
       : ['Calm & Peaceful', 'Focus & Study', 'Workout & Energy', 'Romantic'];
 
     const preferredLanguages: string[] = user?.preferences?.preferredLanguages || [];
-    const favoriteArtists: string[] = user?.preferences?.favoriteArtists || [];
+    const favoriteArtists: string[] = user?.preferences?.favoriteArtists || [];    const feed: RecommendationResponse[] = [];
 
-    const feed: RecommendationResponse[] = [];
+    const userSummary = {
+      id: user ? user.id : userId,
+      name: user?.name || (userId === 'demo-user-id' ? 'Aarav Sharma' : 'Music Lover'),
+      username: user?.username || (userId === 'demo-user-id' ? 'demo' : 'listener'),
+      avatar: user?.avatar
+    };
+
+    const enrichItems = (items: MediaItem[]): MediaItem[] => {
+      return items.map(item => ({
+        ...item,
+        curatedFor: userSummary,
+        attributionNote: `Curated for @${userSummary.username || userSummary.name}`
+      }));
+    };
 
     // Helper: calculate user affinity score for a track
     const scoreItem = (item: MediaItem): number => {
@@ -269,7 +282,8 @@ export class AIRecommendationService {
       reason: topReasonParts.length > 0
         ? `Personalized from your affinity for ${topReasonParts.join(' • ')}.`
         : 'Curated based on your listening profile.',
-      items: recForYou.length > 0 ? recForYou : allItems.slice(0, 6)
+      curatedFor: userSummary,
+      items: enrichItems(recForYou.length > 0 ? recForYou : allItems.slice(0, 6))
     });
 
     // 2. Favorite Moods Spotlight
@@ -281,7 +295,8 @@ export class AIRecommendationService {
           sectionTitle: `Mood Flow: ${primaryMood}`,
           description: `Vibes handpicked to match your selected emotional resonance.`,
           reason: `Filtered for your preferred mood affinities (${preferredMoods.slice(0, 3).join(', ')}).`,
-          items: moodTracks
+          curatedFor: userSummary,
+          items: enrichItems(moodTracks)
         });
       }
     }
@@ -295,7 +310,8 @@ export class AIRecommendationService {
           sectionTitle: `Genre Spotlight: ${primaryGenre}`,
           description: `Signature beats and melodies tailored to your favorite genres.`,
           reason: `Highlighted because you saved ${preferredGenres.slice(0, 3).join(', ')} in your taste profile.`,
-          items: genreTracks
+          curatedFor: userSummary,
+          items: enrichItems(genreTracks)
         });
       }
     }
@@ -308,7 +324,8 @@ export class AIRecommendationService {
           sectionTitle: `Language Mix: ${preferredLanguages.slice(0, 2).join(' & ')}`,
           description: `High-fidelity audio streaming in your preferred regional & global languages.`,
           reason: `Matched to your selected language preferences (${preferredLanguages.join(', ')}).`,
-          items: langTracks
+          curatedFor: userSummary,
+          items: enrichItems(langTracks)
         });
       }
     }
@@ -323,7 +340,8 @@ export class AIRecommendationService {
           sectionTitle: `Artist Affinity: ${favoriteArtists.slice(0, 2).join(' & ')}`,
           description: `Tracks from artists you follow and creators with complementary acoustic style.`,
           reason: `Selected from your saved favorite artists list.`,
-          items: artistTracks
+          curatedFor: userSummary,
+          items: enrichItems(artistTracks)
         });
       }
     }
@@ -337,7 +355,8 @@ export class AIRecommendationService {
           sectionTitle: `Inspired by "${seedFav.title}"`,
           description: 'Tracks sharing similar acoustic signatures and emotional resonance.',
           reason,
-          items: similar
+          curatedFor: userSummary,
+          items: enrichItems(similar)
         });
       }
     }
@@ -348,7 +367,8 @@ export class AIRecommendationService {
       sectionTitle: 'Trending Discoveries',
       description: 'Most popular tracks resonating with listeners across platforms this week.',
       reason: 'Curated from global play count and positive reception.',
-      items: topPlayed
+      curatedFor: userSummary,
+      items: enrichItems(topPlayed)
     });
 
     return feed;

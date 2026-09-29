@@ -147,6 +147,19 @@ export const TrackCard: React.FC<TrackCardProps> = ({
             {track.mood}
           </span>
         </div>
+
+        {/* User Attribution */}
+        {track.curatedFor && (
+          <div className="flex items-center gap-1 text-[10px] text-brand-300/90 font-medium truncate pt-0.5" title={`Curated for @${track.curatedFor.username || track.curatedFor.name}`}>
+            <Sparkles className="w-2.5 h-2.5 shrink-0 text-brand-400" />
+            <span className="truncate">Curated for @{track.curatedFor.username || track.curatedFor.name}</span>
+          </div>
+        )}
+        {track.createdBy && !track.curatedFor && (
+          <div className="flex items-center gap-1 text-[10px] text-accent-cyan/90 font-medium truncate pt-0.5" title={`Added by @${track.createdBy.username || track.createdBy.name}`}>
+            <span className="truncate">Added by @{track.createdBy.username || track.createdBy.name}</span>
+          </div>
+        )}
       </div>
 
       {/* Card Action footer (visible on hover) */}

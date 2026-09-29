@@ -179,10 +179,22 @@ export const HomeView: React.FC<HomeViewProps> = ({
           <section key={sIdx} className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-                  <span>{section.sectionTitle}</span>
-                  {sIdx === 0 && <span className="text-xs px-2 py-0.5 rounded-full bg-brand-500/20 text-brand-300 font-normal">AI Tailored</span>}
-                </h3>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+                    <span>{section.sectionTitle}</span>
+                    {sIdx === 0 && <span className="text-xs px-2 py-0.5 rounded-full bg-brand-500/20 text-brand-300 font-normal">AI Tailored</span>}
+                  </h3>
+                  {section.curatedFor && (
+                    <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-surface-800 text-slate-300 border border-white/5 font-medium flex items-center gap-1.5 shadow-xs">
+                      <img
+                        src={section.curatedFor.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
+                        alt=""
+                        className="w-3.5 h-3.5 rounded-full object-cover"
+                      />
+                      <span>Curated for {section.curatedFor.name}</span>
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-slate-400 mt-0.5">{section.description}</p>
                 {section.reason && (
                   <p className="text-[11px] text-brand-400/90 font-medium mt-1 flex items-center gap-1.5">

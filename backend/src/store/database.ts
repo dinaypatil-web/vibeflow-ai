@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { 
   User, 
+  UserSummary,
   UserPreferences, 
   MediaItem, 
   Playlist, 
@@ -416,6 +417,7 @@ class MemoryDatabase {
     };
     this.loadFromDisk();
     this.seedDefaultPlaylists();
+    this.ensurePlaylistIntegrity();
   }
 
   private cloudSyncInFlight: Promise<void> | null = null;
@@ -685,11 +687,19 @@ class MemoryDatabase {
   private seedDefaultPlaylists() {
     if (this.data.playlists.length === 0) {
       const demoUserId = 'demo-user-id';
+      const demoCreator: UserSummary = {
+        id: demoUserId,
+        name: 'Aarav Sharma',
+        username: 'demo',
+        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+        email: 'demo@vibeflow.ai'
+      };
       
       const defaultPlaylists: Playlist[] = [
         {
           id: 'playlist-morning',
           userId: demoUserId,
+          creator: demoCreator,
           title: 'My Morning Motivation',
           description: 'High energy and positive morning vibes to kickstart your day.',
           coverArt: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=600&q=80',
@@ -705,12 +715,16 @@ class MemoryDatabase {
           isShareable: true,
           isPinned: true,
           itemCount: 4,
+          sharedWith: [],
+          sharedWithUsers: [],
+          shareToken: 'st-morning-motivation',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         },
         {
           id: 'playlist-instrumentals',
           userId: demoUserId,
+          creator: demoCreator,
           title: 'Relaxing Instrumentals',
           description: 'Acoustic sitar, classical bamboo flutes, and soothing piano melodies.',
           coverArt: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?auto=format&fit=crop&w=600&q=80',
@@ -727,12 +741,16 @@ class MemoryDatabase {
           isShareable: true,
           isPinned: true,
           itemCount: 5,
+          sharedWith: [],
+          sharedWithUsers: [],
+          shareToken: 'st-instrumentals',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         },
         {
           id: 'playlist-workout',
           userId: demoUserId,
+          creator: demoCreator,
           title: 'Workout Energy & Dhol Beats',
           description: 'High BPM, Dhol Tasha, and Synthwave for intense fitness sessions.',
           coverArt: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=600&q=80',
@@ -747,12 +765,16 @@ class MemoryDatabase {
           isPrivate: false,
           isShareable: true,
           itemCount: 3,
+          sharedWith: [],
+          sharedWithUsers: [],
+          shareToken: 'st-workout-energy',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         },
         {
           id: 'playlist-retro',
           userId: demoUserId,
+          creator: demoCreator,
           title: 'Hindi Retro Favorites',
           description: 'Timeless melodies from the golden era of Indian cinema.',
           coverArt: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80',
@@ -760,6 +782,9 @@ class MemoryDatabase {
           isPrivate: false,
           isShareable: true,
           itemCount: 2,
+          sharedWith: [],
+          sharedWithUsers: [],
+          shareToken: 'st-retro-favorites',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         }
@@ -767,6 +792,35 @@ class MemoryDatabase {
 
       this.data.playlists = defaultPlaylists;
       this.saveToDisk();
+    }
+  }
+
+  public ensurePlaylistIntegrity() {
+    for (const pl of this.data.playlists) {
+      if (!pl.creator) {
+        const u = this.findUserById(pl.userId) || this.findUserByIdentifier(pl.userId);
+        if (u) {
+          pl.creator = {
+            id: u.id,
+            name: u.name,
+            username: u.username || u.name,
+            avatar: u.avatar,
+            email: u.email
+          };
+        } else {
+          pl.creator = {
+            id: pl.userId || 'demo-user-id',
+            name: pl.userId === 'demo-user-id' ? 'Aarav Sharma' : 'Music Lover',
+            username: pl.userId === 'demo-user-id' ? 'demo' : (pl.userId || 'creator'),
+            avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
+          };
+        }
+      }
+      if (!Array.isArray(pl.sharedWith)) pl.sharedWith = [];
+      if (!Array.isArray(pl.sharedWithUsers)) pl.sharedWithUsers = [];
+      if (!pl.shareToken) {
+        pl.shareToken = `st-${pl.id}`;
+      }
     }
   }
 
@@ -894,7 +948,13 @@ class MemoryDatabase {
 
   // Playlists
   public getPlaylistsByUserId(userId: string): Playlist[] {
-    return this.data.playlists.filter(p => p.userId === userId || !p.isPrivate);
+    if (!userId) return [];
+    return this.data.playlists
+      .filter(p => p.userId === userId || (Array.isArray(p.sharedWith) && p.sharedWith.includes(userId)))
+      .map(p => ({
+        ...p,
+        isSharedWithMe: p.userId !== userId
+      }));
   }
 
   public findPlaylistById(id: string): Playlist | undefined {
@@ -902,9 +962,157 @@ class MemoryDatabase {
   }
 
   public createPlaylist(playlist: Playlist): Playlist {
+    if (!playlist.creator && playlist.userId) {
+      const u = this.findUserById(playlist.userId) || this.findUserByIdentifier(playlist.userId);
+      if (u) {
+        playlist.creator = {
+          id: u.id,
+          name: u.name,
+          username: u.username || u.name,
+          avatar: u.avatar,
+          email: u.email
+        };
+      } else {
+        playlist.creator = {
+          id: playlist.userId,
+          name: playlist.userId === 'demo-user-id' ? 'Aarav Sharma' : 'Music Lover',
+          username: playlist.userId === 'demo-user-id' ? 'demo' : playlist.userId,
+          avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
+        };
+      }
+    }
+    if (!Array.isArray(playlist.sharedWith)) playlist.sharedWith = [];
+    if (!Array.isArray(playlist.sharedWithUsers)) playlist.sharedWithUsers = [];
+    if (!playlist.shareToken) {
+      playlist.shareToken = `st-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    }
     this.data.playlists.push(playlist);
     this.saveToDisk();
+    this.syncToCloud().catch(() => {});
     return playlist;
+  }
+
+  public sharePlaylist(playlistId: string, ownerUserId: string, targetIdentifier: string): { success: boolean; playlist?: Playlist; message?: string } {
+    const playlist = this.findPlaylistById(playlistId);
+    if (!playlist) {
+      return { success: false, message: 'Playlist not found' };
+    }
+    if (playlist.userId !== ownerUserId) {
+      return { success: false, message: 'Only the creator can share this playlist' };
+    }
+
+    const targetUser = this.findUserByIdentifier(targetIdentifier) || this.findUserById(targetIdentifier);
+    if (!targetUser) {
+      return { success: false, message: `User "${targetIdentifier}" not found. Please verify username or email.` };
+    }
+
+    if (targetUser.id === ownerUserId) {
+      return { success: false, message: 'You already own this playlist' };
+    }
+
+    if (!Array.isArray(playlist.sharedWith)) playlist.sharedWith = [];
+    if (!Array.isArray(playlist.sharedWithUsers)) playlist.sharedWithUsers = [];
+
+    if (!playlist.sharedWith.includes(targetUser.id)) {
+      playlist.sharedWith.push(targetUser.id);
+      playlist.sharedWithUsers.push({
+        id: targetUser.id,
+        name: targetUser.name,
+        username: targetUser.username || targetUser.name,
+        avatar: targetUser.avatar,
+        email: targetUser.email
+      });
+      playlist.updatedAt = new Date().toISOString();
+      this.saveToDisk();
+      this.syncToCloud().catch(() => {});
+    }
+
+    return { 
+      success: true, 
+      playlist, 
+      message: `Playlist successfully shared with ${targetUser.name} (@${targetUser.username})` 
+    };
+  }
+
+  public unsharePlaylist(playlistId: string, ownerUserId: string, targetUserId: string): { success: boolean; playlist?: Playlist; message?: string } {
+    const playlist = this.findPlaylistById(playlistId);
+    if (!playlist) return { success: false, message: 'Playlist not found' };
+    if (playlist.userId !== ownerUserId) return { success: false, message: 'Only the creator can manage sharing' };
+
+    if (playlist.sharedWith) {
+      playlist.sharedWith = playlist.sharedWith.filter(id => id !== targetUserId);
+    }
+    if (playlist.sharedWithUsers) {
+      playlist.sharedWithUsers = playlist.sharedWithUsers.filter(u => u.id !== targetUserId);
+    }
+    playlist.updatedAt = new Date().toISOString();
+    this.saveToDisk();
+    this.syncToCloud().catch(() => {});
+    return { success: true, playlist, message: 'Revoked access for user' };
+  }
+
+  public leaveSharedPlaylist(playlistId: string, userId: string): boolean {
+    const playlist = this.findPlaylistById(playlistId);
+    if (!playlist) return false;
+    if (playlist.sharedWith) {
+      playlist.sharedWith = playlist.sharedWith.filter(id => id !== userId);
+    }
+    if (playlist.sharedWithUsers) {
+      playlist.sharedWithUsers = playlist.sharedWithUsers.filter(u => u.id !== userId);
+    }
+    this.saveToDisk();
+    this.syncToCloud().catch(() => {});
+    return true;
+  }
+
+  public findPlaylistByShareToken(token: string): Playlist | undefined {
+    return this.data.playlists.find(p => p.shareToken === token);
+  }
+
+  public acceptShareToken(token: string, userId: string): { success: boolean; playlist?: Playlist; message?: string } {
+    const playlist = this.findPlaylistByShareToken(token);
+    if (!playlist) return { success: false, message: 'Invalid or expired share link' };
+    if (playlist.userId === userId) {
+      return { success: true, playlist, message: 'You are the creator of this playlist' };
+    }
+    const targetUser = this.findUserById(userId) || this.findUserByIdentifier(userId);
+    if (!Array.isArray(playlist.sharedWith)) playlist.sharedWith = [];
+    if (!Array.isArray(playlist.sharedWithUsers)) playlist.sharedWithUsers = [];
+    if (!playlist.sharedWith.includes(userId)) {
+      playlist.sharedWith.push(userId);
+      if (targetUser) {
+        playlist.sharedWithUsers.push({
+          id: targetUser.id,
+          name: targetUser.name,
+          username: targetUser.username || targetUser.name,
+          avatar: targetUser.avatar,
+          email: targetUser.email
+        });
+      }
+      this.saveToDisk();
+      this.syncToCloud().catch(() => {});
+    }
+    return { success: true, playlist, message: `Added "${playlist.title}" to your shared playlists` };
+  }
+
+  public searchUsers(query: string = '', excludeUserId?: string): UserSummary[] {
+    const q = (query || '').trim().toLowerCase();
+    return this.data.users
+      .filter(u => {
+        if (excludeUserId && u.id === excludeUserId) return false;
+        if (!q) return true;
+        return (u.name && u.name.toLowerCase().includes(q)) ||
+               (u.username && u.username.toLowerCase().includes(q)) ||
+               (u.email && u.email.toLowerCase().includes(q));
+      })
+      .map(u => ({
+        id: u.id,
+        name: u.name,
+        username: u.username || u.name,
+        avatar: u.avatar,
+        email: u.email
+      }))
+      .slice(0, 15);
   }
 
   public updatePlaylist(id: string, updates: Partial<Playlist>): Playlist | undefined {
