@@ -53,6 +53,53 @@ router.get('/items/:id', (req: Request, res: Response) => {
   res.json({ item });
 });
 
+// Explore all tracks for a specific channel / artist
+router.get('/channel/:channelName/tracks', async (req: Request, res: Response) => {
+  try {
+    const channelName = decodeURIComponent(req.params.channelName);
+    const provider = req.query.provider as MediaProvider | undefined;
+    const limit = parseInt(req.query.limit as string) || 100;
+    const nameLower = channelName.toLowerCase();
+
+    // 1. Gather all local matching tracks from DB
+    const dbTracks = db.getAllMediaItems().filter(item => 
+      item.artist.toLowerCase().includes(nameLower) ||
+      nameLower.includes(item.artist.toLowerCase())
+    );
+
+    // 2. Fetch live tracks from the provider / unified search
+    let liveTracks: MediaItem[] = [];
+    try {
+      liveTracks = await providerRegistry.unifiedSearch(channelName, provider, limit);
+    } catch (e) {
+      console.warn('Channel tracks live query error:', e);
+    }
+
+    // 3. Deduplicate and sort by relevance to the channel
+    const map = new Map<string, MediaItem>();
+    for (const t of [...dbTracks, ...liveTracks]) {
+      if (t.artist.toLowerCase().includes(nameLower) || nameLower.includes(t.artist.toLowerCase())) {
+        map.set(t.id, t);
+      }
+    }
+    // Include remaining live search tracks if list has capacity
+    for (const t of liveTracks) {
+      if (!map.has(t.id)) {
+        map.set(t.id, t);
+      }
+    }
+
+    const allChannelTracks = Array.from(map.values());
+    res.json({
+      channel: channelName,
+      count: allChannelTracks.length,
+      items: allChannelTracks
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to fetch channel tracks' });
+  }
+});
+
 // AI Classification Endpoint
 router.post('/classify', (req: Request, res: Response) => {
   const { title, artist, tags, description } = req.body;

@@ -250,10 +250,84 @@ const EmptyState: React.FC<{ icon: React.ReactNode; message: string; sub: string
   </div>
 );
 
-const ChannelDetailPanel: React.FC<{ channel: Channel; allTracks: MediaItem[]; onBack: () => void; onAddToPlaylist?: (t: MediaItem) => void }> = ({ channel, allTracks, onBack, onAddToPlaylist }) => {
+const ChannelDetailPanel: React.FC<{
+  channel: Channel;
+  allTracks: MediaItem[];
+  onBack: () => void;
+  onAddToPlaylist?: (t: MediaItem) => void;
+  onTracksDiscovered?: (newTracks: MediaItem[]) => void;
+}> = ({ channel, allTracks, onBack, onAddToPlaylist, onTracksDiscovered }) => {
   const { playTrack } = usePlayerStore();
-  const channelTracks = allTracks.filter(t => t.artist.toLowerCase().includes(channel.name.toLowerCase()) || channel.name.toLowerCase().includes(t.artist.toLowerCase()));
+  const [channelTracks, setChannelTracks] = useState<MediaItem[]>(() => {
+    return allTracks.filter(t => 
+      t.artist.toLowerCase().includes(channel.name.toLowerCase()) || 
+      channel.name.toLowerCase().includes(t.artist.toLowerCase())
+    );
+  });
+  const [loadingTracks, setLoadingTracks] = useState(false);
+  const [exploredAll, setExploredAll] = useState(false);
+
+  // Automatically explore all available tracks for this channel on mount
+  useEffect(() => {
+    let isCancelled = false;
+    const exploreChannelTracks = async () => {
+      setLoadingTracks(true);
+      try {
+        const fullTracks = await api.getChannelTracks(channel.name, channel.provider);
+        if (!isCancelled && fullTracks && fullTracks.length > 0) {
+          const map = new Map<string, MediaItem>();
+          // Put all existing and fetched tracks into map
+          for (const t of fullTracks) {
+            map.set(t.id, t);
+          }
+          for (const t of channelTracks) {
+            if (!map.has(t.id)) map.set(t.id, t);
+          }
+          const merged = Array.from(map.values());
+          setChannelTracks(merged);
+          setExploredAll(true);
+          onTracksDiscovered?.(merged);
+        }
+      } catch (err) {
+        console.warn('Failed to explore all channel tracks:', err);
+      } finally {
+        if (!isCancelled) setLoadingTracks(false);
+      }
+    };
+
+    exploreChannelTracks();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [channel.name, channel.provider]);
+
+  const handleManualExploreMore = async () => {
+    setLoadingTracks(true);
+    try {
+      const moreTracks = await api.search(channel.name, channel.provider, undefined, undefined, 100);
+      if (moreTracks && moreTracks.length > 0) {
+        const map = new Map<string, MediaItem>();
+        for (const t of moreTracks) map.set(t.id, t);
+        for (const t of channelTracks) if (!map.has(t.id)) map.set(t.id, t);
+        const merged = Array.from(map.values());
+        setChannelTracks(merged);
+        setExploredAll(true);
+        onTracksDiscovered?.(merged);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch additional channel tracks:', e);
+    } finally {
+      setLoadingTracks(false);
+    }
+  };
+
   const playAll = () => { if (channelTracks.length > 0) playTrack(channelTracks[0], channelTracks); };
+  const effectiveCount = Math.max(
+    channel.videoCount ? parseInt(String(channel.videoCount).replace(/\D/g, '')) || 0 : 0,
+    channelTracks.length
+  );
+
   return (
     <div className="animate-in fade-in slide-in-from-right-4 duration-300">
       <button onClick={onBack} className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors mb-4 group">
@@ -272,21 +346,56 @@ const ChannelDetailPanel: React.FC<{ channel: Channel; allTracks: MediaItem[]; o
             <p className="text-xs text-slate-300 mt-0.5 line-clamp-1">{channel.description}</p>
             <div className="flex items-center gap-3 mt-1 flex-wrap">
               {channel.subscriberCount && <span className="flex items-center gap-1 text-xs text-slate-400"><Users className="w-3.5 h-3.5" /> {channel.subscriberCount}</span>}
-              {channel.videoCount && <span className="flex items-center gap-1 text-xs text-slate-400"><ListMusic className="w-3.5 h-3.5" /> {channel.videoCount} tracks</span>}
+              <span className="flex items-center gap-1 text-xs text-slate-400"><ListMusic className="w-3.5 h-3.5" /> {channelTracks.length} tracks explored</span>
+              <ProviderBadge provider={channel.provider} size="sm" />
             </div>
           </div>
         </div>
       </div>
-      <div className="flex gap-3 mb-5">
-        <button onClick={playAll} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-brand-600 to-accent-cyan text-white text-sm font-bold rounded-xl shadow-lg hover:brightness-110 active:scale-95 transition-all">
-          <Play className="w-4 h-4 fill-current" /> Play All
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <button onClick={playAll} disabled={channelTracks.length === 0} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-brand-600 to-accent-cyan text-white text-sm font-bold rounded-xl shadow-lg hover:brightness-110 disabled:opacity-50 active:scale-95 transition-all">
+          <Play className="w-4 h-4 fill-current" /> Play All ({channelTracks.length})
+        </button>
+        <button
+          onClick={handleManualExploreMore}
+          disabled={loadingTracks}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface-800 hover:bg-surface-750 border border-white/10 text-xs font-semibold text-slate-200 transition-all"
+        >
+          {loadingTracks ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 text-brand-400" />}
+          <span>{loadingTracks ? 'Exploring tracks...' : 'Explore More Tracks'}</span>
         </button>
       </div>
-      <h3 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
-        <AudioLines className="w-4 h-4 text-brand-400" /> Tracks ({channelTracks.length})
-      </h3>
-      {channelTracks.length > 0 ? (
-        <div className="space-y-1">{channelTracks.map(t => <TrackRow key={t.id} track={t} queueContext={channelTracks} onAddToPlaylist={onAddToPlaylist} />)}</div>
+
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+          <AudioLines className="w-4 h-4 text-brand-400" /> All Channel Tracks ({channelTracks.length})
+        </h3>
+        {loadingTracks && (
+          <span className="flex items-center gap-1.5 text-xs text-brand-400 font-medium animate-pulse">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            <span>Retrieving all tracks from {channel.provider}...</span>
+          </span>
+        )}
+      </div>
+
+      {loadingTracks && channelTracks.length === 0 ? (
+        <div className="space-y-3 animate-pulse">
+          {[1, 2, 3, 4, 5, 6].map(i => (
+            <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-surface-850/50">
+              <div className="w-12 h-12 rounded-lg bg-surface-800 shrink-0" />
+              <div className="flex-1 space-y-2">
+                <div className="h-3.5 bg-surface-800 rounded-full w-3/4" />
+                <div className="h-3 bg-surface-800 rounded-full w-1/2" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : channelTracks.length > 0 ? (
+        <div className="space-y-1">
+          {channelTracks.map(t => (
+            <TrackRow key={t.id} track={t} queueContext={channelTracks} onAddToPlaylist={onAddToPlaylist} />
+          ))}
+        </div>
       ) : (
         <EmptyState icon={<Tv2 className="w-8 h-8" />} message="No tracks for this channel" sub="Try searching for the artist directly" />
       )}
@@ -294,9 +403,48 @@ const ChannelDetailPanel: React.FC<{ channel: Channel; allTracks: MediaItem[]; o
   );
 };
 
-const AlbumDetailPanel: React.FC<{ album: Album; allTracks: MediaItem[]; onBack: () => void; onAddToPlaylist?: (t: MediaItem) => void }> = ({ album, allTracks, onBack, onAddToPlaylist }) => {
+const AlbumDetailPanel: React.FC<{
+  album: Album;
+  allTracks: MediaItem[];
+  onBack: () => void;
+  onAddToPlaylist?: (t: MediaItem) => void;
+  onTracksDiscovered?: (newTracks: MediaItem[]) => void;
+}> = ({ album, allTracks, onBack, onAddToPlaylist, onTracksDiscovered }) => {
   const { playTrack } = usePlayerStore();
-  const albumTracks = allTracks.filter(t => t.artist.toLowerCase().includes(album.artist.toLowerCase()) || album.artist.toLowerCase().includes(t.artist.toLowerCase()));
+  const [albumTracks, setAlbumTracks] = useState<MediaItem[]>(() => {
+    return allTracks.filter(t => 
+      (t.album && t.album.toLowerCase().includes(album.title.toLowerCase())) ||
+      t.artist.toLowerCase().includes(album.artist.toLowerCase()) || 
+      album.artist.toLowerCase().includes(t.artist.toLowerCase())
+    );
+  });
+  const [loadingTracks, setLoadingTracks] = useState(false);
+
+  useEffect(() => {
+    let isCancelled = false;
+    const fetchAlbumTracks = async () => {
+      setLoadingTracks(true);
+      try {
+        const query = `${album.artist} ${album.title}`;
+        const tracks = await api.search(query, album.provider, undefined, undefined, 50);
+        if (!isCancelled && tracks && tracks.length > 0) {
+          const map = new Map<string, MediaItem>();
+          for (const t of tracks) map.set(t.id, t);
+          for (const t of albumTracks) if (!map.has(t.id)) map.set(t.id, t);
+          const m = Array.from(map.values());
+          setAlbumTracks(m);
+          onTracksDiscovered?.(m);
+        }
+      } catch (e) {
+        console.warn('Failed to load album tracks:', e);
+      } finally {
+        if (!isCancelled) setLoadingTracks(false);
+      }
+    };
+    fetchAlbumTracks();
+    return () => { isCancelled = true; };
+  }, [album.artist, album.title, album.provider]);
+
   const playAll = () => { if (albumTracks.length > 0) playTrack(albumTracks[0], albumTracks); };
   return (
     <div className="animate-in fade-in slide-in-from-right-4 duration-300">
@@ -314,20 +462,28 @@ const AlbumDetailPanel: React.FC<{ album: Album; allTracks: MediaItem[]; onBack:
           <p className="text-sm text-slate-400 mt-1">{album.artist}</p>
           <div className="flex items-center gap-3 mt-2 flex-wrap">
             {album.releaseYear && <span className="text-xs text-slate-500">{album.releaseYear}</span>}
-            {album.trackCount && <span className="flex items-center gap-1 text-xs text-slate-500"><Music className="w-3.5 h-3.5" /> {album.trackCount} tracks</span>}
+            <span className="flex items-center gap-1 text-xs text-slate-500"><Music className="w-3.5 h-3.5" /> {albumTracks.length} tracks</span>
             {album.genre && <span className="text-xs text-slate-500">{album.genre}</span>}
             <ProviderBadge provider={album.provider} size="sm" />
           </div>
         </div>
       </div>
       <div className="flex gap-3 mb-5">
-        <button onClick={playAll} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-brand-600 to-accent-cyan text-white text-sm font-bold rounded-xl shadow-lg hover:brightness-110 active:scale-95 transition-all">
-          <Play className="w-4 h-4 fill-current" /> Play All
+        <button onClick={playAll} disabled={albumTracks.length === 0} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-brand-600 to-accent-cyan text-white text-sm font-bold rounded-xl shadow-lg hover:brightness-110 disabled:opacity-50 active:scale-95 transition-all">
+          <Play className="w-4 h-4 fill-current" /> Play All ({albumTracks.length})
         </button>
       </div>
-      <h3 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
-        <Music className="w-4 h-4 text-brand-400" /> Tracks ({albumTracks.length})
-      </h3>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+          <Music className="w-4 h-4 text-brand-400" /> Tracks ({albumTracks.length})
+        </h3>
+        {loadingTracks && (
+          <span className="flex items-center gap-1.5 text-xs text-brand-400 font-medium animate-pulse">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            <span>Loading album tracks...</span>
+          </span>
+        )}
+      </div>
       {albumTracks.length > 0 ? (
         <div className="space-y-1">{albumTracks.map(t => <TrackRow key={t.id} track={t} queueContext={albumTracks} onAddToPlaylist={onAddToPlaylist} />)}</div>
       ) : (
@@ -463,8 +619,38 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
     inputRef.current?.focus();
   };
 
-  if (selectedChannel) return <div className="pb-4"><ChannelDetailPanel channel={selectedChannel} allTracks={sourceFilteredTracks} onBack={() => setSelectedChannel(null)} onAddToPlaylist={onAddToPlaylist} /></div>;
-  if (selectedAlbum) return <div className="pb-4"><AlbumDetailPanel album={selectedAlbum} allTracks={sourceFilteredTracks} onBack={() => setSelectedAlbum(null)} onAddToPlaylist={onAddToPlaylist} /></div>;
+  const handleTracksDiscovered = useCallback((newTracks: MediaItem[]) => {
+    setTracks(prev => {
+      const map = new Map<string, MediaItem>();
+      for (const t of [...prev, ...newTracks]) {
+        map.set(t.id, t);
+      }
+      return Array.from(map.values());
+    });
+  }, []);
+
+  if (selectedChannel) return (
+    <div className="pb-4">
+      <ChannelDetailPanel
+        channel={selectedChannel}
+        allTracks={sourceFilteredTracks}
+        onBack={() => setSelectedChannel(null)}
+        onAddToPlaylist={onAddToPlaylist}
+        onTracksDiscovered={handleTracksDiscovered}
+      />
+    </div>
+  );
+  if (selectedAlbum) return (
+    <div className="pb-4">
+      <AlbumDetailPanel
+        album={selectedAlbum}
+        allTracks={sourceFilteredTracks}
+        onBack={() => setSelectedAlbum(null)}
+        onAddToPlaylist={onAddToPlaylist}
+        onTracksDiscovered={handleTracksDiscovered}
+      />
+    </div>
+  );
 
   const tabConfig: { id: SearchTab; label: string; icon: React.ReactNode; count: number }[] = [
     { id: "tracks", label: "Tracks", icon: <Music className="w-4 h-4" />, count: sourceFilteredTracks.length },

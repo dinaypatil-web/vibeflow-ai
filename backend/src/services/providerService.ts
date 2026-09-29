@@ -320,12 +320,16 @@ export class YouTubeProviderAdapter implements ProviderAdapter {
         const jsonMatch = html.match(/ytInitialData\s*=\s*({.+?});<\/script>/);
         if (jsonMatch) {
           const data = JSON.parse(jsonMatch[1]);
-          const contents = data.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents[0]?.itemSectionRenderer?.contents;
+          const sections = data.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
           const liveYtItems: MediaItem[] = [];
-          if (contents && Array.isArray(contents)) {
-            for (const item of contents) {
+          const seenVideoIds = new Set<string>();
+
+          for (const section of sections) {
+            const itemContents = section.itemSectionRenderer?.contents || [];
+            for (const item of itemContents) {
               const v = item.videoRenderer;
-              if (v && v.videoId) {
+              if (v && v.videoId && !seenVideoIds.has(v.videoId)) {
+                seenVideoIds.add(v.videoId);
                 const title = v.title?.runs?.[0]?.text || v.title?.simpleText || 'YouTube Video';
                 const channel = v.ownerText?.runs?.[0]?.text || 'YouTube Creator';
                 const thumb = v.thumbnail?.thumbnails?.slice(-1)[0]?.url || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`;
@@ -359,10 +363,55 @@ export class YouTubeProviderAdapter implements ProviderAdapter {
                 liveYtItems.push(mediaItem);
                 if (limit && liveYtItems.length >= limit) break;
               }
+
+              // Also check shelfRenderer (e.g. popular videos shelf)
+              const shelfItems = item.shelfRenderer?.content?.verticalListRenderer?.items;
+              if (Array.isArray(shelfItems)) {
+                for (const sItem of shelfItems) {
+                  const sv = sItem.videoRenderer;
+                  if (sv && sv.videoId && !seenVideoIds.has(sv.videoId)) {
+                    seenVideoIds.add(sv.videoId);
+                    const title = sv.title?.runs?.[0]?.text || sv.title?.simpleText || 'YouTube Video';
+                    const channel = sv.ownerText?.runs?.[0]?.text || 'YouTube Creator';
+                    const thumb = sv.thumbnail?.thumbnails?.slice(-1)[0]?.url || `https://i.ytimg.com/vi/${sv.videoId}/hqdefault.jpg`;
+                    
+                    let durSecs = 240;
+                    if (sv.lengthText?.simpleText) {
+                      const parts = sv.lengthText.simpleText.split(':').map(Number);
+                      if (parts.length === 2) durSecs = parts[0] * 60 + parts[1];
+                      else if (parts.length === 3) durSecs = parts[0] * 3600 + parts[1] * 60 + parts[2];
+                    }
+
+                    const classification = AIRecommendationService.classify(title, channel, ['youtube', 'video']);
+                    const mediaItem: MediaItem = {
+                      id: `yt-${sv.videoId}`,
+                      provider: 'youtube',
+                      providerId: sv.videoId,
+                      title,
+                      artist: channel,
+                      thumbnail: thumb,
+                      duration: durSecs,
+                      genre: classification.suggestedGenre,
+                      mood: classification.suggestedMood,
+                      capabilities: ['stream_embed', 'preview_only'],
+                      embedUrl: `https://www.youtube.com/embed/${sv.videoId}`,
+                      isOfflinePermitted: false,
+                      isLocal: false,
+                      confidenceScore: classification.confidenceScore,
+                      tags: classification.detectedTags
+                    };
+                    db.addMediaItem(mediaItem);
+                    liveYtItems.push(mediaItem);
+                    if (limit && liveYtItems.length >= limit) break;
+                  }
+                }
+              }
             }
-            if (liveYtItems.length > 0) {
-              return liveYtItems;
-            }
+            if (limit && liveYtItems.length >= limit) break;
+          }
+
+          if (liveYtItems.length > 0) {
+            return liveYtItems;
           }
         }
       }

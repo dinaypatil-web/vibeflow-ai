@@ -63,6 +63,24 @@ export const api = {
     }
   },
 
+  // Explore all tracks for a specific channel / artist
+  getChannelTracks: async (channelName: string, provider?: MediaProvider): Promise<MediaItem[]> => {
+    try {
+      const params = new URLSearchParams();
+      if (provider) params.append('provider', provider);
+      params.append('limit', '100');
+      const res = await fetch(`${API_BASE}/media/channel/${encodeURIComponent(channelName)}/tracks?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.items && data.items.length > 0) return data.items;
+      }
+    } catch (e) {
+      console.warn('getChannelTracks error, falling back to search:', e);
+    }
+    // Fallback to provider or general search
+    return await api.search(channelName, provider, undefined, undefined, 100);
+  },
+
   // Get all items
   getItems: async (): Promise<MediaItem[]> => {
     try {
