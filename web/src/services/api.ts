@@ -592,5 +592,31 @@ export const api = {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Unauthorized');
     return data.user;
+  },
+
+  // Delete user account permanently from this device and server
+  deleteAccount: async (token?: string | null, userId?: string): Promise<{ success: boolean; message: string }> => {
+    const t = token !== undefined ? token : getStoredToken();
+    const uid = userId || getStoredUserId();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (t) headers['Authorization'] = `Bearer ${t}`;
+
+    const res = await fetch(`${API_BASE}/auth/account`, {
+      method: 'DELETE',
+      headers,
+      body: JSON.stringify({ userId: uid })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to delete account');
+
+    try {
+      localStorage.removeItem('vibeflow_token');
+      localStorage.removeItem('vibeflow_user');
+      localStorage.removeItem('vibeflow_my_created_playlist_ids');
+      localStorage.removeItem('vibeflow_cached_playlists');
+      localStorage.removeItem('vibeflow_selected_playlist_id');
+    } catch {}
+
+    return data;
   }
 };

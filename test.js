@@ -812,6 +812,77 @@ async function runTests() {
     }
   });
 
+  // 24. User Self-Service Account Deletion from Logged-in Device
+  await test('User Self-Service Account Deletion & Permanent Erasure Across All Devices', async () => {
+    // 1. Register a dedicated test user
+    const userToDelete = `del_${Date.now()}`;
+    const emailToDelete = `${userToDelete}@vibeflow.local`;
+    const regRes = await fetchJSON(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Delete Me User',
+        username: userToDelete,
+        email: emailToDelete,
+        password: 'PasswordToDelete2026!'
+      })
+    });
+    const delUser = regRes.user;
+    const delToken = regRes.token;
+    if (!delUser || !delToken) throw new Error('Registration failed for delete test');
+
+    // 2. User creates a personal cloud playlist
+    const plRes = await fetchJSON(`${API_BASE}/playlists`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${delToken}`
+      },
+      body: JSON.stringify({
+        title: 'Temporary User Playlist To Erase',
+        description: 'Should be deleted with account'
+      })
+    });
+    const userPlId = plRes.playlist.id;
+
+    // 3. User requests permanent account deletion from their logged in device
+    const delRes = await fetchJSON(`${API_BASE}/auth/account`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${delToken}`
+      }
+    });
+    if (!delRes.success) throw new Error('Account deletion request failed: ' + delRes.message);
+
+    // 4. Verify login attempt fails with invalid credentials
+    const loginAttempt = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        identifier: userToDelete,
+        password: 'PasswordToDelete2026!'
+      })
+    });
+    if (loginAttempt.status !== 401) {
+      throw new Error(`Expected HTTP 401 after account deletion, got ${loginAttempt.status}`);
+    }
+
+    // 5. Verify /api/auth/me rejects the deleted token
+    const meAttempt = await fetch(`${API_BASE}/auth/me`, {
+      headers: { 'Authorization': `Bearer ${delToken}` }
+    });
+    if (meAttempt.status !== 404 && meAttempt.status !== 401) {
+      throw new Error(`Expected 404 or 401 on /api/auth/me for deleted user, got ${meAttempt.status}`);
+    }
+
+    // 6. Verify user's personal playlist was cleaned up
+    const plAttempt = await fetch(`${API_BASE}/playlists/${userPlId}`);
+    if (plAttempt.status !== 404) {
+      throw new Error('Deleted user personal playlist was not cleaned up');
+    }
+  });
+
   console.log(`\n🎉 Test Results: ${passed}/${total} passed!`);
   if (passed === total) {
     console.log('🌟 All VibeFlow AI core systems verified production-ready.\n');

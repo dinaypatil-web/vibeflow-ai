@@ -1276,6 +1276,49 @@ class MemoryDatabase {
     return true;
   }
 
+  public deleteUser(userId: string): boolean {
+    const user = this.findUserById(userId) || this.findUserByIdentifier(userId);
+    if (!user) return false;
+
+    const targetId = user.id;
+    const username = user.username?.toLowerCase();
+    const email = user.email?.toLowerCase();
+
+    // 1. Remove user from data.users
+    this.data.users = this.data.users.filter(u => u.id !== targetId);
+
+    // 2. Remove password entries
+    if (this.data.passwords) {
+      delete this.data.passwords[targetId];
+      if (username) delete this.data.passwords[username];
+      if (email) delete this.data.passwords[email];
+    }
+
+    // 3. Remove history and favorites
+    if (this.data.history) {
+      this.data.history = this.data.history.filter(h => h.userId !== targetId);
+    }
+    if (this.data.favorites) {
+      this.data.favorites = this.data.favorites.filter(f => f.userId !== targetId);
+    }
+
+    // 4. Remove user's private playlists and remove from shared lists
+    if (this.data.playlists) {
+      this.data.playlists = this.data.playlists.filter(p => p.userId !== targetId && p.creator?.id !== targetId);
+      for (const p of this.data.playlists) {
+        if (p.sharedWith) {
+          p.sharedWith = p.sharedWith.filter(uid => uid !== targetId);
+        }
+        if (p.sharedWithUsers) {
+          p.sharedWithUsers = p.sharedWithUsers.filter(u => u.id !== targetId);
+        }
+      }
+    }
+
+    this.saveToDisk();
+    return true;
+  }
+
   // Favorites
   public getFavorites(userId: string): MediaItem[] {
     const favItemIds = this.data.favorites

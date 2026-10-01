@@ -309,6 +309,25 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
     }
   };
 
+  const handleDeleteAccount = async () => {
+    if (!user) return;
+    const confirmed = confirm(
+      `Permanently delete your account (@${user.username || user.name})?\n\n` +
+      `This will permanently erase your user profile, cloud playlists, and login access across all devices.\n\n` +
+      `Are you sure you want to proceed?`
+    );
+    if (!confirmed) return;
+
+    try {
+      await api.deleteAccount(undefined, user.id);
+      logout();
+      fetchPlaylists();
+      alert('Your account and all associated data have been permanently deleted from this device and the server.');
+    } catch (err: any) {
+      alert(`Failed to delete account: ${err.message || 'Unknown error'}`);
+    }
+  };
+
   const handleExport = (format: 'json' | 'm3u') => {
     if (!selectedPlaylist) return;
     const url = `http://localhost:4000/api/playlists/${selectedPlaylist.id}/export?format=${format}`;
@@ -400,13 +419,23 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
           </button>
 
           {user ? (
-            <button
-              onClick={logout}
-              className="px-3 py-1.5 rounded-xl bg-surface-800 hover:bg-surface-750 border border-white/10 text-xs font-medium text-slate-300 hover:text-white transition-all flex items-center gap-1.5"
-            >
-              <LogOut className="w-3.5 h-3.5 text-slate-400" />
-              <span>Sign Out</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={logout}
+                className="px-3 py-1.5 rounded-xl bg-surface-800 hover:bg-surface-750 border border-white/10 text-xs font-medium text-slate-300 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5 text-slate-400" />
+                <span>Sign Out</span>
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-xs font-semibold text-rose-300 hover:text-rose-100 transition-all flex items-center gap-1.5 cursor-pointer"
+                title="Permanently delete user account from all devices"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                <span>Delete Account</span>
+              </button>
+            </div>
           ) : (
             <button
               onClick={onOpenAuth}

@@ -148,6 +148,8 @@ export const SettingsView: React.FC = () => {
     }
   };
 
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+
   const handleClearHistory = () => {
     if (confirm('Clear all your listening history? This will reset your recent playback telemetry.')) {
       alert('Listening history has been wiped.');
@@ -162,6 +164,27 @@ export const SettingsView: React.FC = () => {
       setFavoriteArtists(['Arijit Singh', 'Bombay Chill Collective']);
       handleSavePreferences();
       alert('Taste model reset to fresh baseline.');
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!user) return;
+    const confirmed = confirm(
+      `Permanently delete your account (@${user.username || user.name})?\n\n` +
+      `This will permanently erase your user profile, cloud playlists, and login access across all devices.\n\n` +
+      `Are you sure you want to proceed?`
+    );
+    if (!confirmed) return;
+
+    setIsDeletingAccount(true);
+    try {
+      await api.deleteAccount(undefined, user.id);
+      logout();
+      alert('Your account and all associated data have been permanently deleted from this device and the server.');
+    } catch (err: any) {
+      alert(`Failed to delete account: ${err.message || 'Unknown error'}`);
+    } finally {
+      setIsDeletingAccount(false);
     }
   };
 
@@ -203,13 +226,24 @@ export const SettingsView: React.FC = () => {
         </div>
 
         {user && (
-          <button
-            onClick={logout}
-            className="px-4 py-2.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 hover:text-white text-xs font-bold transition-all flex items-center gap-2 self-start sm:self-auto active:scale-95 shadow-sm"
-          >
-            <LogOut className="w-4 h-4 text-rose-400" />
-            <span>Sign Out</span>
-          </button>
+          <div className="flex items-center gap-2.5 self-start sm:self-auto flex-wrap">
+            <button
+              onClick={logout}
+              className="px-4 py-2.5 rounded-xl bg-surface-800 hover:bg-surface-750 border border-white/10 text-slate-300 hover:text-white text-xs font-semibold transition-all flex items-center gap-2 active:scale-95 shadow-sm cursor-pointer"
+            >
+              <LogOut className="w-4 h-4 text-slate-400" />
+              <span>Sign Out</span>
+            </button>
+            <button
+              onClick={handleDeleteAccount}
+              disabled={isDeletingAccount}
+              className="px-4 py-2.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 hover:text-rose-100 text-xs font-bold transition-all flex items-center gap-2 active:scale-95 shadow-sm cursor-pointer disabled:opacity-50"
+              title="Permanently delete user account from all devices"
+            >
+              <Trash2 className="w-4 h-4 text-rose-400" />
+              <span>{isDeletingAccount ? 'Deleting...' : 'Delete Account'}</span>
+            </button>
+          </div>
         )}
       </section>
 
@@ -776,13 +810,45 @@ export const SettingsView: React.FC = () => {
             </button>
             <button
               onClick={handleResetTaste}
-              className="px-3.5 py-2 bg-surface-800 hover:bg-surface-750 text-slate-300 text-xs font-semibold rounded-xl border border-white/5 transition-colors"
+              className="px-3.5 py-2 bg-surface-800 hover:bg-surface-750 text-slate-300 text-xs font-semibold rounded-xl border border-white/5 transition-colors cursor-pointer"
             >
               Reset AI Taste Model
             </button>
           </div>
         </div>
       </section>
+
+      {/* Danger Zone: Account Deletion */}
+      {user && (
+        <section className="p-6 rounded-3xl bg-rose-950/20 border border-rose-500/30 space-y-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+              <Trash2 className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-rose-300 uppercase tracking-wider">Danger Zone</h3>
+              <p className="text-xs text-rose-200/70">Irreversible account actions for this device and server</p>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-surface-900/60 border border-rose-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h4 className="text-sm font-bold text-white">Delete User Account</h4>
+              <p className="text-xs text-slate-400 mt-0.5 max-w-md">
+                Permanently delete your profile (@{user.username || user.name}), listening history, preferences, and personal playlists across all synced devices.
+              </p>
+            </div>
+            <button
+              onClick={handleDeleteAccount}
+              disabled={isDeletingAccount}
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-500 hover:to-red-600 text-white text-xs font-bold transition-all flex items-center gap-2 shadow-md shadow-rose-950 shrink-0 cursor-pointer disabled:opacity-50"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>{isDeletingAccount ? 'Deleting Account...' : 'Delete My Account'}</span>
+            </button>
+          </div>
+        </section>
+      )}
     </div>
   );
 };

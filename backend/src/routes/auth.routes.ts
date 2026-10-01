@@ -37,21 +37,6 @@ if (!db.findUserById(DEMO_USER.id) || !db.getPasswordHash(DEMO_USER.id)) {
   db.createUser(DEMO_USER, bcrypt.hashSync('demo1234', 10));
 }
 
-// Seed admin/owner user (Dinay Patil)
-const DINAY_USER: User = {
-  id: 'usr-dinay-patil',
-  email: 'dinay.patil@gmail.com',
-  username: 'dinay.patil',
-  name: 'Dinay Patil',
-  avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
-  role: 'admin',
-  preferences: { ...DEFAULT_PREFERENCES, userId: 'usr-dinay-patil' },
-  createdAt: '2026-09-28T20:00:00.000Z'
-};
-
-if (!db.findUserById(DINAY_USER.id) || !db.getPasswordHash(DINAY_USER.id)) {
-  db.createUser(DINAY_USER, bcrypt.hashSync('dinay1234', 10));
-}
 
 // Register
 router.post('/register', async (req: Request, res: Response) => {
@@ -309,6 +294,37 @@ router.get('/users', (req: Request, res: Response) => {
   const q = (req.query.q as string) || '';
   const users = db.searchUsers(q, currentUserId);
   res.json({ users });
+});
+
+// Delete user account (self-service account deletion from device)
+router.delete('/account', async (req: Request, res: Response) => {
+  try {
+    let userId: string | null = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const decoded = jwt.verify(authHeader.substring(7), JWT_SECRET) as { userId: string };
+        userId = decoded.userId;
+      } catch (err) {}
+    }
+
+    if (!userId) {
+      userId = (req.body.userId || (req.query.userId as string) || '').trim();
+    }
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required to delete account' });
+    }
+
+    const success = db.deleteUser(userId);
+    if (!success) {
+      return res.status(404).json({ error: 'User account not found or already deleted' });
+    }
+
+    res.json({ success: true, message: 'Account and all associated data permanently deleted from all devices' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to delete account' });
+  }
 });
 
 export default router;
