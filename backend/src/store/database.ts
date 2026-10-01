@@ -997,7 +997,10 @@ class MemoryDatabase {
         item.releaseDate = '2024-01-01';
       }
     }
-    const existing = this.data.mediaItems.find(m => m.id === item.id || (m.provider === item.provider && m.providerId === item.providerId));
+    const existing = this.data.mediaItems.find(m => 
+      (item.id && m.id === item.id) || 
+      (item.provider && item.providerId && m.provider === item.provider && m.providerId === item.providerId)
+    );
     if (existing) {
       Object.assign(existing, item);
       this.saveToDisk();

@@ -17,7 +17,12 @@ import {
   LogIn,
   Share2,
   Users,
-  ShieldCheck
+  ShieldCheck,
+  ArrowUp,
+  ArrowDown,
+  Shuffle,
+  ArrowUpDown,
+  Check
 } from 'lucide-react';
 import { Playlist, PlaylistItem, MediaItem } from '../types';
 import { api } from '../services/api';
@@ -133,6 +138,46 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
     fetchPlaylists();
   }, [user?.id]);
 
+  // Auto-resolve real track durations for playlists that have fallback 240s tracks
+  useEffect(() => {
+    if (!selectedPlaylist || !selectedPlaylist.items || selectedPlaylist.items.length === 0) return;
+    const hasUnresolved = selectedPlaylist.items.some(
+      i => !i.mediaItem?.duration || i.mediaItem.duration === 240
+    );
+    if (hasUnresolved && !selectedPlaylist.isSmart) {
+      api.resolvePlaylistDurations(selectedPlaylist.id)
+        .then(res => {
+          if (res.playlist) {
+            setSelectedPlaylist(res.playlist);
+            setPlaylists(prev => prev.map(p => p.id === res.playlist.id ? res.playlist : p));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [selectedPlaylist?.id]);
+
+  // Total playlist duration calculation in seconds
+  const totalPlaylistSeconds = useMemo(() => {
+    if (!selectedPlaylist?.items) return 0;
+    return selectedPlaylist.items.reduce((sum, item) => sum + (item.mediaItem?.duration || 0), 0);
+  }, [selectedPlaylist?.items]);
+
+  // Human-readable total playlist time for header and title
+  const formattedTotalPlaylistTime = useMemo(() => {
+    if (!totalPlaylistSeconds) return '0 min';
+    const total = Math.round(totalPlaylistSeconds);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    if (h > 0) {
+      return m > 0 ? `${h} hr ${m} min` : `${h} hr`;
+    }
+    if (m > 0) {
+      return s > 0 ? `${m} min ${s} sec` : `${m} min`;
+    }
+    return `${s} sec`;
+  }, [totalPlaylistSeconds]);
+
   const handlePlayAll = () => {
     if (!sortedPlaylistItems || sortedPlaylistItems.length === 0) return;
     const mediaTracks = sortedPlaylistItems.map(i => i.mediaItem);
@@ -171,6 +216,99 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
     fetchPlaylists();
   };
 
+  // Reorder tracks by moving up or down
+  const handleMoveTrack = async (e: React.MouseEvent, index: number, direction: 'up' | 'down') => {
+    e.stopPropagation();
+    if (!selectedPlaylist || !selectedPlaylist.items) return;
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= selectedPlaylist.items.length) return;
+
+    const baseList = [...sortedPlaylistItems];
+    const [moved] = baseList.splice(index, 1);
+    baseList.splice(targetIndex, 0, moved);
+    baseList.forEach((item, idx) => {
+      item.orderIndex = idx;
+    });
+
+    const updatedPl = { ...selectedPlaylist, items: baseList };
+    setSelectedPlaylist(updatedPl);
+    setPlaylists(prev => prev.map(p => p.id === updatedPl.id ? updatedPl : p));
+
+    try {
+      await api.reorderPlaylist(selectedPlaylist.id, {
+        itemIds: baseList.map(i => i.id)
+      });
+    } catch (err) {
+      console.error('Failed to reorder playlist', err);
+    }
+  };
+
+  // Reverse playlist tracks sequence
+  const handleReverseSequence = async () => {
+    if (!selectedPlaylist || !selectedPlaylist.items || selectedPlaylist.items.length < 2) return;
+    const baseList = [...sortedPlaylistItems].reverse();
+    baseList.forEach((item, idx) => {
+      item.orderIndex = idx;
+    });
+
+    const updatedPl = { ...selectedPlaylist, items: baseList };
+    setSelectedPlaylist(updatedPl);
+    setPlaylists(prev => prev.map(p => p.id === updatedPl.id ? updatedPl : p));
+    setPlaylistSort('default');
+
+    try {
+      await api.reorderPlaylist(selectedPlaylist.id, { action: 'reverse' });
+    } catch (err) {
+      console.error('Failed to reverse playlist', err);
+    }
+  };
+
+  // Shuffle playlist sequence
+  const handleShuffleSequence = async () => {
+    if (!selectedPlaylist || !selectedPlaylist.items || selectedPlaylist.items.length < 2) return;
+    const baseList = [...selectedPlaylist.items];
+    for (let i = baseList.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [baseList[i], baseList[j]] = [baseList[j], baseList[i]];
+    }
+    baseList.forEach((item, idx) => {
+      item.orderIndex = idx;
+    });
+
+    const updatedPl = { ...selectedPlaylist, items: baseList };
+    setSelectedPlaylist(updatedPl);
+    setPlaylists(prev => prev.map(p => p.id === updatedPl.id ? updatedPl : p));
+    setPlaylistSort('default');
+
+    try {
+      await api.reorderPlaylist(selectedPlaylist.id, { action: 'shuffle' });
+    } catch (err) {
+      console.error('Failed to shuffle playlist', err);
+    }
+  };
+
+  // Save current sorted view as the permanent sequence
+  const handleSaveSortedSequence = async () => {
+    if (!selectedPlaylist || !sortedPlaylistItems || sortedPlaylistItems.length < 2) return;
+    const baseList = [...sortedPlaylistItems];
+    baseList.forEach((item, idx) => {
+      item.orderIndex = idx;
+    });
+
+    const updatedPl = { ...selectedPlaylist, items: baseList };
+    setSelectedPlaylist(updatedPl);
+    setPlaylists(prev => prev.map(p => p.id === updatedPl.id ? updatedPl : p));
+    setPlaylistSort('default');
+
+    try {
+      await api.reorderPlaylist(selectedPlaylist.id, {
+        itemIds: baseList.map(i => i.id)
+      });
+    } catch (err) {
+      console.error('Failed to save sorted sequence', err);
+    }
+  };
+
   const handleExport = (format: 'json' | 'm3u') => {
     if (!selectedPlaylist) return;
     const url = `http://localhost:4000/api/playlists/${selectedPlaylist.id}/export?format=${format}`;
@@ -178,9 +316,14 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
   };
 
   const formatDuration = (secs: number) => {
-    if (!secs) return '0:00';
-    const m = Math.floor(secs / 60);
-    const s = Math.floor(secs % 60);
+    if (!secs || isNaN(secs)) return '0:00';
+    const totalSecs = Math.round(secs);
+    const h = Math.floor(totalSecs / 3600);
+    const m = Math.floor((totalSecs % 3600) / 60);
+    const s = totalSecs % 60;
+    if (h > 0) {
+      return `${h}:${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
+    }
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
@@ -360,6 +503,10 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="text-xl font-bold text-white">{selectedPlaylist.title}</h3>
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-500/15 border border-brand-500/30 text-brand-300 text-xs font-semibold shadow-xs" title="Total Playlist Duration">
+                        <Clock className="w-3.5 h-3.5 text-accent-cyan" />
+                        <span>{formattedTotalPlaylistTime}</span>
+                      </span>
                       {selectedPlaylist.isSmart ? (
                         <span className="px-2 py-0.5 rounded-full bg-brand-500/20 text-brand-300 border border-brand-500/30 text-[11px] font-semibold flex items-center gap-1">
                           <Sparkles className="w-3 h-3" />
@@ -398,8 +545,10 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
                         )}
                       </div>
 
-                      <div className="flex items-center gap-1 text-slate-400 font-mono text-[11px]">
+                      <div className="flex items-center gap-1 text-slate-400 font-mono text-[11px] px-2.5 py-1 rounded-xl bg-surface-800 border border-white/5">
                         <span>{selectedPlaylist.items?.length || 0} tracks</span>
+                        <span>•</span>
+                        <span className="text-brand-300 font-medium">{formattedTotalPlaylistTime}</span>
                       </div>
 
                       <div className="flex items-center gap-1 text-[11px] text-emerald-400/90 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
@@ -492,7 +641,45 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
               </div>
 
               {/* Tracks List */}
-              <div className="space-y-2">
+              <div className="space-y-3">
+                {/* Quick Sequence Controls Toolbar */}
+                {selectedPlaylist.items && selectedPlaylist.items.length > 1 && !selectedPlaylist.isSmart && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-2xl bg-surface-800/80 border border-white/5 text-xs">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-slate-400 font-medium">Sequence:</span>
+                      <button
+                        onClick={handleReverseSequence}
+                        className="px-2.5 py-1.5 rounded-xl bg-surface-750 hover:bg-surface-700 text-slate-200 hover:text-white border border-white/5 flex items-center gap-1.5 transition-colors cursor-pointer text-xs"
+                        title="Reverse track playing sequence"
+                      >
+                        <ArrowUpDown className="w-3.5 h-3.5 text-brand-400" />
+                        <span>Reverse Order</span>
+                      </button>
+                      <button
+                        onClick={handleShuffleSequence}
+                        className="px-2.5 py-1.5 rounded-xl bg-surface-750 hover:bg-surface-700 text-slate-200 hover:text-white border border-white/5 flex items-center gap-1.5 transition-colors cursor-pointer text-xs"
+                        title="Shuffle the sequence of tracks"
+                      >
+                        <Shuffle className="w-3.5 h-3.5 text-accent-cyan" />
+                        <span>Shuffle</span>
+                      </button>
+                      {playlistSort !== 'default' && (
+                        <button
+                          onClick={handleSaveSortedSequence}
+                          className="px-2.5 py-1.5 rounded-xl bg-brand-600/30 hover:bg-brand-600/50 text-brand-200 hover:text-white border border-brand-500/30 flex items-center gap-1.5 transition-colors cursor-pointer text-xs"
+                          title="Save this sorted order as the permanent playlist sequence"
+                        >
+                          <Check className="w-3.5 h-3.5 text-brand-300" />
+                          <span>Save As Permanent Sequence</span>
+                        </button>
+                      )}
+                    </div>
+                    <span className="text-[11px] text-slate-400 hidden sm:inline">
+                      Use <span className="font-semibold text-white">↑</span> / <span className="font-semibold text-white">↓</span> on any track to reorder
+                    </span>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between text-xs font-semibold text-slate-500 px-3 uppercase tracking-wider">
                   <span># Title</span>
                   <div className="flex items-center gap-12 pr-2">
@@ -514,10 +701,35 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
                           }}
                           className="flex items-center justify-between p-2.5 rounded-xl hover:bg-surface-800 transition-colors group cursor-pointer border border-transparent hover:border-white/5"
                         >
-                          <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <span className="w-5 text-center text-xs font-mono text-slate-500 group-hover:text-brand-400">
-                              {idx + 1}
-                            </span>
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            {/* Sequence number and Move Up/Down controls */}
+                            <div className="flex items-center gap-1 min-w-[32px] shrink-0">
+                              <span className="w-4 text-center text-xs font-mono text-slate-500 group-hover:text-brand-400">
+                                {idx + 1}
+                              </span>
+                              {!selectedPlaylist.isSmart && (
+                                <div className="flex flex-col -space-y-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    type="button"
+                                    disabled={idx === 0}
+                                    onClick={(e) => handleMoveTrack(e, idx, 'up')}
+                                    className="p-0.5 text-slate-400 hover:text-brand-300 disabled:opacity-20 hover:bg-surface-700 rounded transition-colors cursor-pointer"
+                                    title="Move track up in sequence"
+                                  >
+                                    <ArrowUp className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={idx === sortedPlaylistItems.length - 1}
+                                    onClick={(e) => handleMoveTrack(e, idx, 'down')}
+                                    className="p-0.5 text-slate-400 hover:text-brand-300 disabled:opacity-20 hover:bg-surface-700 rounded transition-colors cursor-pointer"
+                                    title="Move track down in sequence"
+                                  >
+                                    <ArrowDown className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                             <img src={track.thumbnail} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
                             <div className="min-w-0">
                               <h5 className="text-sm font-semibold text-slate-200 truncate group-hover:text-brand-300 transition-colors">
@@ -536,7 +748,7 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
                                 {track.mood}
                               </span>
                             </div>
-                            <span className="font-mono text-slate-400 text-xs">
+                            <span className="font-mono text-slate-400 text-xs font-medium">
                               {formatDuration(track.duration)}
                             </span>
 

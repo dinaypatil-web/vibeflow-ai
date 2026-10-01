@@ -372,6 +372,41 @@ export const api = {
     return data;
   },
 
+  // Reorder items in a playlist
+  reorderPlaylist: async (
+    playlistId: string, 
+    payload: { itemIds?: string[]; fromIndex?: number; toIndex?: number; action?: 'reverse' | 'shuffle' }, 
+    token?: string | null
+  ): Promise<{ success: boolean; playlist: Playlist }> => {
+    const t = token !== undefined ? token : getStoredToken();
+    const res = await fetch(`${API_BASE}/playlists/${playlistId}/reorder`, {
+      method: 'PUT',
+      headers: authHeaders(t),
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error('Failed to reorder playlist');
+    const data = await res.json();
+    if (data.playlist) {
+      saveLocalCreatedPlaylist(data.playlist);
+    }
+    return data;
+  },
+
+  // Auto-resolve real track durations for a playlist
+  resolvePlaylistDurations: async (playlistId: string, token?: string | null): Promise<{ success: boolean; playlist: Playlist }> => {
+    const t = token !== undefined ? token : getStoredToken();
+    const res = await fetch(`${API_BASE}/playlists/${playlistId}/resolve-durations`, {
+      method: 'POST',
+      headers: authHeaders(t)
+    });
+    if (!res.ok) throw new Error('Failed to resolve playlist durations');
+    const data = await res.json();
+    if (data.playlist) {
+      saveLocalCreatedPlaylist(data.playlist);
+    }
+    return data;
+  },
+
   sharePlaylist: async (playlistId: string, targetIdentifier: string, token?: string | null) => {
     const t = token !== undefined ? token : getStoredToken();
     const res = await fetch(`${API_BASE}/playlists/${playlistId}/share`, {

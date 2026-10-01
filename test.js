@@ -598,6 +598,220 @@ async function runTests() {
     }
   });
 
+  // 21. Accurate Track Duration & Auto-Resolution in Playlists
+  await test('Accurate YouTube Track Duration & Real-Time Resolution', async () => {
+    // Create a playlist
+    const plRes = await fetchJSON(`${API_BASE}/playlists`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        title: 'Accurate Duration Verification Playlist',
+        description: 'Testing exact real-world durations'
+      })
+    });
+    const plId = plRes.playlist.id;
+
+    // Import a real YouTube video
+    const importRes = await fetchJSON(`${API_BASE}/playlists/${plId}/import-url`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        customTitle: 'Never Gonna Give You Up'
+      })
+    });
+
+    const imported = importRes.playlist.items[0]?.mediaItem;
+    if (!imported) throw new Error('Track not imported into playlist');
+
+    // Trigger resolve-durations
+    const resolveRes = await fetchJSON(`${API_BASE}/playlists/${plId}/resolve-durations`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    const resolvedTrack = resolveRes.playlist.items[0]?.mediaItem;
+    if (!resolvedTrack || resolvedTrack.duration === 240) {
+      throw new Error(`Track duration should not be fallback 240, got ${resolvedTrack?.duration}`);
+    }
+    // Rick Astley - Never Gonna Give You Up is 212 or 213 seconds (~3:32), definitely not 240 (4:00)
+    if (resolvedTrack.duration <= 0) {
+      throw new Error(`Resolved duration is invalid: ${resolvedTrack.duration}`);
+    }
+  });
+
+  // 22. Total Playlist Playing Time Calculation
+  await test('Total Playlist Playing Time Calculation & Formatting', async () => {
+    const plRes = await fetchJSON(`${API_BASE}/playlists`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        title: 'Total Time Playlist',
+        description: 'Testing total time summation'
+      })
+    });
+    const plId = plRes.playlist.id;
+
+    // Add track 1 (185s = 3m 5s)
+    await fetchJSON(`${API_BASE}/playlists/${plId}/items`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        item: {
+          id: `custom-track-${Date.now()}-1`,
+          title: 'Morning Melody',
+          artist: 'Acoustic Studio',
+          duration: 185,
+          provider: 'local'
+        }
+      })
+    });
+
+    // Add track 2 (215s = 3m 35s)
+    await fetchJSON(`${API_BASE}/playlists/${plId}/items`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        item: {
+          id: `custom-track-${Date.now()}-2`,
+          title: 'Evening Echoes',
+          artist: 'Sunset Studio',
+          duration: 215,
+          provider: 'local'
+        }
+      })
+    });
+
+    const getRes = await fetchJSON(`${API_BASE}/playlists/${plId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const items = getRes.playlist.items;
+    if (!items || items.length !== 2) throw new Error('Expected 2 items in playlist');
+
+    const totalSecs = items.reduce((acc, i) => acc + (i.mediaItem?.duration || 0), 0);
+    if (totalSecs !== 400) {
+      throw new Error(`Expected total playlist time 400s (6m 40s), got ${totalSecs}s`);
+    }
+  });
+
+  // 23. Track Sequence Reordering (Move Up, Move Down, Reverse, Shuffle, Persistence)
+  await test('Track Sequence Reordering (Move Up/Down, Reverse, Shuffle, Server Persistence)', async () => {
+    const plRes = await fetchJSON(`${API_BASE}/playlists`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        title: 'Sequence Reorder Test Playlist',
+        description: 'Testing track order sequencing'
+      })
+    });
+    const plId = plRes.playlist.id;
+
+    // Add 3 tracks: A, B, C
+    const trackA = { id: `tr-a-${Date.now()}`, title: 'Track Alpha', artist: 'Artist 1', duration: 100 };
+    const trackB = { id: `tr-b-${Date.now()}`, title: 'Track Beta', artist: 'Artist 2', duration: 200 };
+    const trackC = { id: `tr-c-${Date.now()}`, title: 'Track Gamma', artist: 'Artist 3', duration: 300 };
+
+    for (const tr of [trackA, trackB, trackC]) {
+      await fetchJSON(`${API_BASE}/playlists/${plId}/items`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ item: tr })
+      });
+    }
+
+    // Verify initial sequence: Alpha (0), Beta (1), Gamma (2)
+    const initial = await fetchJSON(`${API_BASE}/playlists/${plId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (initial.playlist.items[0].mediaItem.title !== 'Track Alpha' ||
+        initial.playlist.items[1].mediaItem.title !== 'Track Beta' ||
+        initial.playlist.items[2].mediaItem.title !== 'Track Gamma') {
+      throw new Error('Initial track sequence does not match added order');
+    }
+
+    // A. Move Track Beta to top: fromIndex 1 to toIndex 0
+    const reorderMove = await fetchJSON(`${API_BASE}/playlists/${plId}/reorder`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ fromIndex: 1, toIndex: 0 })
+    });
+    if (reorderMove.playlist.items[0].mediaItem.title !== 'Track Beta' ||
+        reorderMove.playlist.items[1].mediaItem.title !== 'Track Alpha' ||
+        reorderMove.playlist.items[2].mediaItem.title !== 'Track Gamma') {
+      throw new Error('Move Up/Down failed to resequence playlist items');
+    }
+
+    // B. Reverse Sequence: Gamma, Alpha, Beta
+    const reverseRes = await fetchJSON(`${API_BASE}/playlists/${plId}/reorder`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ action: 'reverse' })
+    });
+    if (reverseRes.playlist.items[0].mediaItem.title !== 'Track Gamma' ||
+        reverseRes.playlist.items[2].mediaItem.title !== 'Track Beta') {
+      throw new Error('Reverse sequence failed to reverse playlist items');
+    }
+
+    // C. Reorder with explicit itemIds array: Alpha, Gamma, Beta
+    const targetItemIds = [
+      initial.playlist.items.find(i => i.mediaItem.title === 'Track Alpha').id,
+      initial.playlist.items.find(i => i.mediaItem.title === 'Track Gamma').id,
+      initial.playlist.items.find(i => i.mediaItem.title === 'Track Beta').id
+    ];
+
+    const explicitRes = await fetchJSON(`${API_BASE}/playlists/${plId}/reorder`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ itemIds: targetItemIds })
+    });
+
+    if (explicitRes.playlist.items[0].mediaItem.title !== 'Track Alpha' ||
+        explicitRes.playlist.items[1].mediaItem.title !== 'Track Gamma' ||
+        explicitRes.playlist.items[2].mediaItem.title !== 'Track Beta') {
+      throw new Error('ItemIds sequence reordering failed');
+    }
+
+    // D. Verify persistence by re-fetching from database directly
+    const reFetched = await fetchJSON(`${API_BASE}/playlists/${plId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (reFetched.playlist.items[0].mediaItem.title !== 'Track Alpha' ||
+        reFetched.playlist.items[1].mediaItem.title !== 'Track Gamma' ||
+        reFetched.playlist.items[2].mediaItem.title !== 'Track Beta') {
+      throw new Error('Track sequence reordering was not persisted in server store');
+    }
+  });
+
   console.log(`\n🎉 Test Results: ${passed}/${total} passed!`);
   if (passed === total) {
     console.log('🌟 All VibeFlow AI core systems verified production-ready.\n');

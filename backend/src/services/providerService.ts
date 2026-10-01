@@ -93,6 +93,69 @@ export function parseYouTubeDate(rawStr?: string, title?: string, fallbackId?: s
   return `${spreadYear}-${m}-${d}`;
 }
 
+export function parseIsoDuration(durationStr: string): number {
+  if (!durationStr) return 0;
+  const matches = durationStr.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!matches) return 0;
+  const hours = parseInt(matches[1] || '0', 10);
+  const minutes = parseInt(matches[2] || '0', 10);
+  const seconds = parseInt(matches[3] || '0', 10);
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
+const ytDurationCache = new Map<string, number>();
+
+export async function fetchYouTubeDuration(videoId: string): Promise<number | null> {
+  if (!videoId) return null;
+  if (ytDurationCache.has(videoId)) {
+    return ytDurationCache.get(videoId)!;
+  }
+
+  try {
+    const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
+    if (res.ok) {
+      const html = await res.text();
+      // 1. Check lengthSeconds: "lengthSeconds":"216"
+      const matchSecs = html.match(/"lengthSeconds":"(\d+)"/);
+      if (matchSecs && matchSecs[1]) {
+        const secs = parseInt(matchSecs[1], 10);
+        if (secs > 0) {
+          ytDurationCache.set(videoId, secs);
+          return secs;
+        }
+      }
+
+      // 2. Check approxDurationMs: "approxDurationMs":"216089"
+      const matchMs = html.match(/"approxDurationMs":"(\d+)"/);
+      if (matchMs && matchMs[1]) {
+        const secs = Math.round(parseInt(matchMs[1], 10) / 1000);
+        if (secs > 0) {
+          ytDurationCache.set(videoId, secs);
+          return secs;
+        }
+      }
+
+      // 3. Check itemprop="duration" content="PT3M36S"
+      const matchIso = html.match(/itemprop="duration" content="([^"]+)"/);
+      if (matchIso && matchIso[1]) {
+        const secs = parseIsoDuration(matchIso[1]);
+        if (secs > 0) {
+          ytDurationCache.set(videoId, secs);
+          return secs;
+        }
+      }
+    }
+  } catch (e) {
+    // Non-fatal
+  }
+
+  return null;
+}
+
 export interface ProviderCapabilityStatus {
   provider: MediaProvider;
   name: string;
@@ -336,6 +399,26 @@ export class YouTubeProviderAdapter implements ProviderAdapter {
         if (res.ok) {
           const json = await res.json() as any;
           if (json.items && Array.isArray(json.items)) {
+            const videoIds = json.items.map((i: any) => i.id?.videoId).filter(Boolean);
+            const durationMap = new Map<string, number>();
+            if (videoIds.length > 0) {
+              try {
+                const vidUrl = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${videoIds.join(',')}&key=${this.apiKey}`;
+                const vidRes = await fetch(vidUrl);
+                if (vidRes.ok) {
+                  const vidJson = await vidRes.json() as any;
+                  if (vidJson.items && Array.isArray(vidJson.items)) {
+                    for (const vItem of vidJson.items) {
+                      if (vItem.id && vItem.contentDetails?.duration) {
+                        const d = parseIsoDuration(vItem.contentDetails.duration);
+                        if (d > 0) durationMap.set(vItem.id, d);
+                      }
+                    }
+                  }
+                }
+              } catch {}
+            }
+
             return json.items.map((item: any) => {
               const videoId = item.id.videoId;
               const classification = AIRecommendationService.classify(
@@ -359,7 +442,7 @@ export class YouTubeProviderAdapter implements ProviderAdapter {
                 title: item.snippet.title,
                 artist: item.snippet.channelTitle,
                 thumbnail: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url || '',
-                duration: 240,
+                duration: durationMap.get(videoId) || 240,
                 genre: classification.suggestedGenre,
                 mood: classification.suggestedMood,
                 releaseDate: pubDate,
@@ -428,12 +511,26 @@ export class YouTubeProviderAdapter implements ProviderAdapter {
                 const channel = v.ownerText?.runs?.[0]?.text || query || 'YouTube Creator';
                 const thumb = v.thumbnail?.thumbnails?.slice(-1)[0]?.url || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`;
                 
-                let durSecs = 240;
-                if (v.lengthText?.simpleText) {
-                  const parts = v.lengthText.simpleText.split(':').map(Number);
-                  if (parts.length === 2) durSecs = parts[0] * 60 + parts[1];
-                  else if (parts.length === 3) durSecs = parts[0] * 3600 + parts[1] * 60 + parts[2];
+                let durSecs = 0;
+                const rawTime = v.lengthText?.simpleText || 
+                  v.thumbnailOverlays?.find((o: any) => o.thumbnailOverlayTimeStatusRenderer)?.thumbnailOverlayTimeStatusRenderer?.text?.simpleText;
+                if (rawTime) {
+                  const parts = String(rawTime).split(':').map(Number);
+                  if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) durSecs = parts[0] * 60 + parts[1];
+                  else if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) durSecs = parts[0] * 3600 + parts[1] * 60 + parts[2];
                 }
+                if (!durSecs) {
+                  const label = v.lengthText?.accessibility?.accessibilityData?.label || '';
+                  if (label) {
+                    const hr = (label.match(/(\d+)\s*hour/i) || [])[1];
+                    const min = (label.match(/(\d+)\s*minute/i) || [])[1];
+                    const sec = (label.match(/(\d+)\s*second/i) || [])[1];
+                    if (hr || min || sec) {
+                      durSecs = (parseInt(hr || '0', 10) * 3600) + (parseInt(min || '0', 10) * 60) + parseInt(sec || '0', 10);
+                    }
+                  }
+                }
+                if (!durSecs || durSecs <= 0) durSecs = 240;
 
                 const pubDate = parseYouTubeDate(v.publishedTimeText?.simpleText, title, v.videoId);
                 const classification = AIRecommendationService.classify(title, channel, ['youtube', 'video']);
@@ -471,12 +568,26 @@ export class YouTubeProviderAdapter implements ProviderAdapter {
                     const channel = sv.ownerText?.runs?.[0]?.text || query || 'YouTube Creator';
                     const thumb = sv.thumbnail?.thumbnails?.slice(-1)[0]?.url || `https://i.ytimg.com/vi/${sv.videoId}/hqdefault.jpg`;
                     
-                    let durSecs = 240;
-                    if (sv.lengthText?.simpleText) {
-                      const parts = sv.lengthText.simpleText.split(':').map(Number);
-                      if (parts.length === 2) durSecs = parts[0] * 60 + parts[1];
-                      else if (parts.length === 3) durSecs = parts[0] * 3600 + parts[1] * 60 + parts[2];
+                    let durSecs = 0;
+                    const rawTime = sv.lengthText?.simpleText || 
+                      sv.thumbnailOverlays?.find((o: any) => o.thumbnailOverlayTimeStatusRenderer)?.thumbnailOverlayTimeStatusRenderer?.text?.simpleText;
+                    if (rawTime) {
+                      const parts = String(rawTime).split(':').map(Number);
+                      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) durSecs = parts[0] * 60 + parts[1];
+                      else if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) durSecs = parts[0] * 3600 + parts[1] * 60 + parts[2];
                     }
+                    if (!durSecs) {
+                      const label = sv.lengthText?.accessibility?.accessibilityData?.label || '';
+                      if (label) {
+                        const hr = (label.match(/(\d+)\s*hour/i) || [])[1];
+                        const min = (label.match(/(\d+)\s*minute/i) || [])[1];
+                        const sec = (label.match(/(\d+)\s*second/i) || [])[1];
+                        if (hr || min || sec) {
+                          durSecs = (parseInt(hr || '0', 10) * 3600) + (parseInt(min || '0', 10) * 60) + parseInt(sec || '0', 10);
+                        }
+                      }
+                    }
+                    if (!durSecs || durSecs <= 0) durSecs = 240;
 
                     const pubDate = parseYouTubeDate(sv.publishedTimeText?.simpleText, title, sv.videoId);
                     const classification = AIRecommendationService.classify(title, channel, ['youtube', 'video']);
@@ -1455,6 +1566,12 @@ export class ProviderRegistry {
       }
 
       const classification = AIRecommendationService.classify(title, artist, ['youtube', 'custom_import']);
+      let duration = 240;
+      const realDur = await fetchYouTubeDuration(videoId);
+      if (realDur && realDur > 0) {
+        duration = realDur;
+      }
+
       const mediaItem: MediaItem = {
         id: `yt-${videoId}`,
         provider: 'youtube',
@@ -1462,7 +1579,7 @@ export class ProviderRegistry {
         title,
         artist,
         thumbnail,
-        duration: 240,
+        duration,
         genre: classification.suggestedGenre,
         mood: classification.suggestedMood,
         capabilities: ['stream_embed', 'preview_only'],

@@ -3,10 +3,54 @@ import jwt from 'jsonwebtoken';
 import { db } from '../store/database';
 import { Playlist, PlaylistItem, MediaItem } from '../types';
 import { AIRecommendationService } from '../services/aiRecommendationService';
-import { providerRegistry } from '../services/providerService';
+import { providerRegistry, fetchYouTubeDuration } from '../services/providerService';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'vibeflow-super-secret-key-2026';
+
+async function enrichPlaylistDurations(playlist: Playlist): Promise<boolean> {
+  if (!playlist.items || playlist.items.length === 0) return false;
+  let changed = false;
+
+  const resolutionPromises = playlist.items.map(async (item) => {
+    const m = item.mediaItem;
+    if (!m) return;
+    // Check if duration is missing, zero, or the 240s default fallback
+    if (!m.duration || m.duration === 240 || m.duration <= 0) {
+      let vid: string | null = m.providerId || null;
+      if (!vid && m.streamUrl) {
+        if (m.streamUrl.includes('v=')) {
+          try {
+            vid = new URL(m.streamUrl).searchParams.get('v');
+          } catch {}
+        } else if (m.streamUrl.includes('youtu.be/')) {
+          vid = m.streamUrl.split('youtu.be/')[1]?.split('?')[0] || null;
+        }
+      }
+      if (!vid && m.embedUrl && m.embedUrl.includes('embed/')) {
+        vid = m.embedUrl.split('embed/')[1]?.split('?')[0] || null;
+      }
+
+      if (vid) {
+        try {
+          const realDur = await fetchYouTubeDuration(vid);
+          if (realDur && realDur > 0 && realDur !== m.duration) {
+            m.duration = realDur;
+            const inDb = db.findMediaItemById(m.id);
+            if (inDb) inDb.duration = realDur;
+            changed = true;
+          }
+        } catch {}
+      }
+    }
+  });
+
+  await Promise.allSettled(resolutionPromises);
+  if (changed) {
+    db.saveToDisk();
+  }
+  return changed;
+}
 
 function resolveUserId(req: Request): string {
   const auth = req.headers.authorization;
@@ -60,6 +104,9 @@ router.get('/', async (req: Request, res: Response) => {
           mediaItem: m
         }))
       };
+    }
+    if (p.items) {
+      p.items.sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
     }
     return p;
   });
@@ -192,7 +239,7 @@ router.post('/sync/link', (req: Request, res: Response) => {
 });
 
 // Get playlist by ID
-router.get('/:id', (req: Request, res: Response) => {
+router.get('/:id', async (req: Request, res: Response) => {
   const userId = resolveUserId(req);
   const playlist = db.findPlaylistById(req.params.id);
   if (!playlist) {
@@ -207,6 +254,18 @@ router.get('/:id', (req: Request, res: Response) => {
   // Requirement: Any user's playlist shall not be visible to other User unless shared
   if (!isOwner && !isShared && !isTokenMatch) {
     return res.status(403).json({ error: 'This playlist is private and has not been shared with you.' });
+  }
+
+  // Ensure items are ordered by orderIndex
+  if (playlist.items && playlist.items.length > 0) {
+    playlist.items.sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+    // Auto-resolve any legacy or fallback 240s durations
+    const hasFallbackDurations = playlist.items.some(
+      i => !i.mediaItem?.duration || i.mediaItem.duration === 240
+    );
+    if (hasFallbackDurations) {
+      await enrichPlaylistDurations(playlist);
+    }
   }
 
   const enrichedPlaylist = {
@@ -232,6 +291,84 @@ router.get('/:id', (req: Request, res: Response) => {
   }
 
   res.json({ playlist: enrichedPlaylist });
+});
+
+// Resolve accurate track durations for a playlist
+router.post('/:id/resolve-durations', async (req: Request, res: Response) => {
+  const playlist = db.findPlaylistById(req.params.id);
+  if (!playlist) {
+    return res.status(404).json({ error: 'Playlist not found' });
+  }
+  await enrichPlaylistDurations(playlist);
+  if (playlist.items) {
+    playlist.items.sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+  }
+  res.json({ success: true, playlist });
+});
+
+// Reorder playlist tracks
+router.put('/:id/reorder', (req: Request, res: Response) => {
+  const userId = resolveUserId(req);
+  const playlist = db.findPlaylistById(req.params.id);
+  if (!playlist) {
+    return res.status(404).json({ error: 'Playlist not found' });
+  }
+  if (!db.isUserOwner(playlist, userId) && !db.isUserShared(playlist, userId)) {
+    return res.status(403).json({ error: 'Permission denied to reorder this playlist' });
+  }
+
+  if (!playlist.items) playlist.items = [];
+
+  const { itemIds, fromIndex, toIndex, action } = req.body;
+
+  if (Array.isArray(itemIds) && itemIds.length > 0) {
+    const itemMap = new Map<string, PlaylistItem>();
+    for (const item of playlist.items) {
+      itemMap.set(item.id, item);
+      itemMap.set(item.mediaItemId, item);
+      if (item.mediaItem?.id) itemMap.set(item.mediaItem.id, item);
+    }
+    const newItems: PlaylistItem[] = [];
+    for (const id of itemIds) {
+      const it = itemMap.get(id);
+      if (it && !newItems.includes(it)) {
+        newItems.push(it);
+      }
+    }
+    for (const item of playlist.items) {
+      if (!newItems.includes(item)) {
+        newItems.push(item);
+      }
+    }
+    playlist.items = newItems;
+  } else if (typeof fromIndex === 'number' && typeof toIndex === 'number') {
+    if (
+      fromIndex >= 0 && 
+      fromIndex < playlist.items.length && 
+      toIndex >= 0 && 
+      toIndex < playlist.items.length
+    ) {
+      const [moved] = playlist.items.splice(fromIndex, 1);
+      playlist.items.splice(toIndex, 0, moved);
+    }
+  } else if (action === 'reverse') {
+    playlist.items.reverse();
+  } else if (action === 'shuffle') {
+    for (let i = playlist.items.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [playlist.items[i], playlist.items[j]] = [playlist.items[j], playlist.items[i]];
+    }
+  }
+
+  // Update orderIndex sequentially
+  playlist.items.forEach((item, idx) => {
+    item.orderIndex = idx;
+  });
+  playlist.itemCount = playlist.items.length;
+  playlist.updatedAt = new Date().toISOString();
+  db.saveToDisk();
+
+  res.json({ success: true, playlist, items: playlist.items });
 });
 
 // Share playlist with another user
