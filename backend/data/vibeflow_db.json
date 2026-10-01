@@ -221,45 +221,6 @@
       "createdAt": "2026-09-28T16:31:42.060Z"
     },
     {
-      "id": "usr-dinay-patil",
-      "email": "dinay.patil@gmail.com",
-      "username": "dinay.patil",
-      "name": "Dinay Patil",
-      "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80",
-      "role": "admin",
-      "preferences": {
-        "userId": "usr-dinay-patil",
-        "favoriteGenres": [
-          "Bollywood",
-          "Lo-Fi & Chill",
-          "Hindi Retro",
-          "Marathi"
-        ],
-        "favoriteMoods": [
-          "Calm & Peaceful",
-          "Focus & Study",
-          "Workout & Energy",
-          "Romantic"
-        ],
-        "preferredLanguages": [
-          "Hindi",
-          "English",
-          "Marathi"
-        ],
-        "favoriteArtists": [
-          "Arijit Singh",
-          "Lata Mangeshkar"
-        ],
-        "autoPlaySimilar": true,
-        "streamQuality": "high",
-        "downloadQuality": "high",
-        "wifiOnlyDownloads": true,
-        "enableListeningHistory": true,
-        "theme": "dark"
-      },
-      "createdAt": "2026-09-28T20:00:00.000Z"
-    },
-    {
       "id": "usr-1790698165099",
       "email": "test_1790698164810@vibeflow.local",
       "name": "Auto Tester",
@@ -2218,6 +2179,47 @@
         "theme": "dark"
       },
       "createdAt": "2026-10-01T18:17:19.039Z"
+    },
+    {
+      "id": "usr-dinay-patil",
+      "email": "dinay.patil@gmail.com",
+      "username": "dinay.patil",
+      "name": "Dinay Patil",
+      "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80",
+      "role": "admin",
+      "preferences": {
+        "userId": "usr-dinay-patil",
+        "favoriteGenres": [
+          "Bollywood",
+          "Lo-Fi & Chill",
+          "Hindi Retro",
+          "Marathi"
+        ],
+        "favoriteMoods": [
+          "Calm & Peaceful",
+          "Focus & Study",
+          "Workout & Energy",
+          "Romantic"
+        ],
+        "preferredLanguages": [
+          "Hindi",
+          "English",
+          "Marathi",
+          "Punjabi"
+        ],
+        "favoriteArtists": [
+          "Arijit Singh",
+          "Lata Mangeshkar",
+          "Bombay Chill Collective"
+        ],
+        "autoPlaySimilar": true,
+        "streamQuality": "high",
+        "downloadQuality": "high",
+        "wifiOnlyDownloads": true,
+        "enableListeningHistory": true,
+        "theme": "dark"
+      },
+      "createdAt": "2026-09-28T20:00:00.000Z"
     }
   ],
   "passwords": {
@@ -2239,10 +2241,6 @@
     "usr-1790613102060": "$2a$10$f9tk/BUqjKDCunCr0g45tO2FrPqMQ38NbV66Judb0oLfgEW5ETNmq",
     "test_1790613101935@vibeflow.local": "$2a$10$f9tk/BUqjKDCunCr0g45tO2FrPqMQ38NbV66Judb0oLfgEW5ETNmq",
     "user_1790613101935": "$2a$10$f9tk/BUqjKDCunCr0g45tO2FrPqMQ38NbV66Judb0oLfgEW5ETNmq",
-    "usr-dinay-patil": "$2a$10$SqD8fr84djQ6Gs8kykLYIOxc0kRFtqZZrqLqSEph2xwk5TnTQAvQm",
-    "dinay.patil": "$2a$10$SqD8fr84djQ6Gs8kykLYIOxc0kRFtqZZrqLqSEph2xwk5TnTQAvQm",
-    "dinay.patil@gmail.com": "$2a$10$SqD8fr84djQ6Gs8kykLYIOxc0kRFtqZZrqLqSEph2xwk5TnTQAvQm",
-    "dinay": "$2a$10$HURgRLJwD7RgEjB.3UMyJONIyokVGj5pKYYKQYFzAeJd./mapehc6",
     "usr-1790698165099": "$2a$10$l7AT09MxQOgN5tE2BlyUtefbTVSAyLnhtPjNqRRmZV9RHTxMNQkCG",
     "test_1790698164810@vibeflow.local": "$2a$10$l7AT09MxQOgN5tE2BlyUtefbTVSAyLnhtPjNqRRmZV9RHTxMNQkCG",
     "user_1790698164810": "$2a$10$l7AT09MxQOgN5tE2BlyUtefbTVSAyLnhtPjNqRRmZV9RHTxMNQkCG",
@@ -2389,7 +2387,10 @@
     "bob_1790878630503": "$2a$10$WknLxY/dgaYjQIVgWOJqJeqE1RSbEuzrI5l6Vl2djTFrORiWVHdE2",
     "usr-1790878639039": "$2a$10$nC6oE3xeLGiB/o60PlqGG.tvZHows6YG92aKrrejV6Zmip96W4m3m",
     "user_1790878638959@vibeflow.local": "$2a$10$nC6oE3xeLGiB/o60PlqGG.tvZHows6YG92aKrrejV6Zmip96W4m3m",
-    "user_1790878638959": "$2a$10$nC6oE3xeLGiB/o60PlqGG.tvZHows6YG92aKrrejV6Zmip96W4m3m"
+    "user_1790878638959": "$2a$10$nC6oE3xeLGiB/o60PlqGG.tvZHows6YG92aKrrejV6Zmip96W4m3m",
+    "usr-dinay-patil": "$2a$10$.HemBvL2X3UIFgk1c6WK2uX31mSSx8omdGTkivBcrQgYRnO3oZAuC",
+    "dinay.patil@gmail.com": "$2a$10$.HemBvL2X3UIFgk1c6WK2uX31mSSx8omdGTkivBcrQgYRnO3oZAuC",
+    "dinay.patil": "$2a$10$.HemBvL2X3UIFgk1c6WK2uX31mSSx8omdGTkivBcrQgYRnO3oZAuC"
   },
   "mediaItems": [
     {
@@ -2801,7 +2802,7 @@
         "preview",
         "bollywood"
       ],
-      "playbackCount": 5405,
+      "playbackCount": 5045,
       "releaseDate": "2018-06-27"
     },
     {
@@ -2831,7 +2832,7 @@
         "preview",
         "soundtrack"
       ],
-      "playbackCount": 4201,
+      "playbackCount": 2093,
       "releaseDate": "2010-01-01"
     },
     {
@@ -3044,7 +3045,7 @@
       "providerId": "zK2Vq",
       "title": "Chill Lo-fi Hip-Hop Beats FREE Lofi Hip Hop Chillhop Music Mix",
       "artist": "jameslax",
-      "thumbnail": "https://v.monophonic.digital/content/QmdCNrMfkngNoMjYk5TFqtErmp8APdFqidn1EjCEVjyiw7/480x480.jpg",
+      "thumbnail": "https://audius-creator-16.theblueprint.xyz/content/QmdCNrMfkngNoMjYk5TFqtErmp8APdFqidn1EjCEVjyiw7/480x480.jpg",
       "duration": 5175,
       "genre": "Lo-Fi & Chill",
       "mood": "Focus & Study",
@@ -3103,7 +3104,7 @@
       "providerId": "Q71Vw",
       "title": "Lofi Hip Hop Mix Study  Beats",
       "artist": "iconoschill",
-      "thumbnail": "https://cn2.mainnet.audiusindex.org/content/QmViAwyengBrXhJVxgEkZPALJMZPWdziYGxbWtDwS15P5b/480x480.jpg",
+      "thumbnail": "https://v.monophonic.digital/content/QmViAwyengBrXhJVxgEkZPALJMZPWdziYGxbWtDwS15P5b/480x480.jpg",
       "duration": 5037,
       "genre": "Lo-Fi & Chill",
       "mood": "Focus & Study",
@@ -3135,7 +3136,7 @@
       "providerId": "p5Ep5",
       "title": "Chilling Beats To Study Mix 2022  Chill Lofi",
       "artist": "Chilling",
-      "thumbnail": "https://cn3.mainnet.audiusindex.org/content/QmejXxx8bEDWmJkyCTuByKvPNkh47pPVDmRFhYAGcbADu7/480x480.jpg",
+      "thumbnail": "https://audius-content-13.figment.io/content/QmejXxx8bEDWmJkyCTuByKvPNkh47pPVDmRFhYAGcbADu7/480x480.jpg",
       "duration": 11296,
       "genre": "Lo-Fi & Chill",
       "mood": "Focus & Study",
@@ -3167,7 +3168,7 @@
       "providerId": "WxPYv",
       "title": "Sphere",
       "artist": "DJ Whacked",
-      "thumbnail": "https://audius-creator-4.theblueprint.xyz/content/QmSfiX8NLnJrEMfvJC2adtrtAprDaT38QnSH6vBu33146U/480x480.jpg",
+      "thumbnail": "https://val009.open-audio-validator.com/content/QmSfiX8NLnJrEMfvJC2adtrtAprDaT38QnSH6vBu33146U/480x480.jpg",
       "duration": 237,
       "genre": "EDM & Electronic",
       "mood": "Party & Dance",
@@ -6317,7 +6318,7 @@
         "punjabi",
         "full_length"
       ],
-      "playbackCount": 18919177,
+      "playbackCount": 18919559,
       "releaseDate": "2025-08-04"
     },
     {
@@ -6348,7 +6349,7 @@
         "punjabi",
         "full_length"
       ],
-      "playbackCount": 21841155,
+      "playbackCount": 21841538,
       "releaseDate": "2025-03-23"
     },
     {
@@ -6408,7 +6409,7 @@
         "punjabi",
         "full_length"
       ],
-      "playbackCount": 25686706,
+      "playbackCount": 25687015,
       "releaseDate": "2024-06-06"
     },
     {
@@ -6437,7 +6438,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 119536,
+      "playbackCount": 119539,
       "releaseDate": "2024-05-05"
     },
     {
@@ -6467,7 +6468,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 4393518,
+      "playbackCount": 4393535,
       "releaseDate": "2021-05-21"
     },
     {
@@ -6528,7 +6529,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 213416750,
+      "playbackCount": 213416961,
       "releaseDate": "2022-02-02"
     },
     {
@@ -6561,7 +6562,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 2104929,
+      "playbackCount": 2104945,
       "releaseDate": "2022-11-07"
     },
     {
@@ -6593,7 +6594,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 3521467,
+      "playbackCount": 3521471,
       "releaseDate": "2022-02-26"
     },
     {
@@ -28379,7 +28380,7 @@
         "hindi",
         "full_length"
       ],
-      "playbackCount": 531709,
+      "playbackCount": 531719,
       "releaseDate": "2023-06-14"
     },
     {
@@ -38595,7 +38596,7 @@
         "punjabi",
         "full_length"
       ],
-      "playbackCount": 26492156,
+      "playbackCount": 26492417,
       "releaseDate": "2024-07-19"
     },
     {
@@ -43736,7 +43737,7 @@
         "punjabi",
         "full_length"
       ],
-      "playbackCount": 340980,
+      "playbackCount": 341569,
       "releaseDate": "2026-09-25"
     },
     {
@@ -45103,7 +45104,7 @@
       "providerId": "qULZ4ODYpwE",
       "title": "✨ Kesariya Full Song | Arijit Singh | Brahmāstra | 4K Music Video 💖",
       "artist": "Xplore with Ritik  and satya_ediz_07",
-      "thumbnail": "https://i.ytimg.com/vi/qULZ4ODYpwE/hq720.jpg?sqp=-oaymwE6CNAFEJQDSFXyq4qpAywIARUAAIhCGAFwAcABBvABAfgB_gmAAtAFigIMCAAQARh_ID8oEzAPuALzGA==&rs=AOn4CLCV2cmT6db_r30FitSqK2_y0cvouA",
+      "thumbnail": "https://i.ytimg.com/vi/qULZ4ODYpwE/hq720.jpg?sqp=-oaymwE2CNAFEJQDSFXyq4qpAygIARUAAIhCGAFwAcABBvABAfgB_gmAAtAFigIMCAAQARh_ID8oEzAP&rs=AOn4CLAdbbMcqhEvHmDSSE7bz6USEX1gFA",
       "duration": 269,
       "genre": "Bollywood",
       "mood": "Calm & Peaceful",
@@ -46003,7 +46004,7 @@
         "night",
         "hit"
       ],
-      "releaseDate": "2026-05-29",
+      "releaseDate": "2026-06-01",
       "releaseYear": 2026
     },
     {
@@ -46029,7 +46030,7 @@
         "mangeshkar",
         "hit"
       ],
-      "releaseDate": "2025-09-29",
+      "releaseDate": "2025-10-01",
       "releaseYear": 2025
     },
     {
@@ -48875,8 +48876,8 @@
       "duration": 195,
       "genre": "Punjabi",
       "mood": "Romantic",
-      "releaseDate": "2026-09-29",
-      "releaseYear": 2026,
+      "releaseDate": "2025-10-01",
+      "releaseYear": 2025,
       "capabilities": [
         "stream_embed",
         "preview_only"
@@ -48931,7 +48932,7 @@
       "duration": 302,
       "genre": "Hindi Retro",
       "mood": "Sad & Emotional",
-      "releaseDate": "2017-09-29",
+      "releaseDate": "2017-10-01",
       "releaseYear": 2017,
       "capabilities": [
         "stream_embed",
@@ -50452,7 +50453,7 @@
       "duration": 221,
       "genre": "Bollywood",
       "mood": "Romantic",
-      "releaseDate": "2022-09-29",
+      "releaseDate": "2022-10-01",
       "releaseYear": 2022,
       "capabilities": [
         "stream_embed",
@@ -52822,7 +52823,7 @@
       "duration": 217,
       "genre": "Hindi Retro",
       "mood": "Calm & Peaceful",
-      "releaseDate": "2023-09-29",
+      "releaseDate": "2023-10-01",
       "releaseYear": 2023,
       "capabilities": [
         "stream_embed",
@@ -66018,6 +66019,32 @@
       "artist": "Artist 3",
       "duration": 300,
       "releaseDate": "2024-01-01"
+    },
+    {
+      "id": "yt-DT9fEmSL_Lw",
+      "provider": "youtube",
+      "providerId": "DT9fEmSL_Lw",
+      "title": "Diljit Dosanjh: Do You Know Lyric Video | Latest Punjabi Song",
+      "artist": "Diljit Dosanjh",
+      "thumbnail": "https://i.ytimg.com/vi/DT9fEmSL_Lw/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLAp8QssPX3TeXTbJxY-1Ldrm9ghMw",
+      "duration": 220,
+      "genre": "Punjabi",
+      "mood": "Romantic",
+      "releaseDate": "2021-10-01",
+      "releaseYear": 2021,
+      "capabilities": [
+        "stream_embed",
+        "preview_only"
+      ],
+      "embedUrl": "https://www.youtube.com/embed/DT9fEmSL_Lw",
+      "isOfflinePermitted": false,
+      "isLocal": false,
+      "confidenceScore": 0.93,
+      "tags": [
+        "dil",
+        "punjabi",
+        "diljit"
+      ]
     }
   ],
   "playlists": [
