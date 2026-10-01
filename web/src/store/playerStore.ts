@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { MediaItem, User, UserPreferences, SourceAccount, AppTheme } from '../types';
+import { api } from '../services/api';
 
 export type TabType = 'home' | 'search' | 'explore' | 'playlists' | 'library' | 'ai-studio' | 'settings';
 export type RepeatMode = 'off' | 'all' | 'one';
@@ -312,7 +313,19 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   setCurrentTime: (time) => set({ currentTime: time }),
-  setDuration: (duration) => set({ duration }),
+  setDuration: (duration) => {
+    const validDur = typeof duration === 'number' && !isNaN(duration) && duration > 0 ? Math.round(duration) : 0;
+    set(state => {
+      const cur = state.currentTrack;
+      if (validDur > 0 && cur && (!cur.duration || cur.duration === 240 || cur.duration === 30 || cur.duration === 180 || cur.duration === 210 || Math.abs(cur.duration - validDur) > 3)) {
+        const updatedTrack = { ...cur, duration: validDur };
+        const updatedQueue = state.queue.map(q => q.id === cur.id ? { ...q, duration: validDur } : q);
+        api.updateMediaDuration(cur.id, validDur).catch(() => {});
+        return { duration, currentTrack: updatedTrack, queue: updatedQueue };
+      }
+      return { duration };
+    });
+  },
   seekTo: (time) => set({ seekRequestedTime: time, currentTime: time }),
   clearSeekRequest: () => set({ seekRequestedTime: null }),
 

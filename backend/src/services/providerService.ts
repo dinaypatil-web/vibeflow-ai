@@ -153,6 +153,122 @@ export async function fetchYouTubeDuration(videoId: string): Promise<number | nu
     // Non-fatal
   }
 
+  // Fallback: search query for videoId
+  try {
+    const sRes = await fetch(`https://www.youtube.com/results?search_query=${encodeURIComponent(videoId)}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
+    if (sRes.ok) {
+      const sHtml = await sRes.text();
+      const jsonMatch = sHtml.match(/ytInitialData\s*=\s*({.+?});<\/script>/);
+      if (jsonMatch) {
+        const sData = JSON.parse(jsonMatch[1]);
+        const sections = sData.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+        for (const sec of sections) {
+          for (const it of sec.itemSectionRenderer?.contents || []) {
+            const vr = it.videoRenderer;
+            if (vr && vr.videoId === videoId) {
+              const rawTime = vr.lengthText?.simpleText ||
+                vr.lengthText?.runs?.[0]?.text ||
+                vr.thumbnailOverlays?.find((o: any) => o.thumbnailOverlayTimeStatusRenderer)?.thumbnailOverlayTimeStatusRenderer?.text?.simpleText ||
+                vr.thumbnailOverlays?.find((o: any) => o.thumbnailOverlayTimeStatusRenderer)?.thumbnailOverlayTimeStatusRenderer?.text?.runs?.[0]?.text;
+              if (rawTime) {
+                const parts = String(rawTime).split(':').map(Number);
+                let s = 0;
+                if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) s = parts[0] * 60 + parts[1];
+                else if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) s = parts[0] * 3600 + parts[1] * 60 + parts[2];
+                if (s > 0) {
+                  ytDurationCache.set(videoId, s);
+                  return s;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch {}
+
+  return null;
+}
+
+/**
+ * Universal multi-provider duration resolver:
+ * Queries the official upstream provider (YouTube, Apple Music, Deezer, JioSaavn)
+ * to resolve accurate track length down to the exact second.
+ */
+export async function fetchTrackDuration(item: MediaItem): Promise<number | null> {
+  if (!item) return null;
+
+  // 1. YouTube
+  let vid: string | null = item.provider === 'youtube' ? item.providerId : null;
+  if (!vid && item.id?.startsWith('yt-')) vid = item.id.substring(3);
+  if (!vid && item.streamUrl) {
+    if (item.streamUrl.includes('v=')) {
+      try { vid = new URL(item.streamUrl).searchParams.get('v'); } catch {}
+    } else if (item.streamUrl.includes('youtu.be/')) {
+      vid = item.streamUrl.split('youtu.be/')[1]?.split('?')[0] || null;
+    }
+  }
+  if (!vid && item.embedUrl && item.embedUrl.includes('embed/')) {
+    vid = item.embedUrl.split('embed/')[1]?.split('?')[0] || null;
+  }
+  if (vid) {
+    const d = await fetchYouTubeDuration(vid);
+    if (d && d > 0) return d;
+  }
+
+  // 2. iTunes / Apple Music (trackId)
+  if (item.id?.startsWith('itunes-') || (item.provider === 'public_domain' && item.providerId)) {
+    const itunesId = item.id.startsWith('itunes-') ? item.id.replace('itunes-', '') : item.providerId;
+    if (itunesId && /^\d+$/.test(itunesId)) {
+      try {
+        const res = await fetch(`https://itunes.apple.com/lookup?id=${itunesId}`);
+        if (res.ok) {
+          const json = await res.json() as any;
+          const millis = json.results?.[0]?.trackTimeMillis;
+          if (millis && millis > 0) {
+            return Math.round(millis / 1000);
+          }
+        }
+      } catch {}
+    }
+  }
+
+  // 3. Deezer (trackId)
+  if (item.id?.startsWith('deezer-') || (item.provider === 'deezer' && item.providerId)) {
+    const deezerId = item.id.startsWith('deezer-') ? item.id.replace('deezer-', '') : item.providerId;
+    if (deezerId && /^\d+$/.test(deezerId)) {
+      try {
+        const res = await fetch(`https://api.deezer.com/track/${deezerId}`);
+        if (res.ok) {
+          const json = await res.json() as any;
+          if (json.duration && json.duration > 0) {
+            return json.duration;
+          }
+        }
+      } catch {}
+    }
+  }
+
+  // 4. JioSaavn (songId)
+  if (item.id?.startsWith('jiosaavn-') || (item.provider === 'jiosaavn' && item.providerId)) {
+    const saavnId = item.id.startsWith('jiosaavn-') ? item.id.replace('jiosaavn-', '') : item.providerId;
+    if (saavnId) {
+      try {
+        const res = await fetch(`https://www.jiosaavn.com/api.php?__call=song.getDetails&pids=${encodeURIComponent(saavnId)}&_format=json`);
+        if (res.ok) {
+          const json = await res.json() as any;
+          const song = json[saavnId] || Object.values(json)[0] as any;
+          const dur = parseInt(song?.duration || song?.more_info?.duration || '0', 10);
+          if (dur > 0) return dur;
+        }
+      } catch {}
+    }
+  }
+
   return null;
 }
 
@@ -233,6 +349,8 @@ export class ITunesLiveProviderAdapter implements ProviderAdapter {
         const itunesDate = item.releaseDate ? item.releaseDate.split('T')[0] : '2024-01-01';
         const itunesYear = item.releaseDate ? new Date(item.releaseDate).getFullYear() : 2024;
 
+        const realTrackDur = item.trackTimeMillis ? Math.round(item.trackTimeMillis / 1000) : 30;
+
         const mediaItem: MediaItem = {
           id: `itunes-${item.trackId}`,
           provider: 'public_domain',
@@ -241,7 +359,7 @@ export class ITunesLiveProviderAdapter implements ProviderAdapter {
           artist: item.artistName,
           album: item.collectionName,
           thumbnail: hdArtwork,
-          duration: 30, // Apple Search API provides 30s previews
+          duration: realTrackDur > 0 ? realTrackDur : 30, // Official Apple full track duration
           genre: classification.suggestedGenre,
           mood: classification.suggestedMood,
           language: item.country === 'IND' ? 'Hindi' : 'English',
@@ -513,7 +631,9 @@ export class YouTubeProviderAdapter implements ProviderAdapter {
                 
                 let durSecs = 0;
                 const rawTime = v.lengthText?.simpleText || 
-                  v.thumbnailOverlays?.find((o: any) => o.thumbnailOverlayTimeStatusRenderer)?.thumbnailOverlayTimeStatusRenderer?.text?.simpleText;
+                  v.lengthText?.runs?.[0]?.text ||
+                  v.thumbnailOverlays?.find((o: any) => o.thumbnailOverlayTimeStatusRenderer)?.thumbnailOverlayTimeStatusRenderer?.text?.simpleText ||
+                  v.thumbnailOverlays?.find((o: any) => o.thumbnailOverlayTimeStatusRenderer)?.thumbnailOverlayTimeStatusRenderer?.text?.runs?.[0]?.text;
                 if (rawTime) {
                   const parts = String(rawTime).split(':').map(Number);
                   if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) durSecs = parts[0] * 60 + parts[1];
@@ -570,7 +690,9 @@ export class YouTubeProviderAdapter implements ProviderAdapter {
                     
                     let durSecs = 0;
                     const rawTime = sv.lengthText?.simpleText || 
-                      sv.thumbnailOverlays?.find((o: any) => o.thumbnailOverlayTimeStatusRenderer)?.thumbnailOverlayTimeStatusRenderer?.text?.simpleText;
+                      sv.lengthText?.runs?.[0]?.text ||
+                      sv.thumbnailOverlays?.find((o: any) => o.thumbnailOverlayTimeStatusRenderer)?.thumbnailOverlayTimeStatusRenderer?.text?.simpleText ||
+                      sv.thumbnailOverlays?.find((o: any) => o.thumbnailOverlayTimeStatusRenderer)?.thumbnailOverlayTimeStatusRenderer?.text?.runs?.[0]?.text;
                     if (rawTime) {
                       const parts = String(rawTime).split(':').map(Number);
                       if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) durSecs = parts[0] * 60 + parts[1];
@@ -699,6 +821,8 @@ export class DeezerProviderAdapter implements ProviderAdapter {
         const relYear = relDate ? new Date(relDate).getFullYear() : (yearInTitle ? parseInt(yearInTitle, 10) : 2023);
         const finalRelDate = relDate || `${relYear}-05-15`;
 
+        const realDeezerDur = (typeof track.duration === 'number' && track.duration > 0) ? track.duration : 30;
+
         const mediaItem: MediaItem = {
           id: `deezer-${track.id}`,
           provider: 'deezer',
@@ -707,7 +831,7 @@ export class DeezerProviderAdapter implements ProviderAdapter {
           artist: track.artist?.name || 'Unknown Artist',
           album: track.album?.title,
           thumbnail: artwork,
-          duration: 30, // Deezer previews are exactly 30 seconds
+          duration: realDeezerDur, // Real Deezer song duration in seconds
           genre: classification.suggestedGenre,
           mood: classification.suggestedMood,
           releaseDate: finalRelDate,
@@ -818,7 +942,7 @@ export class JioSaavnProviderAdapter implements ProviderAdapter {
           artist: cleanArtist,
           album: cleanAlbum,
           thumbnail: artwork,
-          duration: parseInt(song.more_info?.duration || '0', 10) || 210,
+          duration: parseInt(song.duration || song.more_info?.duration || '0', 10) || 210,
           genre: classification.suggestedGenre,
           mood: classification.suggestedMood,
           language: song.language ? (song.language.charAt(0).toUpperCase() + song.language.slice(1)) : 'Hindi',
@@ -1445,12 +1569,12 @@ export class ProviderRegistry {
 
         const localMatches = db.getAllMediaItems().filter(i => 
           i.provider === providerFilter &&
-          (i.title.toLowerCase().includes(qLower) || 
-           i.artist.toLowerCase().includes(qLower) ||
+          (((i.title || '').toLowerCase().includes(qLower)) || 
+           ((i.artist || '').toLowerCase().includes(qLower)) ||
            (i.album && i.album.toLowerCase().includes(qLower)) ||
-           i.genre.toLowerCase().includes(qLower) ||
-           i.mood.toLowerCase().includes(qLower) ||
-           i.tags?.some(t => t.toLowerCase().includes(qLower)))
+           ((i.genre || '').toLowerCase().includes(qLower)) ||
+           ((i.mood || '').toLowerCase().includes(qLower)) ||
+           (i.tags?.some(t => typeof t === 'string' && t.toLowerCase().includes(qLower))))
         );
 
         const combined = [...directResults, ...localMatches];
@@ -1481,12 +1605,12 @@ export class ProviderRegistry {
       ]);
 
       const dbMatches = db.getAllMediaItems().filter(item => {
-        const titleMatch = item.title.toLowerCase().includes(qLower);
-        const artistMatch = item.artist.toLowerCase().includes(qLower);
+        const titleMatch = (item.title || '').toLowerCase().includes(qLower);
+        const artistMatch = (item.artist || '').toLowerCase().includes(qLower);
         const albumMatch = item.album ? item.album.toLowerCase().includes(qLower) : false;
-        const genreMatch = item.genre.toLowerCase().includes(qLower);
-        const moodMatch = item.mood.toLowerCase().includes(qLower);
-        const tagMatch = item.tags?.some(t => t.toLowerCase().includes(qLower));
+        const genreMatch = (item.genre || '').toLowerCase().includes(qLower);
+        const moodMatch = (item.mood || '').toLowerCase().includes(qLower);
+        const tagMatch = item.tags?.some(t => typeof t === 'string' && t.toLowerCase().includes(qLower));
         return titleMatch || artistMatch || albumMatch || genreMatch || moodMatch || tagMatch;
       });
 

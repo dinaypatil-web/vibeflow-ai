@@ -999,6 +999,82 @@ async function runTests() {
     }
   });
 
+  // 29. Multi-Provider Real Duration Verification & Playback Duration Feedback Loop
+  await test('Multi-Provider Real Track Durations & Playback Feedback Loop', async () => {
+    // 1. Create a playlist for duration testing
+    const plRes = await fetchJSON(`${API_BASE}/playlists`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        title: 'Multi-Provider Duration Test Playlist',
+        description: 'Verifying real-world durations across providers'
+      })
+    });
+    const plId = plRes.playlist.id;
+
+    // 2. Add an Apple Music track (trackId: 1635014240 - Kesariya, real duration is 268s, NOT 30s)
+    const itunesItem = {
+      id: 'itunes-1635014240',
+      provider: 'public_domain',
+      providerId: '1635014240',
+      title: 'Kesariya (From "Brahmastra")',
+      artist: 'Pritam & Arijit Singh',
+      thumbnail: 'https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/9f/13/ca/9f13ca3b-e533-03e0-f19a-f0aaa774581d/196589311191.jpg/600x600bb.jpg',
+      duration: 30, // Initially unmeasured / 30s preview default
+      genre: 'Bollywood',
+      mood: 'Romantic'
+    };
+    const addItunesRes = await fetchJSON(`${API_BASE}/playlists/${plId}/items`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ item: itunesItem })
+    });
+    const addedItunes = addItunesRes.playlist.items.find(i => i.mediaItemId === itunesItem.id || i.mediaItem?.id === itunesItem.id);
+    if (!addedItunes || !addedItunes.mediaItem) {
+      throw new Error('Failed to add iTunes item to playlist');
+    }
+    // Duration should have been auto-resolved from Apple Lookup API to 268s (not 30s)
+    if (addedItunes.mediaItem.duration === 30) {
+      throw new Error(`iTunes track should have resolved to real duration ~268s, got ${addedItunes.mediaItem.duration}`);
+    }
+    if (addedItunes.mediaItem.duration < 200) {
+      throw new Error(`Unexpected iTunes duration: ${addedItunes.mediaItem.duration}`);
+    }
+
+    // 3. Test Player Feedback Loop: PUT /api/media/items/:id/duration
+    // When the browser plays an audio stream and detects the exact length (e.g. 268s),
+    // it notifies the backend, which updates both the catalog and all playlist tracks.
+    const feedbackRes = await fetchJSON(`${API_BASE}/media/items/${itunesItem.id}/duration`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ duration: 268 })
+    });
+    if (!feedbackRes.success || feedbackRes.duration !== 268) {
+      throw new Error('PUT /api/media/items/:id/duration failed');
+    }
+
+    // 4. Verify that fetching playlists returns the updated duration in the playlist item
+    const verifyPl = await fetchJSON(`${API_BASE}/playlists/${plId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const verifiedTrack = verifyPl.playlist.items.find(i => i.mediaItemId === itunesItem.id);
+    if (!verifiedTrack || verifiedTrack.mediaItem.duration !== 268) {
+      throw new Error(`Playlist item duration was not updated by playback feedback: ${verifiedTrack?.mediaItem?.duration}`);
+    }
+
+    // 5. Verify total playlist duration calculation
+    const totalSecs = verifyPl.playlist.items.reduce((s, it) => s + (it.mediaItem?.duration || 0), 0);
+    if (totalSecs !== 268) {
+      throw new Error(`Total playlist duration mismatch: expected 268, got ${totalSecs}`);
+    }
+  });
+
   console.log(`\n🎉 Test Results: ${passed}/${total} passed!`);
   if (passed === total) {
     console.log('🌟 All VibeFlow AI core systems verified production-ready.\n');

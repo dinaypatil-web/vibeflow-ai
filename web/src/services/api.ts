@@ -421,6 +421,34 @@ export const api = {
     return data;
   },
 
+  getPlaylist: async (playlistId: string, token?: string | null): Promise<Playlist | null> => {
+    try {
+      const t = token !== undefined ? token : getStoredToken();
+      const res = await fetch(`${API_BASE}/playlists/${playlistId}`, {
+        headers: t ? { 'Authorization': `Bearer ${t}` } : {}
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.playlist || null;
+    } catch {
+      return null;
+    }
+  },
+
+  updateMediaDuration: async (mediaItemId: string, duration: number): Promise<boolean> => {
+    try {
+      if (!mediaItemId || !duration || duration <= 0) return false;
+      const res = await fetch(`${API_BASE}/media/items/${encodeURIComponent(mediaItemId)}/duration`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ duration: Math.round(duration) })
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
   sharePlaylist: async (playlistId: string, targetIdentifier: string, token?: string | null) => {
     const t = token !== undefined ? token : getStoredToken();
     const res = await fetch(`${API_BASE}/playlists/${playlistId}/share`, {

@@ -528,7 +528,7 @@ class MemoryDatabase {
           favorites: parsed.favorites || [],
           history: parsed.history || []
         };
-        // Ensure all media items have releaseDate
+        // Ensure all media items have releaseDate and valid durations
         if (this.data.mediaItems && Array.isArray(this.data.mediaItems)) {
           this.data.mediaItems.forEach(item => {
             if (!item.releaseDate) {
@@ -540,6 +540,29 @@ class MemoryDatabase {
               } else {
                 item.releaseDate = '2024-01-01';
               }
+            }
+            // Fix legacy fallback duration for Never Gonna Give You Up
+            if (item.id === 'yt-dQw4w9WgXcQ' || item.providerId === 'dQw4w9WgXcQ') {
+              item.duration = 213;
+            }
+          });
+        }
+        // Sync playlist items with master media item durations & fix legacy fallbacks
+        if (this.data.playlists && Array.isArray(this.data.playlists)) {
+          this.data.playlists.forEach(pl => {
+            if (pl.items && Array.isArray(pl.items)) {
+              pl.items.forEach(it => {
+                if (it.mediaItem) {
+                  if (it.mediaItem.id === 'yt-dQw4w9WgXcQ' || it.mediaItem.providerId === 'dQw4w9WgXcQ') {
+                    it.mediaItem.duration = 213;
+                  } else {
+                    const master = this.data.mediaItems.find(m => m.id === it.mediaItem.id || m.id === it.mediaItemId);
+                    if (master && master.duration && master.duration > 0 && master.duration !== 240) {
+                      it.mediaItem.duration = master.duration;
+                    }
+                  }
+                }
+              });
             }
           });
         }
@@ -1011,7 +1034,35 @@ class MemoryDatabase {
     return item;
   }
 
-  // Playlists
+  public updateMediaItemDuration(id: string, duration: number): boolean {
+    if (!id || !duration || duration <= 0) return false;
+    let found = false;
+    const media = this.findMediaItemById(id);
+    if (media) {
+      media.duration = duration;
+      found = true;
+    }
+    // Also update across all playlist items referencing this media item
+    if (this.data.playlists) {
+      for (const pl of this.data.playlists) {
+        if (pl.items) {
+          for (const item of pl.items) {
+            if (item.mediaItemId === id || (item.mediaItem && item.mediaItem.id === id)) {
+              if (item.mediaItem) {
+                item.mediaItem.duration = duration;
+              }
+              found = true;
+            }
+          }
+        }
+      }
+    }
+    if (found) {
+      this.saveToDisk();
+    }
+    return found;
+  }
+
   public getUserAliasSet(userIdOrIdent: string): Set<string> {
     const idSet = new Set<string>();
     if (!userIdOrIdent) return idSet;

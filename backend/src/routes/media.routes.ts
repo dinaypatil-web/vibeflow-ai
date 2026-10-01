@@ -336,4 +336,23 @@ router.get('/resolve-stream', async (req: Request, res: Response) => {
   }
 });
 
+// Update measured duration for a media item (called by frontend playback engine)
+router.put('/items/:id/duration', (req: Request, res: Response) => {
+  const { duration } = req.body;
+  const numDur = Math.round(Number(duration));
+  if (!numDur || isNaN(numDur) || numDur <= 0 || numDur > 86400) {
+    return res.status(400).json({ error: 'Valid duration in seconds is required' });
+  }
+
+  const item = db.findMediaItemById(req.params.id);
+  if (!item) {
+    return res.status(404).json({ error: 'Media item not found' });
+  }
+
+  item.duration = numDur;
+  db.updateMediaItemDuration(item.id, numDur);
+
+  res.json({ success: true, id: item.id, duration: numDur });
+});
+
 export default router;

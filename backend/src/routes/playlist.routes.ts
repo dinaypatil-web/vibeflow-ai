@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { db } from '../store/database';
 import { Playlist, PlaylistItem, MediaItem } from '../types';
 import { AIRecommendationService } from '../services/aiRecommendationService';
-import { providerRegistry, fetchYouTubeDuration } from '../services/providerService';
+import { providerRegistry, fetchYouTubeDuration, fetchTrackDuration } from '../services/providerService';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'vibeflow-super-secret-key-2026';
@@ -15,33 +15,22 @@ async function enrichPlaylistDurations(playlist: Playlist): Promise<boolean> {
   const resolutionPromises = playlist.items.map(async (item) => {
     const m = item.mediaItem;
     if (!m) return;
-    // Check if duration is missing, zero, or the 240s default fallback
-    if (!m.duration || m.duration === 240 || m.duration <= 0) {
-      let vid: string | null = m.providerId || null;
-      if (!vid && m.streamUrl) {
-        if (m.streamUrl.includes('v=')) {
-          try {
-            vid = new URL(m.streamUrl).searchParams.get('v');
-          } catch {}
-        } else if (m.streamUrl.includes('youtu.be/')) {
-          vid = m.streamUrl.split('youtu.be/')[1]?.split('?')[0] || null;
-        }
-      }
-      if (!vid && m.embedUrl && m.embedUrl.includes('embed/')) {
-        vid = m.embedUrl.split('embed/')[1]?.split('?')[0] || null;
-      }
+    
+    // Check if duration is missing, zero, or suspicious fallback duration
+    // Suspicious fallbacks: 240 (legacy default), 30 (preview default), 180 (import default), 210 (saavn fallback)
+    const needsResolution = !m.duration || m.duration <= 0 || m.duration === 240 || 
+      (m.duration === 30 && (m.id.startsWith('itunes-') || m.id.startsWith('deezer-') || m.provider === 'public_domain' || m.provider === 'deezer')) ||
+      (m.duration === 210 && (m.id.startsWith('jiosaavn-') || m.provider === 'jiosaavn'));
 
-      if (vid) {
-        try {
-          const realDur = await fetchYouTubeDuration(vid);
-          if (realDur && realDur > 0 && realDur !== m.duration) {
-            m.duration = realDur;
-            const inDb = db.findMediaItemById(m.id);
-            if (inDb) inDb.duration = realDur;
-            changed = true;
-          }
-        } catch {}
-      }
+    if (needsResolution) {
+      try {
+        const realDur = await fetchTrackDuration(m);
+        if (realDur && realDur > 0 && realDur !== m.duration) {
+          m.duration = realDur;
+          db.updateMediaItemDuration(m.id, realDur);
+          changed = true;
+        }
+      } catch {}
     }
   });
 
@@ -110,6 +99,21 @@ router.get('/', async (req: Request, res: Response) => {
     }
     return p;
   });
+
+  // Auto-enrich durations for playlists with suspicious or legacy fallback durations
+  const enrichPromises = hydrated.map(p => {
+    if (!p.isSmart && p.items && p.items.length > 0) {
+      const hasSuspicious = p.items.some(it => 
+        !it.mediaItem?.duration || it.mediaItem.duration <= 0 || it.mediaItem.duration === 240 ||
+        (it.mediaItem.duration === 30 && (it.mediaItem.id.startsWith('itunes-') || it.mediaItem.id.startsWith('deezer-')))
+      );
+      if (hasSuspicious) {
+        return enrichPlaylistDurations(p);
+      }
+    }
+    return Promise.resolve(false);
+  });
+  await Promise.allSettled(enrichPromises);
 
   res.json({ playlists: hydrated });
 });
@@ -446,7 +450,7 @@ router.delete('/:id', (req: Request, res: Response) => {
 });
 
 // Add item to playlist
-router.post('/:id/items', (req: Request, res: Response) => {
+router.post('/:id/items', async (req: Request, res: Response) => {
   const { mediaItemId, item, mediaItem: reqMediaItem } = req.body;
   const playlist = db.findPlaylistById(req.params.id);
   if (!playlist) {
@@ -474,6 +478,18 @@ router.post('/:id/items', (req: Request, res: Response) => {
     addedAt: new Date().toISOString(),
     mediaItem
   };
+
+  // Auto-resolve real track duration if missing or fallback
+  if (!mediaItem.duration || mediaItem.duration === 240 || mediaItem.duration <= 0 || (mediaItem.duration === 30 && (mediaItem.id.startsWith('itunes-') || mediaItem.id.startsWith('deezer-')))) {
+    try {
+      const real = await fetchTrackDuration(mediaItem);
+      if (real && real > 0) {
+        mediaItem.duration = real;
+        newItem.mediaItem.duration = real;
+        db.updateMediaItemDuration(mediaItem.id, real);
+      }
+    } catch {}
+  }
 
   playlist.items.push(newItem);
   playlist.itemCount = playlist.items.length;
@@ -525,6 +541,7 @@ router.post('/:id/import-url', async (req: Request, res: Response) => {
 
     playlist.itemCount = playlist.items.length;
     playlist.updatedAt = new Date().toISOString();
+    await enrichPlaylistDurations(playlist);
     db.saveToDisk();
 
     res.status(201).json({

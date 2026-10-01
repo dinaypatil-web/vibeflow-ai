@@ -146,11 +146,12 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
     fetchPlaylists();
   }, [user?.id]);
 
-  // Auto-resolve real track durations for playlists that have fallback 240s tracks
+  // Auto-resolve real track durations for playlists that have fallback or preview tracks
   useEffect(() => {
     if (!selectedPlaylist || !selectedPlaylist.items || selectedPlaylist.items.length === 0) return;
     const hasUnresolved = selectedPlaylist.items.some(
-      i => !i.mediaItem?.duration || i.mediaItem.duration === 240
+      i => !i.mediaItem?.duration || i.mediaItem.duration <= 0 || i.mediaItem.duration === 240 || 
+        (i.mediaItem.duration === 30 && (i.mediaItem.id.startsWith('itunes-') || i.mediaItem.id.startsWith('deezer-')))
     );
     if (hasUnresolved && !selectedPlaylist.isSmart) {
       api.resolvePlaylistDurations(selectedPlaylist.id)
