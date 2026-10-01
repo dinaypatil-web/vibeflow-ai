@@ -1048,8 +1048,10 @@ class MemoryDatabase {
     const user = this.findUserById(userId) || this.findUserByIdentifier(userId);
     const clientSet = new Set<string>((clientPlaylistIds || []).filter(Boolean));
 
+    const isLoggedIn = Boolean(user && user.id !== 'demo-user-id');
+
     // Automatically associate any client-created guest playlists with this authenticated user
-    if (user && user.id !== 'demo-user-id' && clientSet.size > 0) {
+    if (isLoggedIn && clientSet.size > 0 && user) {
       let modified = false;
       for (const p of this.data.playlists) {
         if (clientSet.has(p.id) && (p.userId === 'demo-user-id' || !p.userId)) {
@@ -1071,7 +1073,16 @@ class MemoryDatabase {
 
     return this.data.playlists
       .filter(p => {
-        // Curated preset playlists are available for everyone
+        // When a real user is logged in across any device:
+        // App shall show playlist ONLY created or shared to user logged in across any device.
+        // No other playlist shall be shown to user's playlist page which is not owned by him or shared to him.
+        if (isLoggedIn && user) {
+          const isOwner = this.isUserOwner(p, user.id);
+          const isShared = this.isUserShared(p, user.id);
+          return isOwner || isShared;
+        }
+
+        // For guest / unauthenticated / demo sessions only:
         if (p.id.startsWith('playlist-')) return true;
 
         const isOwner = this.isUserOwner(p, userId);
@@ -1081,7 +1092,7 @@ class MemoryDatabase {
         return isOwner || isClientCreated || isShared;
       })
       .map(p => {
-        const isOwner = this.isUserOwner(p, userId) || clientSet.has(p.id);
+        const isOwner = (isLoggedIn && user) ? this.isUserOwner(p, user.id) : (this.isUserOwner(p, userId) || clientSet.has(p.id));
         const isPreset = p.id.startsWith('playlist-');
         return {
           ...p,

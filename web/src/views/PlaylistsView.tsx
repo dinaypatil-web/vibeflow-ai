@@ -69,12 +69,17 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
     try {
       const data = await api.getPlaylists();
       
-      // Sort: User's personal custom playlists first (newest first), then shared with me, then preset curated playlists
+      const isLoggedIn = Boolean(user && user.id !== 'demo-user-id');
+
+      // Sort: User's personal custom playlists first (newest first), then shared with me
       const customPlaylists = data.filter(p => !p.id.startsWith('playlist-') && !p.isSharedWithMe)
         .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
       const sharedPlaylists = data.filter(p => p.isSharedWithMe)
         .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-      const presetPlaylists = data.filter(p => p.id.startsWith('playlist-'));
+      
+      // When a user is logged in, ONLY show playlists created by or shared with that user.
+      // Curated/preset playlists are NEVER shown on a logged-in user's playlists page!
+      const presetPlaylists = !isLoggedIn ? data.filter(p => p.id.startsWith('playlist-')) : [];
       
       const ordered = [...customPlaylists, ...sharedPlaylists, ...presetPlaylists];
       setPlaylists(ordered);
@@ -83,8 +88,8 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
         const storedSelectedId = localStorage.getItem('vibeflow_selected_playlist_id');
         const targetId = preferredPlaylistId || selectedPlaylist?.id || storedSelectedId;
         const matched = targetId ? ordered.find(p => p.id === targetId) : undefined;
-        // Priority: matched -> user's first custom playlist -> first playlist
-        const nextSelected = matched || customPlaylists[0] || ordered[0];
+        // Priority: matched -> user's first custom playlist -> first shared playlist -> first playlist
+        const nextSelected = matched || customPlaylists[0] || sharedPlaylists[0] || ordered[0];
         setSelectedPlaylist(nextSelected);
         if (nextSelected) {
           try {
@@ -93,6 +98,9 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
         }
       } else {
         setSelectedPlaylist(null);
+        try {
+          localStorage.removeItem('vibeflow_selected_playlist_id');
+        } catch {}
       }
     } catch (err) {
       console.error('Fetch playlists error', err);
@@ -463,57 +471,74 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
           </div>
 
           <div className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
-            {playlists.map(pl => {
-              const isSelected = selectedPlaylist?.id === pl.id;
-              const isCustom = !pl.id.startsWith('playlist-') && !pl.isSharedWithMe;
-              return (
-                <div
-                  key={pl.id}
-                  onClick={() => handleSelectPlaylist(pl)}
-                  className={`p-3 rounded-2xl cursor-pointer transition-all duration-200 border flex items-center gap-3.5 ${
-                    isSelected
-                      ? 'bg-surface-800 border-brand-500/40 shadow-md shadow-brand-500/10 ring-1 ring-brand-500/20'
-                      : 'bg-surface-850 hover:bg-surface-800 border-white/5'
-                  }`}
+            {playlists.length === 0 ? (
+              <div className="p-6 text-center bg-surface-850/80 rounded-2xl border border-white/5 space-y-3">
+                <ListMusic className="w-8 h-8 text-slate-500 mx-auto" />
+                <p className="text-xs text-slate-300 font-semibold">No playlists yet</p>
+                <p className="text-[11px] text-slate-400 leading-normal">
+                  Only playlists you create or have shared with you appear here across your devices.
+                </p>
+                <button
+                  onClick={() => setIsCustomModalOpen(true)}
+                  className="px-3.5 py-1.5 bg-gradient-to-r from-brand-600 to-accent-cyan hover:opacity-95 text-white text-xs font-bold rounded-xl inline-flex items-center gap-1.5 shadow-md shadow-brand-500/20 transition-all cursor-pointer"
                 >
-                  <img
-                    src={pl.coverArt || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=600&q=80'}
-                    alt={pl.title}
-                    className="w-12 h-12 rounded-xl object-cover shadow-sm shrink-0"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <h4 className="text-sm font-bold text-white truncate">{pl.title}</h4>
-                      {pl.isSmart && (
-                        <span className="p-0.5 rounded bg-brand-500/20 text-brand-300 text-[10px]" title="Smart Playlist">
-                          <Sparkles className="w-3 h-3" />
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Create Playlist</span>
+                </button>
+              </div>
+            ) : (
+              playlists.map(pl => {
+                const isSelected = selectedPlaylist?.id === pl.id;
+                const isCustom = !pl.id.startsWith('playlist-') && !pl.isSharedWithMe;
+                return (
+                  <div
+                    key={pl.id}
+                    onClick={() => handleSelectPlaylist(pl)}
+                    className={`p-3 rounded-2xl cursor-pointer transition-all duration-200 border flex items-center gap-3.5 ${
+                      isSelected
+                        ? 'bg-surface-800 border-brand-500/40 shadow-md shadow-brand-500/10 ring-1 ring-brand-500/20'
+                        : 'bg-surface-850 hover:bg-surface-800 border-white/5'
+                    }`}
+                  >
+                    <img
+                      src={pl.coverArt || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=600&q=80'}
+                      alt={pl.title}
+                      className="w-12 h-12 rounded-xl object-cover shadow-sm shrink-0"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h4 className="text-sm font-bold text-white truncate">{pl.title}</h4>
+                        {pl.isSmart && (
+                          <span className="p-0.5 rounded bg-brand-500/20 text-brand-300 text-[10px]" title="Smart Playlist">
+                            <Sparkles className="w-3 h-3" />
+                          </span>
+                        )}
+                        {isCustom && (
+                          <span className="px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[9px] font-bold uppercase tracking-wider">
+                            Custom
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-[11px] text-slate-400 truncate">
+                          {pl.items?.length || pl.itemCount} tracks
                         </span>
-                      )}
-                      {isCustom && (
-                        <span className="px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[9px] font-bold uppercase tracking-wider">
-                          Custom
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-[11px] text-slate-400 truncate">
-                        {pl.items?.length || pl.itemCount} tracks
-                      </span>
-                      <span className="text-slate-600">•</span>
-                      {pl.isSharedWithMe ? (
-                        <span className="text-[10px] text-accent-cyan font-semibold truncate">
-                          Shared by {pl.creator?.name?.split(' ')[0] || 'User'}
-                        </span>
-                      ) : (
-                        <span className="text-[10px] text-slate-400 truncate">
-                          by {pl.creator?.name?.split(' ')[0] || 'You'}
-                        </span>
-                      )}
+                        <span className="text-slate-600">•</span>
+                        {pl.isSharedWithMe ? (
+                          <span className="text-[10px] text-accent-cyan font-semibold truncate">
+                            Shared by {pl.creator?.name?.split(' ')[0] || 'User'}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 truncate">
+                            by {pl.creator?.name?.split(' ')[0] || 'You'}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </div>
 
@@ -813,8 +838,31 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
               </div>
             </div>
           ) : (
-            <div className="p-12 text-center bg-surface-850 rounded-3xl border border-white/5 text-slate-500">
-              Select or create a playlist from the left.
+            <div className="p-12 text-center bg-surface-850 rounded-3xl border border-white/5 space-y-4">
+              <div className="w-16 h-16 rounded-2xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center mx-auto text-brand-400">
+                <ListMusic className="w-8 h-8" />
+              </div>
+              <h3 className="text-lg font-bold text-white">Your Personal Playlist Library</h3>
+              <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+                Only playlists created by you or shared with you across any of your devices appear on this page.
+                No third-party or unshared playlists are visible.
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                <button
+                  onClick={() => setIsCustomModalOpen(true)}
+                  className="px-4 py-2 bg-gradient-to-r from-brand-600 to-accent-cyan hover:opacity-95 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-md shadow-brand-500/20 transition-all cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Create New Playlist</span>
+                </button>
+                <button
+                  onClick={() => setIsSmartModalOpen(true)}
+                  className="px-4 py-2 bg-surface-800 hover:bg-surface-750 text-slate-200 hover:text-white border border-white/10 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-accent-cyan" />
+                  <span>AI Smart Playlist</span>
+                </button>
+              </div>
             </div>
           )}
         </div>

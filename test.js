@@ -477,10 +477,16 @@ async function runTests() {
       throw new Error('Playlist retrieval by user ID failed to return user playlist');
     }
 
-    // 7. Verify preset curated playlists are also accessible to all users
+    // 7. Requirement: Logged-in user playlists page shall ONLY show playlists created or shared to user; NO preset or unowned playlists!
     const hasPreset = userPlaylists.playlists.some(p => p.id.startsWith('playlist-'));
-    if (!hasPreset) {
-      throw new Error('Curated preset playlists missing from user playlists page');
+    if (hasPreset) {
+      throw new Error('Curated preset playlists should not be shown on logged-in user playlist page');
+    }
+
+    // Preset curated playlists remain accessible for unauthenticated discovery:
+    const guestDiscovery = await fetchJSON(`${API_BASE}/playlists`);
+    if (!guestDiscovery.playlists.some(p => p.id.startsWith('playlist-'))) {
+      throw new Error('Preset playlists should remain available for unauthenticated discovery');
     }
   });
 
@@ -880,6 +886,116 @@ async function runTests() {
     const plAttempt = await fetch(`${API_BASE}/playlists/${userPlId}`);
     if (plAttempt.status !== 404) {
       throw new Error('Deleted user personal playlist was not cleaned up');
+    }
+  });
+
+  // 28. Strict User Playlist Scoping & Isolation Across All Devices
+  await test('User Scoped Playlists Isolation (Only Owned or Shared Playlists Shown Across Any Device)', async () => {
+    // 1. Create two independent users: DeviceUserA and DeviceUserB
+    const userAIdent = `dev_user_a_${Date.now()}`;
+    const userBIdent = `dev_user_b_${Date.now()}`;
+
+    const regA = await fetchJSON(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Device User A',
+        username: userAIdent,
+        email: `${userAIdent}@vibeflow.local`,
+        password: 'PasswordA2026!'
+      })
+    });
+    const tokenA = regA.token;
+    const userA = regA.user;
+
+    const regB = await fetchJSON(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Device User B',
+        username: userBIdent,
+        email: `${userBIdent}@vibeflow.local`,
+        password: 'PasswordB2026!'
+      })
+    });
+    const tokenB = regB.token;
+    const userB = regB.user;
+
+    // 2. Initial state for fresh logged-in User A: MUST NOT show preset playlists or any unowned playlists
+    const initialPlaylistsA = await fetchJSON(`${API_BASE}/playlists`, {
+      headers: { 'Authorization': `Bearer ${tokenA}` }
+    });
+    // Check that all playlists returned are strictly owned by User A
+    if (initialPlaylistsA.playlists.some(p => p.id.startsWith('playlist-'))) {
+      throw new Error('Preset playlists were improperly included in logged-in User A playlist list');
+    }
+    if (initialPlaylistsA.playlists.some(p => p.userId !== userA.id && p.creator?.id !== userA.id)) {
+      throw new Error('User A received a playlist not owned by them');
+    }
+
+    // 3. User A creates a playlist on Device 1
+    const createPlRes = await fetchJSON(`${API_BASE}/playlists`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${tokenA}`
+      },
+      body: JSON.stringify({
+        title: "User A Private Hits",
+        description: "Created on device 1"
+      })
+    });
+    const plAId = createPlRes.playlist.id;
+
+    // 4. User A fetches playlists on Device 2 (with tokenA) -> MUST see their created playlist
+    const playlistsAOnDevice2 = await fetchJSON(`${API_BASE}/playlists`, {
+      headers: { 'Authorization': `Bearer ${tokenA}` }
+    });
+    if (!playlistsAOnDevice2.playlists.some(p => p.id === plAId)) {
+      throw new Error("User A did not receive their created playlist on device 2");
+    }
+    if (playlistsAOnDevice2.playlists.some(p => p.id.startsWith('playlist-'))) {
+      throw new Error("User A on device 2 received preset playlists");
+    }
+
+    // 5. User B fetches playlists on Device 2 (with tokenB) -> MUST NOT see User A's playlist and MUST NOT see preset playlists
+    const playlistsB = await fetchJSON(`${API_BASE}/playlists`, {
+      headers: { 'Authorization': `Bearer ${tokenB}` }
+    });
+    if (playlistsB.playlists.some(p => p.id === plAId)) {
+      throw new Error("User B saw User A's unshared private playlist!");
+    }
+    if (playlistsB.playlists.some(p => p.id.startsWith('playlist-'))) {
+      throw new Error("User B saw preset playlists!");
+    }
+
+    // 6. User A shares playlist to User B
+    const shareRes = await fetchJSON(`${API_BASE}/playlists/${plAId}/share`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${tokenA}`
+      },
+      body: JSON.stringify({ target: userB.username })
+    });
+    if (!shareRes.success) throw new Error('Sharing playlist failed: ' + shareRes.message);
+
+    // 7. User B fetches playlists again -> MUST now see the shared playlist
+    const playlistsBAfterShare = await fetchJSON(`${API_BASE}/playlists`, {
+      headers: { 'Authorization': `Bearer ${tokenB}` }
+    });
+    const sharedInB = playlistsBAfterShare.playlists.find(p => p.id === plAId);
+    if (!sharedInB) {
+      throw new Error("User B did not receive the shared playlist");
+    }
+    if (!sharedInB.isSharedWithMe) {
+      throw new Error("Shared playlist missing isSharedWithMe=true flag for recipient User B");
+    }
+
+    // 8. Guest / unauthenticated request STILL returns curated preset playlists
+    const guestList = await fetchJSON(`${API_BASE}/playlists`);
+    if (guestList.playlists.length === 0 || !guestList.playlists.some(p => p.id.startsWith('playlist-'))) {
+      throw new Error("Curated discovery presets missing for unauthenticated guest session");
     }
   });
 
