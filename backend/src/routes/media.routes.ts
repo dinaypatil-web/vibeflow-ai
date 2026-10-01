@@ -15,11 +15,17 @@ router.get('/search', async (req: Request, res: Response) => {
     const provider = req.query.provider as MediaProvider | undefined;
     const genre = req.query.genre as string | undefined;
     const mood = req.query.mood as string | undefined;
+    const searchType = ((req.query.type as string) || 'all').toLowerCase();
     const limitParam = req.query.limit as string | undefined;
     const isUnlimited = !limitParam || limitParam === 'all' || limitParam === '0' || parseInt(limitParam) <= 0;
     const limit = isUnlimited ? undefined : parseInt(limitParam);
 
-    let items = await providerRegistry.unifiedSearch(query, provider, limit);
+    let effectiveQuery = query;
+    if (searchType === 'album' && !query.toLowerCase().includes('album')) {
+      // Add contextual hint if query doesn't specify
+    }
+
+    let items = await providerRegistry.unifiedSearch(effectiveQuery, provider, limit);
 
     if (genre) {
       items = items.filter(i => i.genre.toLowerCase() === genre.toLowerCase());
@@ -28,8 +34,32 @@ router.get('/search', async (req: Request, res: Response) => {
       items = items.filter(i => i.mood.toLowerCase() === mood.toLowerCase());
     }
 
+    // Prioritize or filter by searchType
+    if (searchType === 'artist' || searchType === 'singer') {
+      const qLower = query.toLowerCase().trim();
+      items.sort((a, b) => {
+        const aMatch = a.artist.toLowerCase().includes(qLower) ? 1 : 0;
+        const bMatch = b.artist.toLowerCase().includes(qLower) ? 1 : 0;
+        return bMatch - aMatch;
+      });
+    } else if (searchType === 'album') {
+      const qLower = query.toLowerCase().trim();
+      items.sort((a, b) => {
+        const aMatch = (a.album && a.album.toLowerCase().includes(qLower)) ? 1 : 0;
+        const bMatch = (b.album && b.album.toLowerCase().includes(qLower)) ? 1 : 0;
+        return bMatch - aMatch;
+      });
+    } else if (searchType === 'channel' || searchType === 'creator') {
+      items.sort((a, b) => {
+        const aYt = a.provider === 'youtube' ? 1 : 0;
+        const bYt = b.provider === 'youtube' ? 1 : 0;
+        return bYt - aYt;
+      });
+    }
+
     res.json({
       query,
+      type: searchType,
       count: items.length,
       items: limit ? items.slice(0, limit) : items
     });

@@ -5,6 +5,7 @@ import {
   Headphones, Waves, Globe, Users, ListMusic, Loader2,
   AudioLines, BadgeCheck, HardDrive, Layers, Filter, Check,
   Calendar, Info, Tag, Copy, CheckCircle, ChevronDown, ChevronUp,
+  Mic2, UserCheck
 } from "lucide-react";
 import { MediaItem, Channel, Album, MediaProvider } from "../types";
 import { api } from "../services/api";
@@ -158,6 +159,38 @@ const deriveAlbums = (tracks: MediaItem[]): Album[] => {
     });
   }
   return out;
+};
+
+export interface SingerArtist {
+  id: string;
+  name: string;
+  thumbnail: string;
+  songCount: number;
+  genre: string;
+  tracks: MediaItem[];
+}
+
+const deriveSingers = (tracks: MediaItem[]): SingerArtist[] => {
+  const map = new Map<string, SingerArtist>();
+  for (const t of tracks) {
+    if (!t.artist) continue;
+    const name = t.artist.trim();
+    if (!map.has(name)) {
+      map.set(name, {
+        id: `art-${seeded(name, 100000)}`,
+        name,
+        thumbnail: t.thumbnail,
+        songCount: 1,
+        genre: t.genre,
+        tracks: [t]
+      });
+    } else {
+      const existing = map.get(name)!;
+      existing.songCount += 1;
+      existing.tracks.push(t);
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => b.songCount - a.songCount);
 };
 
 const ProviderBadge: React.FC<{ provider: MediaProvider; size?: "sm" | "xs" }> = ({ provider, size = "xs" }) => {
@@ -431,6 +464,154 @@ const AlbumCard: React.FC<{ album: Album; onClick: (a: Album) => void }> = ({ al
         </div>
       </div>
       <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-brand-400 transition-colors shrink-0" />
+    </div>
+  );
+};
+
+const SingerArtistCard: React.FC<{ 
+  artist: SingerArtist; 
+  onClick: (a: SingerArtist) => void;
+  onPlayAll?: (a: SingerArtist) => void;
+}> = ({ artist, onClick, onPlayAll }) => (
+  <div onClick={() => onClick(artist)} className="flex items-center gap-3.5 p-3 rounded-2xl hover:bg-surface-800/70 border border-transparent hover:border-brand-500/25 cursor-pointer transition-all group">
+    <div className="relative shrink-0">
+      <img src={artist.thumbnail} alt={artist.name} className="w-14 h-14 rounded-full object-cover ring-2 ring-white/10 group-hover:ring-brand-500/60 shadow-md group-hover:scale-105 transition-all" loading="lazy" />
+      <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-brand-500 flex items-center justify-center text-white text-[10px] shadow">
+        <Mic2 className="w-3 h-3" />
+      </div>
+    </div>
+    <div className="flex-1 min-w-0">
+      <div className="flex items-center gap-1.5">
+        <p className="text-sm font-bold text-slate-100 truncate group-hover:text-brand-300 transition-colors">{artist.name}</p>
+        <span className="px-1.5 py-0.2 rounded bg-brand-500/15 text-brand-300 border border-brand-500/25 text-[9px] font-bold uppercase">
+          Singer
+        </span>
+      </div>
+      <p className="text-xs text-slate-400 truncate mt-0.5">{artist.genre} • Vocalist & Musician</p>
+      <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-400">
+        <span className="flex items-center gap-1 font-mono text-emerald-400">
+          <Music className="w-3 h-3" /> {artist.songCount} {artist.songCount === 1 ? 'song' : 'songs'} available
+        </span>
+      </div>
+    </div>
+    <div className="flex items-center gap-1.5 shrink-0">
+      {onPlayAll && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onPlayAll(artist);
+          }}
+          className="p-2 rounded-xl bg-surface-750 hover:bg-brand-600 text-slate-300 hover:text-white transition-all"
+          title={`Play all songs by ${artist.name}`}
+        >
+          <Play className="w-3.5 h-3.5 fill-current" />
+        </button>
+      )}
+      <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-brand-400 transition-colors" />
+    </div>
+  </div>
+);
+
+const ArtistDetailPanel: React.FC<{
+  artist: SingerArtist;
+  allTracks: MediaItem[];
+  onBack: () => void;
+  onAddToPlaylist?: (t: MediaItem) => void;
+  onTracksDiscovered?: (newTracks: MediaItem[]) => void;
+}> = ({ artist, allTracks, onBack, onAddToPlaylist, onTracksDiscovered }) => {
+  const { playTrack } = usePlayerStore();
+  const [artistTracks, setArtistTracks] = useState<MediaItem[]>(() => {
+    return allTracks.filter(t => t.artist.toLowerCase().includes(artist.name.toLowerCase()));
+  });
+  const [loadingTracks, setLoadingTracks] = useState(false);
+  const [sortOption, setSortOption] = useState<string>('default');
+
+  const sortedTracks = useMemo(() => {
+    return sortMediaItems(artistTracks, sortOption);
+  }, [artistTracks, sortOption]);
+
+  useEffect(() => {
+    let isCancelled = false;
+    const fetchMore = async () => {
+      setLoadingTracks(true);
+      try {
+        const query = `${artist.name} songs`;
+        const tracks = await api.search(query, undefined, undefined, undefined, 40);
+        if (!isCancelled && tracks && tracks.length > 0) {
+          const map = new Map<string, MediaItem>();
+          for (const t of artistTracks) map.set(t.id, t);
+          for (const t of tracks) map.set(t.id, t);
+          const m = Array.from(map.values());
+          setArtistTracks(m);
+          onTracksDiscovered?.(m);
+        }
+      } catch (e) {
+        console.warn('Failed to load artist tracks:', e);
+      } finally {
+        if (!isCancelled) setLoadingTracks(false);
+      }
+    };
+    fetchMore();
+    return () => { isCancelled = true; };
+  }, [artist.name]);
+
+  const playAll = () => { if (sortedTracks.length > 0) playTrack(sortedTracks[0], sortedTracks); };
+
+  return (
+    <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+      <button onClick={onBack} className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors mb-4 group">
+        <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" /><span>Back to results</span>
+      </button>
+
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5 p-5 rounded-2xl bg-gradient-to-br from-surface-800 to-surface-850 border border-white/5 mb-5 relative overflow-hidden">
+        <div className="relative shrink-0">
+          <img src={artist.thumbnail} alt={artist.name} className="w-24 h-24 rounded-full object-cover ring-2 ring-brand-500/40 shadow-xl" />
+        </div>
+        <div className="relative flex-1 min-w-0">
+          <p className="text-xs font-semibold text-brand-400 uppercase tracking-wider mb-1">Singer / Artist</p>
+          <h2 className="text-2xl font-bold text-white leading-tight">{artist.name}</h2>
+          <p className="text-xs text-slate-300 mt-1">
+            Featured discography with {artistTracks.length} song{artistTracks.length !== 1 ? 's' : ''} across connected platforms
+          </p>
+          <div className="flex items-center gap-3 mt-2 flex-wrap">
+            <span className="text-xs text-slate-400 bg-surface-750 px-2 py-0.5 rounded-md">{artist.genre}</span>
+            <span className="text-xs text-slate-400 font-mono">{artistTracks.length} tracks</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex gap-3 mb-5">
+        <button onClick={playAll} disabled={sortedTracks.length === 0} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-brand-600 to-accent-cyan text-white text-sm font-bold rounded-xl shadow-lg hover:brightness-110 disabled:opacity-50 active:scale-95 transition-all">
+          <Play className="w-4 h-4 fill-current" /> Play All Songs ({sortedTracks.length})
+        </button>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+          <Mic2 className="w-4 h-4 text-brand-400" /> Songs by {artist.name} ({sortedTracks.length})
+        </h3>
+        <div className="flex items-center gap-3">
+          {loadingTracks && (
+            <span className="flex items-center gap-1.5 text-xs text-brand-400 font-medium animate-pulse">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <span>Fetching discography...</span>
+            </span>
+          )}
+          {sortedTracks.length > 1 && (
+            <TrackSortControl currentSort={sortOption} onSortChange={setSortOption} title="Sort Songs By" />
+          )}
+        </div>
+      </div>
+
+      {sortedTracks.length > 0 ? (
+        <div className="space-y-1">
+          {sortedTracks.map(t => (
+            <TrackRow key={t.id} track={t} queueContext={sortedTracks} onAddToPlaylist={onAddToPlaylist} />
+          ))}
+        </div>
+      ) : (
+        <EmptyState icon={<Music className="w-8 h-8" />} message="No songs found for this singer" sub="Try exploring other songs" />
+      )}
     </div>
   );
 };
@@ -744,15 +925,116 @@ const AlbumDetailPanel: React.FC<{
   );
 };
 
-type SearchTab = "tracks" | "albums" | "channels";
+export type SearchTargetType = 'all' | 'tracks' | 'albums' | 'artists' | 'channels';
+
+export interface SearchTargetOption {
+  id: SearchTargetType;
+  label: string;
+  shortLabel: string;
+  icon: React.ComponentType<{ className?: string }>;
+  placeholder: string;
+  description: string;
+  badgeClass: string;
+  activeBg: string;
+}
+
+export const SEARCH_TARGETS: SearchTargetOption[] = [
+  {
+    id: 'all',
+    label: 'All Categories',
+    shortLabel: 'All',
+    icon: Sparkles,
+    placeholder: 'Search tracks, albums, singers, channels or paste link...',
+    description: 'Find tracks, albums, singers & channels',
+    badgeClass: 'bg-brand-500/20 text-brand-300 border-brand-500/30',
+    activeBg: 'bg-brand-600 text-white',
+  },
+  {
+    id: 'tracks',
+    label: 'Tracks & Songs',
+    shortLabel: 'Tracks',
+    icon: Music,
+    placeholder: 'Search song or track title...',
+    description: 'Find individual songs & audio tracks',
+    badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+    activeBg: 'bg-emerald-600 text-white',
+  },
+  {
+    id: 'albums',
+    label: 'Albums',
+    shortLabel: 'Albums',
+    icon: Disc3,
+    placeholder: 'Search album title or compilation...',
+    description: 'Find complete albums & track collections',
+    badgeClass: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+    activeBg: 'bg-purple-600 text-white',
+  },
+  {
+    id: 'artists',
+    label: 'Singers & Artists',
+    shortLabel: 'Singers',
+    icon: Mic2,
+    placeholder: 'Search singer, vocalist or artist name...',
+    description: 'Find singers, bands & vocalists',
+    badgeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+    activeBg: 'bg-amber-600 text-white',
+  },
+  {
+    id: 'channels',
+    label: 'Channels & Creators',
+    shortLabel: 'Channels',
+    icon: Tv2,
+    placeholder: 'Search channel, creator or studio...',
+    description: 'Find YouTube channels & video creators',
+    badgeClass: 'bg-red-500/20 text-red-300 border-red-500/30',
+    activeBg: 'bg-red-600 text-white',
+  },
+];
+
+export interface SingerSortOption {
+  id: string;
+  field: string;
+  direction: 'asc' | 'desc';
+  label: string;
+  shortLabel: string;
+}
+
+export const ARTIST_SORT_OPTIONS: SingerSortOption[] = [
+  { id: 'default', field: 'default', direction: 'asc', label: 'Default / Relevance', shortLabel: 'Default' },
+  { id: 'songs-desc', field: 'songCount', direction: 'desc', label: 'Most Songs Available', shortLabel: 'Most Songs' },
+  { id: 'songs-asc', field: 'songCount', direction: 'asc', label: 'Fewest Songs', shortLabel: 'Fewest Songs' },
+  { id: 'name-asc', field: 'name', direction: 'asc', label: 'Artist Name (A → Z)', shortLabel: 'Name A-Z' },
+  { id: 'name-desc', field: 'name', direction: 'desc', label: 'Artist Name (Z → A)', shortLabel: 'Name Z-A' },
+];
+
+export const sortSingers = (singers: SingerArtist[], option: string): SingerArtist[] => {
+  const items = [...singers];
+  switch (option) {
+    case 'songs-desc':
+      return items.sort((a, b) => b.songCount - a.songCount);
+    case 'songs-asc':
+      return items.sort((a, b) => a.songCount - b.songCount);
+    case 'name-asc':
+      return items.sort((a, b) => a.name.localeCompare(b.name));
+    case 'name-desc':
+      return items.sort((a, b) => b.name.localeCompare(a.name));
+    default:
+      return items;
+  }
+};
+
+type SearchTab = "all" | "tracks" | "albums" | "artists" | "channels";
 
 interface SearchViewProps {
   onAddToPlaylist?: (track: MediaItem) => void;
 }
 
 export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
+  const { playTrack } = usePlayerStore();
   const [query, setQuery] = useState("");
-  const [activeTab, setActiveTab] = useState<SearchTab>("tracks");
+  const [activeTab, setActiveTab] = useState<SearchTab>("all");
+  const [selectedTarget, setSelectedTarget] = useState<SearchTargetType>("all");
+  const [isTargetDropdownOpen, setIsTargetDropdownOpen] = useState(false);
   const [selectedSource, setSelectedSource] = useState<SourceFilterId>("all");
   const [loadingSource, setLoadingSource] = useState<SourceFilterId | null>(null);
   const [tracks, setTracks] = useState<MediaItem[]>([]);
@@ -761,10 +1043,24 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
   const [semanticHint, setSemanticHint] = useState<string | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [selectedAlbum, setSelectedAlbum] = useState<Album | null>(null);
+  const [selectedArtist, setSelectedArtist] = useState<SingerArtist | null>(null);
   const [sortOption, setSortOption] = useState<string>('default');
   const [albumSortOption, setAlbumSortOption] = useState<string>('default');
   const [channelSortOption, setChannelSortOption] = useState<string>('default');
+  const [artistSortOption, setArtistSortOption] = useState<string>('default');
   const inputRef = useRef<HTMLInputElement>(null);
+  const targetDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close target dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (targetDropdownRef.current && !targetDropdownRef.current.contains(e.target as Node)) {
+        setIsTargetDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Compute live match count per source
   const sourceCounts = useMemo(() => {
@@ -801,6 +1097,10 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
     return deriveChannels(sourceFilteredTracks);
   }, [sourceFilteredTracks]);
 
+  const sourceFilteredSingers = useMemo(() => {
+    return deriveSingers(sourceFilteredTracks);
+  }, [sourceFilteredTracks]);
+
   const sortedTracks = useMemo(() => {
     return sortMediaItems(sourceFilteredTracks, sortOption);
   }, [sourceFilteredTracks, sortOption]);
@@ -813,24 +1113,29 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
     return sortChannels(sourceFilteredChannels, channelSortOption);
   }, [sourceFilteredChannels, channelSortOption]);
 
+  const sortedSingers = useMemo(() => {
+    return sortSingers(sourceFilteredSingers, artistSortOption);
+  }, [sourceFilteredSingers, artistSortOption]);
+
   const activeSourceMeta = useMemo(() => {
     return SOURCES.find(s => s.id === selectedSource) || SOURCES[0];
   }, [selectedSource]);
 
+  const currentTargetMeta = useMemo(() => {
+    return SEARCH_TARGETS.find(t => t.id === selectedTarget) || SEARCH_TARGETS[0];
+  }, [selectedTarget]);
+
   useEffect(() => { inputRef.current?.focus(); }, []);
 
-  const performSearch = useCallback(async (q: string, targetSource?: SourceFilterId) => {
+  const performSearch = useCallback(async (q: string, targetSource?: SourceFilterId, targetType?: SearchTargetType) => {
     if (!q.trim()) return;
     const effectiveSource = targetSource !== undefined ? targetSource : selectedSource;
-    setLoading(true); setHasSearched(true); setSelectedChannel(null); setSelectedAlbum(null); setSemanticHint(null);
+    const effectiveType = targetType !== undefined ? targetType : selectedTarget;
+    setLoading(true); setHasSearched(true); setSelectedChannel(null); setSelectedAlbum(null); setSelectedArtist(null); setSemanticHint(null);
     try {
       let trackResults: MediaItem[] = [];
-      if (effectiveSource !== 'all') {
-        const prov = effectiveSource === 'soundcloud' ? 'soundcloud' : (effectiveSource as MediaProvider);
-        trackResults = await api.search(q.trim(), prov);
-      } else {
-        trackResults = await api.search(q.trim());
-      }
+      const prov = effectiveSource === 'all' ? undefined : (effectiveSource === 'soundcloud' ? 'soundcloud' : (effectiveSource as MediaProvider));
+      trackResults = await api.search(q.trim(), prov, undefined, undefined, undefined, effectiveType);
       setTracks(trackResults);
       if (q.trim().split(/\s+/).length >= 3) {
         try {
@@ -840,14 +1145,14 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
       }
     } catch (err) { console.error("SearchView error:", err); }
     finally { setLoading(false); }
-  }, [selectedSource]);
+  }, [selectedSource, selectedTarget]);
 
   const fetchDedicatedProviderResults = useCallback(async (src: SourceFilterId) => {
     if (!query.trim() || src === 'all') return;
     setLoadingSource(src);
     try {
       const providerParam = src === 'soundcloud' ? 'soundcloud' : (src as MediaProvider);
-      const newItems = await api.search(query.trim(), providerParam);
+      const newItems = await api.search(query.trim(), providerParam, undefined, undefined, undefined, selectedTarget);
       if (newItems.length > 0) {
         setTracks(prev => {
           const map = new Map<string, MediaItem>();
@@ -862,22 +1167,32 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
     } finally {
       setLoadingSource(null);
     }
-  }, [query]);
+  }, [query, selectedTarget]);
 
   const handleSourceTabClick = useCallback((src: SourceFilterId) => {
     setSelectedSource(src);
-    // If user clicked a source tab that has 0 results in current cache and there's a query, fetch it directly
     if (src !== 'all' && (sourceCounts[src] || 0) === 0 && query.trim()) {
       fetchDedicatedProviderResults(src);
     }
   }, [sourceCounts, query, fetchDedicatedProviderResults]);
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") performSearch(query); };
+  const handleSelectTarget = (targetId: SearchTargetType) => {
+    setSelectedTarget(targetId);
+    setIsTargetDropdownOpen(false);
+    setActiveTab(targetId);
+    if (query.trim() && hasSearched) {
+      performSearch(query, selectedSource, targetId);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => { 
+    if (e.key === "Enter") performSearch(query); 
+  };
 
   const clearSearch = () => {
     setQuery(""); setTracks([]); setSelectedSource("all");
-    setSortOption("default"); setAlbumSortOption("default"); setChannelSortOption("default");
-    setHasSearched(false); setSemanticHint(null); setSelectedChannel(null); setSelectedAlbum(null);
+    setSortOption("default"); setAlbumSortOption("default"); setChannelSortOption("default"); setArtistSortOption("default");
+    setHasSearched(false); setSemanticHint(null); setSelectedChannel(null); setSelectedAlbum(null); setSelectedArtist(null);
     inputRef.current?.focus();
   };
 
@@ -891,6 +1206,18 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
     });
   }, []);
 
+  if (selectedArtist) return (
+    <div className="pb-4">
+      <ArtistDetailPanel
+        artist={selectedArtist}
+        allTracks={sourceFilteredTracks}
+        onBack={() => setSelectedArtist(null)}
+        onAddToPlaylist={onAddToPlaylist}
+        onTracksDiscovered={handleTracksDiscovered}
+      />
+    </div>
+  );
+
   if (selectedChannel) return (
     <div className="pb-4">
       <ChannelDetailPanel
@@ -902,6 +1229,7 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
       />
     </div>
   );
+
   if (selectedAlbum) return (
     <div className="pb-4">
       <AlbumDetailPanel
@@ -915,9 +1243,11 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
   );
 
   const tabConfig: { id: SearchTab; label: string; icon: React.ReactNode; count: number }[] = [
+    { id: "all", label: "All", icon: <Sparkles className="w-4 h-4" />, count: sourceFilteredTracks.length },
     { id: "tracks", label: "Tracks", icon: <Music className="w-4 h-4" />, count: sourceFilteredTracks.length },
     { id: "albums", label: "Albums", icon: <Disc3 className="w-4 h-4" />, count: sourceFilteredAlbums.length },
-    { id: "channels", label: "Channels", icon: <Tv2 className="w-4 h-4" />, count: sourceFilteredChannels.length },
+    { id: "artists", label: "Singers & Artists", icon: <Mic2 className="w-4 h-4" />, count: sourceFilteredSingers.length },
+    { id: "channels", label: "Channels & Creators", icon: <Tv2 className="w-4 h-4" />, count: sourceFilteredChannels.length },
   ];
 
   return (
@@ -935,21 +1265,114 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
         )}
       </div>
 
-      {/* Main Search Input */}
-      <div className="relative">
-        <Search className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
-        <input
-          ref={inputRef} type="text" value={query}
-          onChange={(e) => setQuery(e.target.value)} onKeyDown={handleKeyDown}
-          placeholder="Search tracks, albums, artists, or paste Spotify / YouTube link..."
-          className="w-full pl-12 pr-28 py-4 rounded-2xl bg-surface-850 border border-white/10 text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/40 shadow-inner transition-all"
-        />
-        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-          {query && <button onClick={clearSearch} className="p-1.5 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-surface-750 transition-colors"><X className="w-4 h-4" /></button>}
-          <button onClick={() => performSearch(query)} disabled={!query.trim() || loading} className="px-4 py-2 bg-gradient-to-r from-brand-600 to-accent-cyan text-white text-xs font-bold rounded-xl shadow-md hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-all flex items-center gap-1.5">
-            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-            <span>Search</span>
-          </button>
+      {/* Main Search Bar with Target Category Selector */}
+      <div className="space-y-2.5">
+        <div className="relative flex items-center bg-surface-850 border border-white/10 rounded-2xl shadow-inner focus-within:ring-2 focus-within:ring-brand-500/50 focus-within:border-brand-500/40 transition-all p-1.5 gap-2">
+          {/* Target Dropdown Button */}
+          <div className="relative shrink-0" ref={targetDropdownRef}>
+            <button
+              type="button"
+              onClick={() => setIsTargetDropdownOpen(!isTargetDropdownOpen)}
+              className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-surface-750 hover:bg-surface-700 text-slate-200 border border-white/10 text-xs font-semibold shrink-0 transition-all active:scale-95 group"
+              title="Select search category (Tracks, Albums, Singers, Channels)"
+            >
+              <currentTargetMeta.icon className="w-4 h-4 text-brand-400" />
+              <span className="font-bold">{currentTargetMeta.shortLabel}</span>
+              <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isTargetDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Dropdown Menu */}
+            {isTargetDropdownOpen && (
+              <div className="absolute left-0 top-full mt-2 w-64 bg-surface-900 border border-white/15 rounded-2xl shadow-2xl z-50 p-2 space-y-1 backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-150">
+                <div className="px-2.5 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Select Search Category:
+                </div>
+                {SEARCH_TARGETS.map(target => {
+                  const Icon = target.icon;
+                  const isSelected = selectedTarget === target.id;
+                  return (
+                    <button
+                      key={target.id}
+                      type="button"
+                      onClick={() => handleSelectTarget(target.id)}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs transition-all text-left ${
+                        isSelected
+                          ? `${target.activeBg} font-bold shadow-md`
+                          : 'text-slate-200 hover:bg-surface-800'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold">{target.label}</div>
+                        <div className={`text-[10px] truncate ${isSelected ? 'text-white/80' : 'text-slate-400'}`}>
+                          {target.description}
+                        </div>
+                      </div>
+                      {isSelected && <Check className="w-3.5 h-3.5 shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Search Input */}
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={currentTargetMeta.placeholder}
+            className="flex-1 bg-transparent px-2 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none min-w-0"
+          />
+
+          {/* Actions */}
+          <div className="flex items-center gap-1.5 pr-1 shrink-0">
+            {query && (
+              <button
+                onClick={clearSearch}
+                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-surface-750 transition-colors"
+                title="Clear input"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+            <button
+              onClick={() => performSearch(query)}
+              disabled={!query.trim() || loading}
+              className="px-4 py-2 bg-gradient-to-r from-brand-600 to-accent-cyan text-white text-xs font-bold rounded-xl shadow-md hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-all flex items-center gap-1.5 shrink-0"
+            >
+              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+              <span>Search</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Quick Target Category Selector Chips */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-xs">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider pl-1 pr-1 shrink-0">
+            Search for:
+          </span>
+          {SEARCH_TARGETS.map(t => {
+            const Icon = t.icon;
+            const isSelected = selectedTarget === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => handleSelectTarget(t.id)}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shrink-0 transition-all border ${
+                  isSelected
+                    ? `${t.badgeClass} font-bold shadow-sm`
+                    : 'bg-surface-850/80 text-slate-400 hover:text-slate-200 hover:bg-surface-800 border-white/5'
+                }`}
+              >
+                <Icon className="w-3 h-3" />
+                <span>{t.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -1011,19 +1434,27 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
             </div>
             <div>
               <h3 className="text-base font-semibold text-slate-200">Find anything</h3>
-              <p className="text-sm text-slate-500 mt-1">Search tracks, albums, or channels across Spotify, YouTube, JioSaavn, Deezer & Local</p>
+              <p className="text-sm text-slate-500 mt-1">Search tracks, albums, singers & creators across Spotify, YouTube, JioSaavn, Deezer & Local</p>
             </div>
             <div className="flex flex-wrap justify-center gap-2 pt-2">
-              {["Arijit Singh", "Spotify Hits", "Kesariya", "Lo-Fi Chill", "Daft Punk", "Ed Sheeran"].map(s => (
+              {[
+                { term: "Arijit Singh", type: "artists" },
+                { term: "Spotify Hits", type: "tracks" },
+                { term: "Kesariya", type: "tracks" },
+                { term: "Lo-Fi Chill", type: "channels" },
+                { term: "Daft Punk", type: "artists" },
+                { term: "Ed Sheeran", type: "artists" }
+              ].map(item => (
                 <button
-                  key={s}
+                  key={item.term}
                   onClick={() => {
-                    setQuery(s);
-                    performSearch(s);
+                    setQuery(item.term);
+                    handleSelectTarget(item.type as SearchTargetType);
+                    performSearch(item.term, selectedSource, item.type as SearchTargetType);
                   }}
                   className="px-3 py-1.5 rounded-full bg-surface-800 border border-white/8 text-xs text-slate-300 hover:bg-surface-750 hover:border-brand-500/30 hover:text-brand-300 transition-all"
                 >
-                  {s}
+                  {item.term}
                 </button>
               ))}
             </div>
@@ -1051,7 +1482,7 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
         </div>
       )}
 
-      {/* Search Results with Source Tabs */}
+      {/* Search Results with Source & Sub Tabs */}
       {hasSearched && !loading && (
         <div className="space-y-4">
           {/* Source Filter Tabs Row */}
@@ -1112,7 +1543,7 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
             </div>
           </div>
 
-          {/* Sub-Tabs (Tracks / Albums / Channels) and Sort Control */}
+          {/* Sub-Tabs (All / Tracks / Albums / Singers / Channels) and Sort Control */}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
             <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
               {tabConfig.map(tab => (
@@ -1149,6 +1580,9 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
             {activeTab === 'channels' && sourceFilteredChannels.length > 1 && (
               <TrackSortControl currentSort={channelSortOption} onSortChange={setChannelSortOption} options={CHANNEL_SORT_OPTIONS} title="Sort Channels By" />
             )}
+            {activeTab === 'artists' && sourceFilteredSingers.length > 1 && (
+              <TrackSortControl currentSort={artistSortOption} onSortChange={setArtistSortOption} options={ARTIST_SORT_OPTIONS} title="Sort Singers By" />
+            )}
           </div>
 
           {/* Contextual Status Bar */}
@@ -1158,7 +1592,7 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
                 <>
                   <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: activeSourceMeta.dotColor }} />
                   <span>
-                    Showing <strong className="text-white">{activeSourceMeta.label}</strong> only: {sourceFilteredTracks.length} tracks, {sourceFilteredAlbums.length} albums, {sourceFilteredChannels.length} channels
+                    Showing <strong className="text-white">{activeSourceMeta.label}</strong> only: {sourceFilteredTracks.length} tracks, {sourceFilteredSingers.length} singers, {sourceFilteredAlbums.length} albums, {sourceFilteredChannels.length} channels
                   </span>
                 </>
               ) : (
@@ -1223,6 +1657,116 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
           {/* Active Content View */}
           {sourceFilteredTracks.length > 0 && (
             <>
+              {/* All Tab: Consolidated View with Singers, Albums, Channels, and Songs */}
+              {activeTab === "all" && (
+                <div className="space-y-6">
+                  {/* Singers & Artists Spotlight */}
+                  {sourceFilteredSingers.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                          <Mic2 className="w-4 h-4 text-amber-400" />
+                          Singers & Artists ({sourceFilteredSingers.length})
+                        </h3>
+                        {sourceFilteredSingers.length > 3 && (
+                          <button
+                            onClick={() => setActiveTab("artists")}
+                            className="text-xs text-brand-400 hover:text-brand-300 font-medium"
+                          >
+                            View all singers →
+                          </button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                        {sourceFilteredSingers.slice(0, 3).map(singer => (
+                          <SingerArtistCard
+                            key={singer.id}
+                            artist={singer}
+                            onClick={setSelectedArtist}
+                            onPlayAll={(a) => {
+                              if (a.tracks.length > 0) playTrack(a.tracks[0], a.tracks);
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Albums Spotlight */}
+                  {sourceFilteredAlbums.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                          <Disc3 className="w-4 h-4 text-purple-400" />
+                          Albums ({sourceFilteredAlbums.length})
+                        </h3>
+                        {sourceFilteredAlbums.length > 3 && (
+                          <button
+                            onClick={() => setActiveTab("albums")}
+                            className="text-xs text-brand-400 hover:text-brand-300 font-medium"
+                          >
+                            View all albums →
+                          </button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                        {sourceFilteredAlbums.slice(0, 3).map(album => (
+                          <AlbumCard key={album.id} album={album} onClick={setSelectedAlbum} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Channels & Creators Spotlight */}
+                  {sourceFilteredChannels.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                          <Tv2 className="w-4 h-4 text-red-400" />
+                          Channels & Creators ({sourceFilteredChannels.length})
+                        </h3>
+                        {sourceFilteredChannels.length > 3 && (
+                          <button
+                            onClick={() => setActiveTab("channels")}
+                            className="text-xs text-brand-400 hover:text-brand-300 font-medium"
+                          >
+                            View all channels →
+                          </button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                        {sourceFilteredChannels.slice(0, 3).map(channel => (
+                          <ChannelCard key={channel.id} channel={channel} onClick={setSelectedChannel} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tracks & Songs Spotlight */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                        <Music className="w-4 h-4 text-brand-400" />
+                        Tracks & Songs ({sortedTracks.length})
+                      </h3>
+                      {sortedTracks.length > 1 && (
+                        <TrackSortControl currentSort={sortOption} onSortChange={setSortOption} title="Sort Tracks By" />
+                      )}
+                    </div>
+                    {sortedTracks.length > 0 ? (
+                      <div className="space-y-1">
+                        {sortedTracks.map(t => (
+                          <TrackRow key={t.id} track={t} queueContext={sortedTracks} onAddToPlaylist={onAddToPlaylist} />
+                        ))}
+                      </div>
+                    ) : (
+                      <EmptyState icon={<Music className="w-8 h-8" />} message="No tracks found" sub="Try searching for a different title" />
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Tracks Tab */}
               {activeTab === "tracks" && (
                 sortedTracks.length > 0 ? (
                   <div className="space-y-1">
@@ -1235,6 +1779,7 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
                 )
               )}
 
+              {/* Albums Tab */}
               {activeTab === "albums" && (
                 sortedAlbums.length > 0 ? (
                   <div className="space-y-1">
@@ -1247,6 +1792,27 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
                 )
               )}
 
+              {/* Singers & Artists Tab */}
+              {activeTab === "artists" && (
+                sortedSingers.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {sortedSingers.map(singer => (
+                      <SingerArtistCard
+                        key={singer.id}
+                        artist={singer}
+                        onClick={setSelectedArtist}
+                        onPlayAll={(a) => {
+                          if (a.tracks.length > 0) playTrack(a.tracks[0], a.tracks);
+                        }}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState icon={<Mic2 className="w-8 h-8" />} message="No singers or artists found" sub="Try searching for a specific vocalist or band name" />
+                )
+              )}
+
+              {/* Channels & Creators Tab */}
               {activeTab === "channels" && (
                 sortedChannels.length > 0 ? (
                   <div className="space-y-1">
@@ -1265,3 +1831,4 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
     </div>
   );
 };
+

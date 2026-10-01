@@ -484,6 +484,120 @@ async function runTests() {
     }
   });
 
+  // 18. Server-Side Playlist Persistence & Cross-Device Sync Code
+  await test('Server-Side Playlist Persistence & Cross-Device Pairing Code', async () => {
+    // A. Generate/retrieve sync code for user
+    const codeRes = await fetchJSON(`${API_BASE}/playlists/sync/code`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!codeRes.syncCode || !codeRes.syncCode.startsWith('VF-')) {
+      throw new Error(`Invalid sync code received: ${codeRes.syncCode}`);
+    }
+    const mySyncCode = codeRes.syncCode;
+
+    // B. Simulate a second device pairing without any prior token
+    const pairRes = await fetchJSON(`${API_BASE}/playlists/sync/link`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ syncCode: mySyncCode })
+    });
+
+    if (!pairRes.token || !pairRes.user || !Array.isArray(pairRes.playlists)) {
+      throw new Error('Failed to link device with sync code');
+    }
+    if (pairRes.user.syncCode !== mySyncCode) {
+      throw new Error('User sync code mismatch on paired device');
+    }
+  });
+
+  // 19. Direct Link Saving to Playlist (YouTube, Spotify, Direct Streams)
+  await test('Direct Link Saving to Playlist (YouTube / Spotify / Audio Stream)', async () => {
+    // Create a playlist for direct link imports
+    const createPlRes = await fetchJSON(`${API_BASE}/playlists`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        title: 'Links Collection Playlist',
+        description: 'Testing direct URL imports'
+      })
+    });
+    const pl = createPlRes.playlist;
+    if (!pl || !pl.id) throw new Error('Playlist creation for direct link imports failed');
+
+    // A. Import a YouTube link
+    const ytRes = await fetchJSON(`${API_BASE}/playlists/${pl.id}/import-url`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        customTitle: 'Never Gonna Give You Up',
+        customArtist: 'Rick Astley'
+      })
+    });
+    if (ytRes.itemsCount < 1 || !ytRes.importedItems || ytRes.importedItems.length === 0) {
+      throw new Error('Failed to import YouTube link into playlist');
+    }
+
+    // B. Import a direct audio stream URL
+    const streamRes = await fetchJSON(`${API_BASE}/playlists/${pl.id}/import-url`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        url: 'https://actions.google.com/sounds/v1/ambiences/rain_heavy.ogg',
+        customTitle: 'Heavy Rain Ambience',
+        customArtist: 'Nature Soundscape'
+      })
+    });
+    if (streamRes.itemsCount < 2) {
+      throw new Error('Failed to import direct stream URL into playlist');
+    }
+
+    // Verify playlist items in server store
+    const fullPlRes = await fetchJSON(`${API_BASE}/playlists/${pl.id}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const fullPl = fullPlRes.playlist;
+    if (!fullPl || !fullPl.items || fullPl.items.length < 2) {
+      throw new Error('Playlist does not have imported items persisted on server');
+    }
+  });
+
+  // 20. Search with Category Selection (track / album / channel / artist / all)
+  await test('Search with Category Target Filtering', async () => {
+    // A. Search by artist/singer
+    const artistSearch = await fetchJSON(`${API_BASE}/media/search?q=Arijit&type=artist`);
+    if (!Array.isArray(artistSearch.items) || artistSearch.items.length === 0) {
+      throw new Error('Artist/singer targeted search returned no items');
+    }
+
+    // B. Search by album
+    const albumSearch = await fetchJSON(`${API_BASE}/media/search?q=Aashiqui&type=album`);
+    if (!Array.isArray(albumSearch.items)) {
+      throw new Error('Album targeted search failed');
+    }
+
+    // C. Search by channel/creator
+    const channelSearch = await fetchJSON(`${API_BASE}/media/search?q=T-Series&type=channel`);
+    if (!Array.isArray(channelSearch.items)) {
+      throw new Error('Channel targeted search failed');
+    }
+
+    // D. Search with all
+    const allSearch = await fetchJSON(`${API_BASE}/media/search?q=Kesariya&type=all`);
+    if (!Array.isArray(allSearch.items) || allSearch.items.length === 0) {
+      throw new Error('All search returned no items');
+    }
+  });
+
   console.log(`\n🎉 Test Results: ${passed}/${total} passed!`);
   if (passed === total) {
     console.log('🌟 All VibeFlow AI core systems verified production-ready.\n');
@@ -493,3 +607,4 @@ async function runTests() {
 }
 
 runTests();
+

@@ -131,14 +131,15 @@ function authHeaders(token?: string | null): HeadersInit {
 }
 
 export const api = {
-  // Search — searches all files matching criteria, not limited to any number
-  search: async (query: string, provider?: MediaProvider, genre?: string, mood?: string, limit?: number): Promise<MediaItem[]> => {
+  // Search — searches all files matching criteria, with category and provider filtering
+  search: async (query: string, provider?: MediaProvider, genre?: string, mood?: string, limit?: number, type?: string): Promise<MediaItem[]> => {
     try {
       const params = new URLSearchParams();
       if (query) params.append('q', query);
       if (provider) params.append('provider', provider);
       if (genre) params.append('genre', genre);
       if (mood) params.append('mood', mood);
+      if (type && type !== 'all') params.append('type', type);
       if (limit !== undefined && limit > 0) {
         params.append('limit', limit.toString());
       } else {
@@ -306,6 +307,54 @@ export const api = {
     const data = await res.json();
     if (data.playlist) {
       saveLocalCreatedPlaylist(data.playlist);
+    }
+    return data;
+  },
+
+  // Save YouTube / Spotify / Web stream link directly to the playlist on the server
+  importUrlToPlaylist: async (playlistId: string, url: string, customTitle?: string, customArtist?: string, token?: string | null): Promise<{ success: boolean; playlist: Playlist; items: MediaItem[]; message?: string }> => {
+    const t = token !== undefined ? token : getStoredToken();
+    const res = await fetch(`${API_BASE}/playlists/${playlistId}/import-url`, {
+      method: 'POST',
+      headers: authHeaders(t),
+      body: JSON.stringify({ url, customTitle, customArtist })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to import URL into playlist');
+    }
+    const data = await res.json();
+    if (data.playlist) {
+      saveLocalCreatedPlaylist(data.playlist);
+    }
+    return data;
+  },
+
+  // Retrieve cross-device sync code for the current user
+  getSyncCode: async (token?: string | null): Promise<{ syncCode: string }> => {
+    const t = token !== undefined ? token : getStoredToken();
+    const res = await fetch(`${API_BASE}/playlists/sync/code`, {
+      headers: authHeaders(t)
+    });
+    if (!res.ok) throw new Error('Failed to retrieve sync code');
+    return await res.json();
+  },
+
+  // Link device by entering 6-character sync code
+  linkDeviceBySyncCode: async (syncCode: string): Promise<{ success: boolean; user: User; token: string; playlists: Playlist[] }> => {
+    const res = await fetch(`${API_BASE}/playlists/sync/link`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ syncCode })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Invalid or expired sync code');
+    }
+    const data = await res.json();
+    if (data.user && data.token) {
+      localStorage.setItem('vibeflow_token', data.token);
+      localStorage.setItem('vibeflow_user', JSON.stringify(data.user));
     }
     return data;
   },

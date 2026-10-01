@@ -1,15 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   Link, 
   Youtube, 
+  Waves,
   Video, 
   Sparkles, 
   Play, 
+  ListPlus,
   CheckCircle2, 
   AlertCircle 
 } from 'lucide-react';
 import { api } from '../services/api';
+import { Playlist } from '../types';
 import { usePlayerStore } from '../store/playerStore';
 
 interface ImportUrlModalProps {
@@ -22,10 +25,20 @@ export const ImportUrlModal: React.FC<ImportUrlModalProps> = ({ isOpen, onClose,
   const [url, setUrl] = useState('');
   const [customTitle, setCustomTitle] = useState('');
   const [customArtist, setCustomArtist] = useState('');
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState<string>('none');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const { playTrack, setNowPlayingOpen } = usePlayerStore();
+
+  useEffect(() => {
+    if (isOpen) {
+      api.getPlaylists().then(data => {
+        setPlaylists(data.filter(p => !p.id.startsWith('playlist-') || p.items !== undefined));
+      }).catch(() => {});
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -37,23 +50,41 @@ export const ImportUrlModal: React.FC<ImportUrlModalProps> = ({ isOpen, onClose,
     setError(null);
 
     try {
-      const res = await api.importUrl(url.trim(), customTitle.trim() || undefined, customArtist.trim() || undefined);
-      if (res.item) {
-        // Start playing the imported item immediately!
-        playTrack(res.item);
-        setNowPlayingOpen(true);
-        if (onSuccess) onSuccess();
-        onClose();
-        setUrl('');
-        setCustomTitle('');
-        setCustomArtist('');
+      if (selectedPlaylistId && selectedPlaylistId !== 'none') {
+        // Save directly to the chosen playlist on server
+        const plRes = await api.importUrlToPlaylist(
+          selectedPlaylistId,
+          url.trim(),
+          customTitle.trim() || undefined,
+          customArtist.trim() || undefined
+        );
+        if (plRes.items && plRes.items.length > 0) {
+          playTrack(plRes.items[0]);
+          setNowPlayingOpen(true);
+        }
+      } else {
+        // Import and play
+        const res = await api.importUrl(url.trim(), customTitle.trim() || undefined, customArtist.trim() || undefined);
+        if (res.item) {
+          playTrack(res.item);
+          setNowPlayingOpen(true);
+        }
       }
+
+      if (onSuccess) onSuccess();
+      onClose();
+      setUrl('');
+      setCustomTitle('');
+      setCustomArtist('');
+      setSelectedPlaylistId('none');
     } catch (err: any) {
       setError(err.message || 'Failed to import URL');
     } finally {
       setLoading(false);
     }
   };
+
+  const isSpotify = url.includes('spotify.com') || url.startsWith('spotify:');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in">
@@ -65,8 +96,8 @@ export const ImportUrlModal: React.FC<ImportUrlModalProps> = ({ isOpen, onClose,
               <Link className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-white">Add URL / Video Stream</h3>
-              <p className="text-xs text-slate-400">Play any YouTube video or direct media stream URL</p>
+              <h3 className="text-lg font-bold text-white">Add URL / Streaming Link</h3>
+              <p className="text-xs text-slate-400">Play or save any YouTube, Spotify, or Media stream</p>
             </div>
           </div>
           <button 
@@ -78,28 +109,32 @@ export const ImportUrlModal: React.FC<ImportUrlModalProps> = ({ isOpen, onClose,
         </div>
 
         {/* Supported Formats Banner */}
-        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-850 border border-white/5 text-xs text-slate-300">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-850 border border-white/5 text-xs text-slate-300 flex-wrap">
           <span className="font-semibold text-brand-300">Supports:</span>
           <span className="flex items-center gap-1 text-slate-400">
-            <Youtube className="w-3.5 h-3.5 text-red-500" /> YouTube Videos & Shorts
+            <Youtube className="w-3.5 h-3.5 text-red-500" /> YouTube
           </span>
           <span className="text-slate-600">•</span>
           <span className="flex items-center gap-1 text-slate-400">
-            <Video className="w-3.5 h-3.5 text-accent-cyan" /> MP4, WebM, MP3 Streams
+            <Waves className="w-3.5 h-3.5 text-[#1DB954]" /> Spotify
+          </span>
+          <span className="text-slate-600">•</span>
+          <span className="flex items-center gap-1 text-slate-400">
+            <Video className="w-3.5 h-3.5 text-accent-cyan" /> MP4/MP3 Streams
           </span>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">
-              Media Stream or YouTube URL *
+              Media Stream, YouTube, or Spotify Link *
             </label>
             <input
               type="url"
               required
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="e.g. https://www.youtube.com/watch?v=... or https://example.com/video.mp4"
+              placeholder="e.g. https://open.spotify.com/track/... or https://youtube.com/watch?v=..."
               className="w-full px-3.5 py-2.5 rounded-xl bg-surface-800 border border-white/10 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50"
             />
           </div>
@@ -131,6 +166,26 @@ export const ImportUrlModal: React.FC<ImportUrlModalProps> = ({ isOpen, onClose,
             </div>
           </div>
 
+          {/* Save to Playlist selector */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 uppercase mb-1 flex items-center gap-1.5">
+              <ListPlus className="w-3.5 h-3.5 text-brand-400" />
+              <span>Save Directly to Playlist (Optional)</span>
+            </label>
+            <select
+              value={selectedPlaylistId}
+              onChange={(e) => setSelectedPlaylistId(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl bg-surface-800 border border-white/10 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            >
+              <option value="none">Do not save to playlist (Play Only)</option>
+              {playlists.map(pl => (
+                <option key={pl.id} value={pl.id}>
+                  Add to "{pl.title}" ({pl.items?.length || pl.itemCount} tracks)
+                </option>
+              ))}
+            </select>
+          </div>
+
           {error && (
             <div className="p-3 rounded-xl bg-rose-950/50 border border-rose-500/30 flex items-center gap-2 text-xs text-rose-300">
               <AlertCircle className="w-4 h-4 shrink-0" />
@@ -152,7 +207,13 @@ export const ImportUrlModal: React.FC<ImportUrlModalProps> = ({ isOpen, onClose,
               className="px-5 py-2.5 bg-gradient-to-r from-brand-600 to-accent-cyan hover:opacity-95 text-white text-xs font-bold rounded-xl shadow-lg shadow-brand-500/25 flex items-center gap-1.5 transition-all"
             >
               <Play className="w-3.5 h-3.5 fill-current" />
-              <span>{loading ? 'Fetching & Categorizing...' : 'Import & Play Now'}</span>
+              <span>
+                {loading 
+                  ? 'Fetching & Saving...' 
+                  : selectedPlaylistId !== 'none'
+                  ? 'Save to Playlist & Play'
+                  : 'Import & Play Now'}
+              </span>
             </button>
           </div>
         </form>

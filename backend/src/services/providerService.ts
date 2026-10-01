@@ -1404,13 +1404,38 @@ export class ProviderRegistry {
   }
 
   /**
-   * Import any custom URL (YouTube video/short, direct MP4, WebM, MP3, etc.)
+   * Import one or more tracks from any URL (YouTube, Spotify, SoundCloud, or direct media stream)
    */
-  public async importFromUrl(url: string, customTitle?: string, customArtist?: string): Promise<MediaItem> {
+  public async importAllFromUrl(url: string, customTitle?: string, customArtist?: string): Promise<MediaItem[]> {
     const trimmed = url.trim();
 
-    // Check if YouTube URL (e.g. youtube.com/watch?v=..., youtu.be/..., youtube.com/shorts/...)
-    const ytMatch = trimmed.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    // 1. Check if Spotify URL (Track, Album, Playlist)
+    // Matches open.spotify.com/track/ID, open.spotify.com/album/ID, open.spotify.com/playlist/ID, spotify:track:ID, etc.
+    const spMatch = trimmed.match(/(?:open\.spotify\.com\/(?:intl-[a-z]+\/)?(track|album|playlist)\/([a-zA-Z0-9]+)|spotify:(track|album|playlist):([a-zA-Z0-9]+))/i);
+    if (spMatch) {
+      const type = (spMatch[1] || spMatch[3] || '').toLowerCase();
+      const id = spMatch[2] || spMatch[4];
+      const spotifyAdapter = this.adapters.get('spotify') as SpotifyProviderAdapter;
+      if (spotifyAdapter && id) {
+        try {
+          const spotifyItems = await spotifyAdapter.fetchFromSpotifyEmbed(type, id, 50);
+          if (spotifyItems && spotifyItems.length > 0) {
+            // If custom title/artist provided for single track, apply them
+            if (spotifyItems.length === 1) {
+              if (customTitle) spotifyItems[0].title = customTitle;
+              if (customArtist) spotifyItems[0].artist = customArtist;
+              db.addMediaItem(spotifyItems[0]);
+            }
+            return spotifyItems;
+          }
+        } catch (e) {
+          console.warn('Spotify embed extraction failed, trying search fallback:', e);
+        }
+      }
+    }
+
+    // 2. Check if YouTube URL (e.g. youtube.com/watch?v=..., youtu.be/..., youtube.com/shorts/..., music.youtube.com/...)
+    const ytMatch = trimmed.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/|v\/)|youtu\.be\/|music\.youtube\.com\/(?:watch\?v=))([a-zA-Z0-9_-]{11})/i);
     if (ytMatch) {
       const videoId = ytMatch[1];
       let title = customTitle || 'YouTube Video';
@@ -1449,19 +1474,20 @@ export class ProviderRegistry {
       };
 
       db.addMediaItem(mediaItem);
-      return mediaItem;
+      return [mediaItem];
     }
 
-    // Direct streaming media URL (.mp4, .webm, .mp3, .wav, .m4a, etc.)
+    // 3. Direct streaming media URL (.mp4, .webm, .mp3, .wav, .m4a, etc.) or web link
     const cleanUrl = trimmed.split('?')[0];
     const fileName = cleanUrl.substring(cleanUrl.lastIndexOf('/') + 1) || 'Web Media Stream';
-    const title = customTitle || decodeURIComponent(fileName).replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
-    const artist = customArtist || 'Online Media Source';
+    const isAudioVideo = /\.(mp3|wav|m4a|aac|ogg|flac|mp4|webm)$/i.test(cleanUrl);
+    const title = customTitle || decodeURIComponent(fileName).replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ') || 'Imported Web Audio';
+    const artist = customArtist || (trimmed.includes('soundcloud.com') ? 'SoundCloud Creator' : 'Online Media Source');
 
-    const classification = AIRecommendationService.classify(title, artist, ['web_stream', 'video_file']);
+    const classification = AIRecommendationService.classify(title, artist, ['web_stream', isAudioVideo ? 'direct_file' : 'web_link']);
     const mediaItem: MediaItem = {
       id: `url-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      provider: 'public_domain',
+      provider: trimmed.includes('soundcloud.com') ? 'soundcloud' : 'public_domain',
       providerId: trimmed,
       title,
       artist,
@@ -1478,7 +1504,18 @@ export class ProviderRegistry {
     };
 
     db.addMediaItem(mediaItem);
-    return mediaItem;
+    return [mediaItem];
+  }
+
+  /**
+   * Import single media item from URL
+   */
+  public async importFromUrl(url: string, customTitle?: string, customArtist?: string): Promise<MediaItem> {
+    const items = await this.importAllFromUrl(url, customTitle, customArtist);
+    if (items.length === 0) {
+      throw new Error('Unable to extract playable track from the provided link');
+    }
+    return items[0];
   }
 }
 

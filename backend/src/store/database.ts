@@ -881,6 +881,32 @@ class MemoryDatabase {
     return this.data.users.find(u => u.id === id);
   }
 
+  public getOrCreateUserSyncCode(userIdOrIdentifier: string): string {
+    let user = this.findUserById(userIdOrIdentifier) || this.findUserByIdentifier(userIdOrIdentifier);
+    if (!user) {
+      user = this.findUserById('demo-user-id');
+    }
+    if (!user) {
+      return 'VF-1001';
+    }
+    if (!user.syncCode) {
+      const num = Math.floor(1000 + Math.random() * 9000);
+      user.syncCode = `VF-${num}`;
+      this.saveToDisk();
+    }
+    return user.syncCode;
+  }
+
+  public findUserBySyncCode(rawSyncCode: string): User | undefined {
+    if (!rawSyncCode) return undefined;
+    const clean = rawSyncCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    return this.data.users.find(u => {
+      if (!u.syncCode) return false;
+      const uClean = u.syncCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      return uClean === clean;
+    });
+  }
+
   public updatePassword(userIdOrIdentifier: string, passwordHash: string): boolean {
     const user = this.findUserById(userIdOrIdentifier) || this.findUserByIdentifier(userIdOrIdentifier);
     if (!user) return false;

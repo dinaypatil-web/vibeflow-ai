@@ -138,6 +138,7 @@ export interface User {
   avatar?: string;
   role: 'user' | 'admin';
   preferences?: UserPreferences;
+  syncCode?: string;
   createdAt: string;
 }
 

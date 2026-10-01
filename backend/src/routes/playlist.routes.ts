@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { db } from '../store/database';
 import { Playlist, PlaylistItem, MediaItem } from '../types';
 import { AIRecommendationService } from '../services/aiRecommendationService';
+import { providerRegistry } from '../services/providerService';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'vibeflow-super-secret-key-2026';
@@ -152,6 +153,42 @@ router.post('/share/:token/accept', (req: Request, res: Response) => {
     return res.status(404).json({ error: result.message });
   }
   res.json(result);
+});
+
+// Get or generate cross-device sync code for the current user
+router.get('/sync/code', (req: Request, res: Response) => {
+  const userId = resolveUserId(req);
+  const syncCode = db.getOrCreateUserSyncCode(userId);
+  res.json({ syncCode });
+});
+
+// Link another device to account via 6-character sync code
+router.post('/sync/link', (req: Request, res: Response) => {
+  const { syncCode } = req.body;
+  if (!syncCode || typeof syncCode !== 'string') {
+    return res.status(400).json({ error: 'Sync code is required' });
+  }
+  const user = db.findUserBySyncCode(syncCode);
+  if (!user) {
+    return res.status(404).json({ error: 'No account found with this sync code. Please check and try again.' });
+  }
+
+  const token = jwt.sign({ userId: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
+  const playlists = db.getPlaylistsByUserId(user.id);
+  res.json({
+    success: true,
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      username: user.username,
+      avatar: user.avatar,
+      role: user.role,
+      syncCode: user.syncCode
+    },
+    token,
+    playlists
+  });
 });
 
 // Get playlist by ID
@@ -306,6 +343,66 @@ router.post('/:id/items', (req: Request, res: Response) => {
   db.saveToDisk();
 
   res.status(201).json({ item: newItem, playlist });
+});
+
+// Save YouTube / Spotify / Web stream URL directly to the playlist
+router.post('/:id/import-url', async (req: Request, res: Response) => {
+  try {
+    const { url, customTitle, customArtist } = req.body;
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({ error: 'URL link is required' });
+    }
+
+    const playlist = db.findPlaylistById(req.params.id);
+    if (!playlist) {
+      return res.status(404).json({ error: 'Playlist not found' });
+    }
+
+    const items = await providerRegistry.importAllFromUrl(url.trim(), customTitle, customArtist);
+    if (!items || items.length === 0) {
+      return res.status(400).json({ error: 'Could not extract playable tracks from the provided URL' });
+    }
+
+    if (!playlist.items) playlist.items = [];
+
+    const addedPlaylistItems: PlaylistItem[] = [];
+    for (const mediaItem of items) {
+      // Avoid duplicate track in same playlist if already present
+      const alreadyHas = playlist.items.some(i => 
+        i.mediaItemId === mediaItem.id || 
+        (i.mediaItem && i.mediaItem.providerId === mediaItem.providerId && i.mediaItem.provider === mediaItem.provider)
+      );
+      if (alreadyHas) continue;
+
+      const newItem: PlaylistItem = {
+        id: `item-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+        playlistId: playlist.id,
+        mediaItemId: mediaItem.id,
+        orderIndex: playlist.items.length,
+        addedAt: new Date().toISOString(),
+        mediaItem
+      };
+      playlist.items.push(newItem);
+      addedPlaylistItems.push(newItem);
+    }
+
+    playlist.itemCount = playlist.items.length;
+    playlist.updatedAt = new Date().toISOString();
+    db.saveToDisk();
+
+    res.status(201).json({
+      success: true,
+      message: `Added ${addedPlaylistItems.length} track(s) to playlist`,
+      addedCount: addedPlaylistItems.length,
+      itemsCount: playlist.items.length,
+      itemCount: playlist.items.length,
+      items: addedPlaylistItems.map(i => i.mediaItem),
+      importedItems: addedPlaylistItems.map(i => i.mediaItem),
+      playlist
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to import URL into playlist' });
+  }
 });
 
 // Remove item from playlist

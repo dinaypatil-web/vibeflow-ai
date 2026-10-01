@@ -19,14 +19,17 @@ import {
   Users,
   ShieldCheck
 } from 'lucide-react';
-import { Playlist, PlaylistItem } from '../types';
+import { Playlist, PlaylistItem, MediaItem } from '../types';
 import { api } from '../services/api';
 import { usePlayerStore } from '../store/playerStore';
 import { SmartPlaylistModal } from '../components/SmartPlaylistModal';
 import { CreatePlaylistModal } from '../components/CreatePlaylistModal';
 import { SharePlaylistModal } from '../components/SharePlaylistModal';
+import { AddLinkToPlaylistModal } from '../components/AddLinkToPlaylistModal';
+import { DeviceSyncModal } from '../components/DeviceSyncModal';
 import { TrackSortControl } from '../components/TrackSortControl';
 import { sortMediaItems } from '../utils/trackSort';
+import { Link as LinkIcon } from 'lucide-react';
 
 interface PlaylistsViewProps {
   onOpenAuth?: () => void;
@@ -38,6 +41,8 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
   const [isSmartModalOpen, setIsSmartModalOpen] = useState(false);
   const [isCustomModalOpen, setIsCustomModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isAddLinkModalOpen, setIsAddLinkModalOpen] = useState(false);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [playlistSort, setPlaylistSort] = useState<string>('default');
 
@@ -223,27 +228,34 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
             )}
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm font-bold text-white">
-                {user ? user.name : 'Guest Session'}
+                {user ? user.name : 'VibeFlow Account'}
               </span>
-              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                user ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/15 text-amber-400 border-amber-500/20'
-              }`}>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
                 <Cloud className="w-3 h-3" />
-                <span>{user ? 'Cloud Synced Across Devices' : 'Local Only (Not Synced)'}</span>
+                <span>Server Saved & Cloud Synced</span>
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
               {user 
-                ? `Logged in as ${user.email} • Your playlists & tracks are synced across all your devices`
-                : 'Sign in to sync your playlists and saved tracks across all your phones, tablets, and computers.'
+                ? `Logged in as ${user.email} • Your playlists & tracks are stored on the server & accessible from any device`
+                : 'All your playlists are saved on the server database. Use Sync Code to access on other devices.'
               }
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setIsSyncModalOpen(true)}
+            className="px-3 py-1.5 rounded-xl bg-surface-800 hover:bg-surface-750 border border-white/10 text-xs font-semibold text-slate-200 hover:text-white transition-all flex items-center gap-1.5"
+            title="Pair with phone, tablet, or another computer using your Sync Code"
+          >
+            <Cloud className="w-3.5 h-3.5 text-brand-400" />
+            <span>Sync Across Devices</span>
+          </button>
+
           {user ? (
             <button
               onClick={logout}
@@ -258,7 +270,7 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
               className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-brand-600 to-accent-cyan hover:opacity-95 text-xs font-bold text-white shadow-md shadow-brand-500/20 transition-all flex items-center gap-1.5"
             >
               <LogIn className="w-3.5 h-3.5" />
-              <span>Sign In / Create Account</span>
+              <span>Sign In / Register</span>
             </button>
           )}
         </div>
@@ -413,6 +425,16 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
                     <span>Play Mix</span>
                   </button>
 
+                  {/* Save Direct Link to Playlist Button */}
+                  <button
+                    onClick={() => setIsAddLinkModalOpen(true)}
+                    className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition-all"
+                    title="Save YouTube, Spotify, or Media stream link directly into this playlist"
+                  >
+                    <LinkIcon className="w-3.5 h-3.5" />
+                    <span>Add Link / URL</span>
+                  </button>
+
                   {/* Share Playlist Button */}
                   <button
                     onClick={() => setIsShareModalOpen(true)}
@@ -533,8 +555,17 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
                       );
                     })
                   ) : (
-                    <div className="p-8 text-center text-slate-500 text-xs">
-                      No tracks in this playlist yet. Add songs by clicking the '+' icon on any track!
+                    <div className="p-8 text-center space-y-3">
+                      <p className="text-slate-400 text-xs">
+                        No tracks in this playlist yet. Add songs from search, or paste a YouTube / Spotify link directly!
+                      </p>
+                      <button
+                        onClick={() => setIsAddLinkModalOpen(true)}
+                        className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 text-white text-xs font-semibold rounded-xl inline-flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all"
+                      >
+                        <LinkIcon className="w-3.5 h-3.5" />
+                        <span>Paste YouTube / Spotify / Web Link</span>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -568,6 +599,26 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
         playlist={selectedPlaylist}
         onClose={() => setIsShareModalOpen(false)}
         onPlaylistUpdated={fetchPlaylists}
+      />
+
+      {/* Add Direct Link to Playlist Modal */}
+      <AddLinkToPlaylistModal
+        isOpen={isAddLinkModalOpen}
+        playlist={selectedPlaylist}
+        onClose={() => setIsAddLinkModalOpen(false)}
+        onSuccess={() => {
+          fetchPlaylists(selectedPlaylist?.id);
+        }}
+      />
+
+      {/* Cross-Device Sync Modal */}
+      <DeviceSyncModal
+        isOpen={isSyncModalOpen}
+        onClose={() => setIsSyncModalOpen(false)}
+        onOpenAuth={onOpenAuth}
+        onSynced={() => {
+          fetchPlaylists();
+        }}
       />
     </div>
   );
