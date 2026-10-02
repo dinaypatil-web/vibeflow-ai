@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, ListMusic, Plus, Check, CheckCircle2 } from 'lucide-react';
 import { MediaItem, Playlist } from '../types';
 import { api } from '../services/api';
+import { usePlayerStore } from '../store/playerStore';
 
 interface AddToPlaylistModalProps {
   isOpen: boolean;
@@ -19,6 +20,7 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
   const [addedIds, setAddedIds] = useState<string[]>([]);
   const [newTitle, setNewTitle] = useState('');
   const [creating, setCreating] = useState(false);
+  const { user, token } = usePlayerStore();
 
   useEffect(() => {
     if (isOpen) {
@@ -62,8 +64,16 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
       const newPl = await api.createPlaylist({
         title: newTitle.trim(),
         description: 'Personal playlist',
-        isSmart: false
-      });
+        isSmart: false,
+        userId: user?.id,
+        creator: user ? {
+          id: user.id,
+          name: user.name,
+          username: user.username || user.name,
+          avatar: user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+          email: user.email
+        } : undefined
+      }, token);
       await api.addItemToPlaylist(newPl.id, track.id);
       try {
         localStorage.setItem('vibeflow_selected_playlist_id', newPl.id);

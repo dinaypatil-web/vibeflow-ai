@@ -6,6 +6,7 @@ export type TabType = 'home' | 'search' | 'explore' | 'playlists' | 'library' | 
 export type RepeatMode = 'off' | 'all' | 'one';
 
 export interface SavedCredential {
+  userId?: string;
   identifier: string; // username or email
   email: string;
   username: string;
@@ -489,6 +490,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       // Save credentials for retrieval if rememberMe is enabled
       if (rememberMe) {
         const cred: SavedCredential = {
+          userId: data.user.id,
           identifier: cleanId,
           email: data.user.email,
           username: data.user.username || cleanId,
@@ -528,6 +530,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
               if (rememberMe) {
                 const cred: SavedCredential = {
+                  userId: userObj.id,
                   identifier: cleanId,
                   email: userObj.email,
                   username: userObj.username || cleanId,
@@ -555,7 +558,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           const sUser = (saved.username || '').toLowerCase();
           const target = cleanId.toLowerCase();
           if ((target === sIdent || target === sEmail || target === sUser) && (saved.password === cleanPass || !saved.password)) {
-            const localId = `usr-${Date.now()}`;
+            const localId = saved.userId || (saved.username ? `usr-${saved.username}` : `usr-${cleanId.replace(/[^a-zA-Z0-9_-]/g, '')}`);
             const recoveredUser: User = {
               id: localId,
               name: saved.name || cleanId,
@@ -632,6 +635,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       // Always save sign up credentials for seamless retrieval when user logs in
       if (rememberMe) {
         const cred: SavedCredential = {
+          userId: data.user.id,
           identifier: cleanUser || cleanEmail,
           email: cleanEmail,
           username: cleanUser,

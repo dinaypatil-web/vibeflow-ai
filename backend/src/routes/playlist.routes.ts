@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { db } from '../store/database';
 import { Playlist, PlaylistItem, MediaItem } from '../types';
+import { DEFAULT_PREFERENCES } from './auth.routes';
 import { AIRecommendationService } from '../services/aiRecommendationService';
 import { providerRegistry, fetchYouTubeDuration, fetchTrackDuration } from '../services/providerService';
 
@@ -120,7 +121,7 @@ router.get('/', async (req: Request, res: Response) => {
 
 // Create Playlist
 router.post('/', (req: Request, res: Response) => {
-  const { title, description, coverArt, isSmart, smartDefinition, isPrivate, isShareable, userId } = req.body;
+  const { title, description, coverArt, isSmart, smartDefinition, isPrivate, isShareable, userId, creator: reqCreator, userEmail, userName } = req.body;
   if (!title) {
     return res.status(400).json({ error: 'Playlist title is required' });
   }
@@ -131,8 +132,48 @@ router.post('/', (req: Request, res: Response) => {
     ? authUserId 
     : (userId || authUserId || 'demo-user-id');
 
-  const user = db.findUserById(actualUserId) || db.findUserByIdentifier(actualUserId);
+  const candidateEmail = reqCreator?.email || userEmail;
+  const candidateUser = reqCreator?.username;
+
+  let user = (actualUserId && actualUserId !== 'demo-user-id')
+    ? (db.findUserById(actualUserId) || db.findUserByIdentifier(actualUserId))
+    : undefined;
+
+  if (!user && candidateEmail) {
+    user = db.findUserByIdentifier(candidateEmail);
+  }
+  if (!user && candidateUser) {
+    user = db.findUserByIdentifier(candidateUser);
+  }
+
+  // If user updated their display name (e.g. 'Dinay Dilip Patil'), update user record
+  const incomingName = reqCreator?.name || userName;
+  if (user && incomingName && incomingName !== user.name && incomingName !== 'Music Lover') {
+    user.name = incomingName;
+    db.saveToDisk();
+  }
+
+  // If user is authenticated or registered in db, ensure canonical ID is used
   const canonicalUserId = user ? user.id : actualUserId;
+
+  // If user doesn't exist in memory yet (e.g. registered locally or cold start) and isn't demo, provision record
+  if (!user && canonicalUserId && canonicalUserId !== 'demo-user-id') {
+    const creatorName = incomingName || (candidateEmail ? candidateEmail.split('@')[0] : 'Music Lover');
+    const email = candidateEmail || `${canonicalUserId}@vibeflow.local`;
+    const username = candidateUser || (candidateEmail ? candidateEmail.split('@')[0] : canonicalUserId);
+    user = {
+      id: canonicalUserId,
+      email,
+      username,
+      name: creatorName,
+      avatar: reqCreator?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+      role: 'user',
+      preferences: { ...DEFAULT_PREFERENCES, userId: canonicalUserId },
+      createdAt: new Date().toISOString()
+    };
+    db.createUser(user, '');
+    db.syncUserToCloud(user, '').catch(() => {});
+  }
 
   const creator = user ? {
     id: user.id,
@@ -140,12 +181,19 @@ router.post('/', (req: Request, res: Response) => {
     username: user.username || user.name,
     avatar: user.avatar,
     email: user.email
+  } : (reqCreator && reqCreator.name && reqCreator.name !== 'Music Lover' ? {
+    id: canonicalUserId,
+    name: reqCreator.name,
+    username: reqCreator.username || reqCreator.name,
+    avatar: reqCreator.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+    email: reqCreator.email
   } : {
     id: canonicalUserId,
-    name: canonicalUserId === 'demo-user-id' ? 'Aarav Sharma' : 'Music Lover',
-    username: canonicalUserId === 'demo-user-id' ? 'demo' : canonicalUserId,
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
-  };
+    name: canonicalUserId === 'demo-user-id' ? 'Aarav Sharma' : (incomingName || 'Music Lover'),
+    username: canonicalUserId === 'demo-user-id' ? 'demo' : (candidateUser || canonicalUserId),
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+    email: candidateEmail
+  });
 
   const playlistId = `pl-${Date.now()}`;
   let initialItems: PlaylistItem[] = [];

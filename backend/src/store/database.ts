@@ -1085,7 +1085,28 @@ class MemoryDatabase {
     const pCreatorUser = (playlist.creator?.username || '').toLowerCase();
     const pCreatorEmail = (playlist.creator?.email || '').toLowerCase();
 
-    return idSet.has(pUid) || idSet.has(pCreatorId) || idSet.has(pCreatorUser) || idSet.has(pCreatorEmail);
+    if (idSet.has(pUid) || idSet.has(pCreatorId) || idSet.has(pCreatorUser) || idSet.has(pCreatorEmail)) {
+      return true;
+    }
+
+    // Check if playlist's creator or userId matches via user email or alias in database
+    const user = this.findUserById(userIdOrIdent) || this.findUserByIdentifier(userIdOrIdent);
+    if (user) {
+      if (pUid) {
+        const plOwner = this.findUserById(pUid) || this.findUserByIdentifier(pUid);
+        if (plOwner && (
+          (plOwner.email && user.email && plOwner.email.toLowerCase() === user.email.toLowerCase()) ||
+          plOwner.id === user.id
+        )) {
+          return true;
+        }
+      }
+      if (pCreatorEmail && user.email && pCreatorEmail === user.email.toLowerCase()) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   public isUserShared(playlist: Playlist, userIdOrIdent: string): boolean {
@@ -1101,20 +1122,22 @@ class MemoryDatabase {
 
     const isLoggedIn = Boolean(user && user.id !== 'demo-user-id');
 
-    // Automatically associate any client-created guest playlists with this authenticated user
+    // Automatically associate any client-created guest/session playlists with this authenticated user
     if (isLoggedIn && clientSet.size > 0 && user) {
       let modified = false;
       for (const p of this.data.playlists) {
-        if (clientSet.has(p.id) && (p.userId === 'demo-user-id' || !p.userId)) {
-          p.userId = user.id;
-          p.creator = {
-            id: user.id,
-            name: user.name,
-            username: user.username || user.name,
-            avatar: user.avatar,
-            email: user.email
-          };
-          modified = true;
+        if (clientSet.has(p.id)) {
+          if (p.userId !== user.id || !p.creator?.email) {
+            p.userId = user.id;
+            p.creator = {
+              id: user.id,
+              name: user.name,
+              username: user.username || user.name,
+              avatar: user.avatar,
+              email: user.email
+            };
+            modified = true;
+          }
         }
       }
       if (modified) {
@@ -1125,12 +1148,12 @@ class MemoryDatabase {
     return this.data.playlists
       .filter(p => {
         // When a real user is logged in across any device:
-        // App shall show playlist ONLY created or shared to user logged in across any device.
-        // No other playlist shall be shown to user's playlist page which is not owned by him or shared to him.
+        // App shows playlists created by, client-created by, or shared to the user
         if (isLoggedIn && user) {
           const isOwner = this.isUserOwner(p, user.id);
           const isShared = this.isUserShared(p, user.id);
-          return isOwner || isShared;
+          const isClientCreated = clientSet.has(p.id);
+          return isOwner || isShared || isClientCreated;
         }
 
         // For guest / unauthenticated / demo sessions only:
@@ -1143,7 +1166,9 @@ class MemoryDatabase {
         return isOwner || isClientCreated || isShared;
       })
       .map(p => {
-        const isOwner = (isLoggedIn && user) ? this.isUserOwner(p, user.id) : (this.isUserOwner(p, userId) || clientSet.has(p.id));
+        const isOwner = (isLoggedIn && user) 
+          ? (this.isUserOwner(p, user.id) || clientSet.has(p.id)) 
+          : (this.isUserOwner(p, userId) || clientSet.has(p.id));
         const isPreset = p.id.startsWith('playlist-');
         return {
           ...p,
@@ -1179,10 +1204,16 @@ class MemoryDatabase {
           avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
         };
       }
-    } else if (user && (!playlist.creator.id || playlist.creator.id === rawUserId)) {
-      playlist.creator.id = user.id;
-      if (!playlist.creator.username) playlist.creator.username = user.username || user.name;
-      if (!playlist.creator.email) playlist.creator.email = user.email;
+    } else {
+      if (user) {
+        playlist.creator.id = user.id;
+        if (!playlist.creator.name || playlist.creator.name === 'Music Lover') {
+          playlist.creator.name = user.name;
+        }
+        playlist.creator.username = user.username || playlist.creator.username || user.name;
+        playlist.creator.email = user.email || playlist.creator.email;
+        playlist.creator.avatar = user.avatar || playlist.creator.avatar;
+      }
     }
 
     if (!Array.isArray(playlist.sharedWith)) playlist.sharedWith = [];

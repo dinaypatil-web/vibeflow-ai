@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Sparkles, Plus, Trash2, CheckCircle2 } from 'lucide-react';
 import { Playlist, PlaylistRule, GenreCategory, MoodCategory } from '../types';
 import { api } from '../services/api';
+import { usePlayerStore } from '../store/playerStore';
 
 interface SmartPlaylistModalProps {
   isOpen: boolean;
@@ -22,6 +23,7 @@ export const SmartPlaylistModal: React.FC<SmartPlaylistModalProps> = ({
   ]);
   const [limit, setLimit] = useState(25);
   const [saving, setSaving] = useState(false);
+  const { user, token } = usePlayerStore();
 
   if (!isOpen) return null;
 
@@ -65,8 +67,16 @@ export const SmartPlaylistModal: React.FC<SmartPlaylistModalProps> = ({
           rules,
           matchLogic,
           limit
-        }
-      });
+        },
+        userId: user?.id,
+        creator: user ? {
+          id: user.id,
+          name: user.name,
+          username: user.username || user.name,
+          avatar: user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+          email: user.email
+        } : undefined
+      }, token);
       onPlaylistCreated(created);
       onClose();
     } catch (err) {

@@ -107,29 +107,26 @@ export function getLocallyCachedPlaylists(userId?: string): Playlist[] {
 export function mergeWithLocalPlaylists(serverPlaylists: Playlist[], userId?: string): Playlist[] {
   try {
     const uid = userId || getStoredUserId();
-    const isLoggedIn = Boolean(uid && uid !== 'demo-user-id');
-
-    if (isLoggedIn) {
-      // For logged-in users across any device, server response is authoritative.
-      // Cache server playlists for offline resilience for this specific user.
-      localStorage.setItem(getCacheKey(uid), JSON.stringify(serverPlaylists.slice(0, 100)));
-      return serverPlaylists;
-    }
-
-    // Guest / demo mode offline resilience
+    const createdIds = new Set(getStoredCreatedPlaylistIds(uid));
     const cached = getLocallyCachedPlaylists(uid);
-    if (cached.length === 0) {
-      return serverPlaylists;
-    }
 
     const map = new Map<string, Playlist>();
-    for (const pl of cached) {
-      map.set(pl.id, pl);
-    }
+    
+    // Server playlists take base precedence
     for (const pl of serverPlaylists) {
       map.set(pl.id, pl);
     }
-    return Array.from(map.values());
+
+    // Preserve any locally created playlists that have not yet arrived from server
+    for (const pl of cached) {
+      if (!map.has(pl.id) && createdIds.has(pl.id)) {
+        map.set(pl.id, pl);
+      }
+    }
+
+    const merged = Array.from(map.values());
+    localStorage.setItem(getCacheKey(uid), JSON.stringify(merged.slice(0, 100)));
+    return merged;
   } catch {
     return serverPlaylists;
   }
@@ -288,11 +285,48 @@ export const api = {
   createPlaylist: async (playlistData: Partial<Playlist>, token?: string | null): Promise<Playlist> => {
     const uid = playlistData.userId || getStoredUserId();
     const t = token !== undefined ? token : getStoredToken();
+
+    // Automatically resolve logged-in user profile if creator details are missing
+    let creator = playlistData.creator;
+    let userEmail = (creator as any)?.email;
+    let userName = creator?.name;
+    try {
+      const uRaw = localStorage.getItem('vibeflow_user');
+      if (uRaw) {
+        const u = JSON.parse(uRaw);
+        if (u && u.name) {
+          if (!creator || creator.name === 'Music Lover') {
+            creator = {
+              id: u.id || uid,
+              name: u.name,
+              username: u.username || u.name,
+              avatar: u.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+              email: u.email
+            };
+          }
+          if (!userEmail && u.email) userEmail = u.email;
+          if (!userName && u.name) userName = u.name;
+        }
+      }
+    } catch {}
+
+    const payload = {
+      ...playlistData,
+      userId: uid,
+      creator,
+      userEmail,
+      userName
+    };
+
     const res = await fetch(`${API_BASE}/playlists`, {
       method: 'POST',
       headers: authHeaders(t),
-      body: JSON.stringify({ ...playlistData, userId: uid })
+      body: JSON.stringify(payload)
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create playlist');
+    }
     const data = await res.json();
     const created: Playlist = data.playlist;
     if (created && created.id) {

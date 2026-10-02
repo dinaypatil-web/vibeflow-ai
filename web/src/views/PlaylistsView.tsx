@@ -51,7 +51,7 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
   const [loading, setLoading] = useState(true);
   const [playlistSort, setPlaylistSort] = useState<string>('default');
 
-  const { playTrack, setNowPlayingOpen, user, logout } = usePlayerStore();
+  const { playTrack, setNowPlayingOpen, user, logout, token } = usePlayerStore();
 
   const sortedPlaylistItems = useMemo(() => {
     if (!selectedPlaylist?.items || selectedPlaylist.items.length === 0) return [];
@@ -67,7 +67,7 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
   const fetchPlaylists = async (preferredPlaylistId?: string) => {
     setLoading(true);
     try {
-      const data = await api.getPlaylists();
+      const data = await api.getPlaylists(user?.id, token);
       
       const isLoggedIn = Boolean(user && user.id !== 'demo-user-id');
 
@@ -531,7 +531,7 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
                           </span>
                         ) : (
                           <span className="text-[10px] text-slate-400 truncate">
-                            by {pl.creator?.name?.split(' ')[0] || 'You'}
+                            by {(user && (!pl.creator?.name || pl.creator.name === 'Music Lover')) ? user.name.split(' ')[0] : (pl.creator?.name?.split(' ')[0] || 'You')}
                           </span>
                         )}
                       </div>
@@ -589,15 +589,24 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
                     <div className="flex flex-wrap items-center gap-2.5 mt-2 text-xs">
                       <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-surface-800 border border-white/5">
                         <img
-                          src={selectedPlaylist.creator?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
+                          src={selectedPlaylist.creator?.avatar || (user && !selectedPlaylist.isSharedWithMe ? user.avatar : undefined) || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
                           alt=""
                           className="w-4 h-4 rounded-full object-cover"
                         />
                         <span className="text-slate-400">Created by</span>
-                        <span className="font-bold text-white">{selectedPlaylist.creator?.name || 'Aarav Sharma'}</span>
-                        {selectedPlaylist.creator?.username && (
-                          <span className="text-slate-400">(@{selectedPlaylist.creator.username})</span>
-                        )}
+                        <span className="font-bold text-white">
+                          {(!selectedPlaylist.isSharedWithMe && user && (!selectedPlaylist.creator?.name || selectedPlaylist.creator.name === 'Music Lover'))
+                            ? user.name
+                            : (selectedPlaylist.creator?.name || (user ? user.name : 'You'))}
+                        </span>
+                        {(() => {
+                          const rawUsername = (!selectedPlaylist.isSharedWithMe && user && (!selectedPlaylist.creator?.username || selectedPlaylist.creator.username.startsWith('usr-')))
+                            ? (user.username || user.name)
+                            : selectedPlaylist.creator?.username;
+                          if (!rawUsername) return null;
+                          const displayUser = rawUsername.startsWith('usr-') && user?.username ? user.username : rawUsername;
+                          return <span className="text-slate-400">(@{displayUser})</span>;
+                        })()}
                       </div>
 
                       <div className="flex items-center gap-1 text-slate-400 font-mono text-[11px] px-2.5 py-1 rounded-xl bg-surface-800 border border-white/5">

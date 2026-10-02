@@ -19,6 +19,8 @@ const PRESET_COVERS = [
   'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?auto=format&fit=crop&w=600&q=80'
 ];
 
+import { usePlayerStore } from '../store/playerStore';
+
 export const CreatePlaylistModal: React.FC<CreatePlaylistModalProps> = ({ 
   isOpen, 
   onClose, 
@@ -28,6 +30,7 @@ export const CreatePlaylistModal: React.FC<CreatePlaylistModalProps> = ({
   const [description, setDescription] = useState('');
   const [selectedCover, setSelectedCover] = useState(PRESET_COVERS[0]);
   const [saving, setSaving] = useState(false);
+  const { user, token } = usePlayerStore();
 
   if (!isOpen) return null;
 
@@ -43,8 +46,16 @@ export const CreatePlaylistModal: React.FC<CreatePlaylistModalProps> = ({
         coverArt: selectedCover,
         isSmart: false,
         isPrivate: false,
-        isShareable: true
-      });
+        isShareable: true,
+        userId: user?.id,
+        creator: user ? {
+          id: user.id,
+          name: user.name,
+          username: user.username || user.name,
+          avatar: user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+          email: user.email
+        } : undefined
+      }, token);
       onPlaylistCreated(created);
       onClose();
       setTitle('');
