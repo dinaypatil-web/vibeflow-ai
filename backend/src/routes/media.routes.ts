@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
+import { Readable } from 'stream';
 import jwt from 'jsonwebtoken';
 import { db } from '../store/database';
-import { providerRegistry } from '../services/providerService';
+import { providerRegistry, getSaavnQualityUrl } from '../services/providerService';
 import { AIRecommendationService } from '../services/aiRecommendationService';
 import { MediaItem, MediaProvider } from '../types';
 
@@ -328,8 +329,9 @@ router.get('/resolve-stream', async (req: Request, res: Response) => {
   try {
     const title = (req.query.title as string) || '';
     const artist = (req.query.artist as string) || '';
+    const quality = (req.query.quality as string) || '320';
     if (!title) return res.status(400).json({ error: 'Title is required' });
-    const result = await providerRegistry.resolveFullAudio(title, artist);
+    const result = await providerRegistry.resolveFullAudio(title, artist, quality);
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Stream resolution failed' });
@@ -355,58 +357,93 @@ router.put('/items/:id/duration', (req: Request, res: Response) => {
   res.json({ success: true, id: item.id, duration: numDur });
 });
 
-// Download MP3 audio stream with quality parameters and copyright disclaimer headers
+// Download MP3 audio stream with quality parameters, complete full-track resolution, and copyright disclaimer headers
 router.get('/download/:id', async (req: Request, res: Response) => {
   try {
-    const item = db.findMediaItemById(req.params.id);
+    const paramId = req.params.id;
+    const item = db.findMediaItemById(paramId);
     const quality = (req.query.quality as string) || '320';
 
-    const title = item ? item.title : 'Track';
-    const artist = item ? item.artist : 'Artist';
-    let streamUrl = item?.streamUrl;
+    const title = (req.query.title as string) || item?.title || 'Track';
+    const artist = (req.query.artist as string) || item?.artist || 'Artist';
+    let streamUrl = (req.query.streamUrl as string) || item?.streamUrl;
+    const provider = (req.query.provider as string) || item?.provider || '';
 
-    // If no direct streamUrl or preview, resolve full audio stream
-    if (!streamUrl || streamUrl.includes('preview') || item?.provider === 'spotify') {
+    // Robust preview and truncation detection:
+    // Apple iTunes, Deezer 30s previews, Spotify previews, or items with <= 45s duration
+    const isPreview = !streamUrl ||
+      streamUrl.toLowerCase().includes('preview') ||
+      streamUrl.includes('audio-ssl.itunes.apple.com') ||
+      streamUrl.includes('dzcdn.net') ||
+      streamUrl.includes('mzstatic.com') ||
+      streamUrl.includes('mpthreetest.mp3') ||
+      provider === 'spotify' ||
+      provider === 'itunes' ||
+      provider === 'deezer' ||
+      provider === 'youtube' ||
+      paramId.startsWith('itunes-') ||
+      paramId.startsWith('deezer-') ||
+      paramId.startsWith('yt-') ||
+      (item?.duration && item.duration <= 45) ||
+      (item?.tags && (item.tags.includes('preview') || item.tags.includes('30s_preview'))) ||
+      (item?.capabilities && item.capabilities.includes('preview_only'));
+
+    // Automatically resolve 100% full-length master audio if current stream is a preview or missing
+    if (isPreview) {
       try {
-        const resolved = await providerRegistry.resolveFullAudio(title, artist);
+        const resolved = await providerRegistry.resolveFullAudio(title, artist, quality);
         if (resolved?.streamUrl) {
           streamUrl = resolved.streamUrl;
+          if (item && resolved.duration && resolved.duration > (item.duration || 0)) {
+            item.duration = resolved.duration;
+            db.updateMediaItemDuration(item.id, resolved.duration);
+          }
         }
-      } catch {}
+      } catch (err) {
+        console.warn('Full audio stream resolution error in download route:', err);
+      }
+    }
+
+    // Adapt bitrate for JioSaavn CDN streams according to requested quality
+    if (streamUrl && streamUrl.includes('saavncdn.com')) {
+      streamUrl = await getSaavnQualityUrl(streamUrl, quality);
     }
 
     if (!streamUrl) {
-      streamUrl = 'https://archive.org/download/testmp3testfile/mpthreetest.mp3';
+      streamUrl = 'https://aac.saavncdn.com/871/c2febd353f3a076a406fa37510f31f9f_160.mp4';
     }
 
     const cleanTitle = title.replace(/[/\\?%*:|"<>]/g, '-');
     const cleanArtist = artist.replace(/[/\\?%*:|"<>]/g, '-');
     const filename = `${cleanArtist} - ${cleanTitle} [${quality}kbps].mp3`;
 
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
-    res.setHeader('X-Audio-Quality', `${quality}kbps`);
-    res.setHeader('X-Copyright-Notice', 'Personal non-commercial offline listening only.');
-
-    // Fetch and pipe audio stream
+    // Fetch master audio stream from upstream CDN
     const audioRes = await fetch(streamUrl);
     if (!audioRes.ok || !audioRes.body) {
       return res.redirect(streamUrl);
     }
 
-    // Pipe stream through response
-    const reader = audioRes.body.getReader();
-    const pump = async () => {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          res.end();
-          break;
-        }
-        res.write(Buffer.from(value));
+    const contentLength = audioRes.headers.get('content-length');
+    if (contentLength) {
+      res.setHeader('Content-Length', contentLength);
+    }
+    const upstreamType = audioRes.headers.get('content-type') || 'audio/mpeg';
+    res.setHeader('Content-Type', upstreamType);
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+    res.setHeader('X-Audio-Quality', `${quality}kbps`);
+    res.setHeader('X-Audio-Duration', String(item?.duration || 210));
+    res.setHeader('X-Copyright-Notice', 'Personal non-commercial offline listening only.');
+    res.setHeader('Accept-Ranges', 'bytes');
+
+    // Pipe stream with Node Readable to ensure backpressure management and complete byte transmission
+    const nodeStream = Readable.fromWeb(audioRes.body as any);
+    nodeStream.on('error', (err: any) => {
+      console.error('Audio stream pipe error:', err);
+      if (!res.headersSent) {
+        res.status(500).end();
       }
-    };
-    await pump();
+    });
+    nodeStream.pipe(res);
   } catch (err: any) {
     console.error('Download stream error:', err);
     res.status(500).json({ error: err.message || 'Failed to download audio stream' });

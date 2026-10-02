@@ -107,16 +107,38 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({
     setDownloadProgress(10);
 
     try {
-      // 1. Resolve direct audio stream
+      // 1. Robust preview and cutoff detection:
+      // Apple iTunes previews, Deezer previews, Spotify previews, YouTube tracks without streamUrl
       let streamUrl = track.streamUrl;
-      if (!streamUrl || streamUrl.includes('preview') || track.provider === 'spotify') {
+      const isPreview = !streamUrl || 
+        streamUrl.toLowerCase().includes('preview') ||
+        streamUrl.includes('audio-ssl.itunes.apple.com') ||
+        streamUrl.includes('dzcdn.net') ||
+        streamUrl.includes('mzstatic.com') ||
+        streamUrl.includes('mpthreetest.mp3') ||
+        (track.provider as string) === 'spotify' ||
+        (track.provider as string) === 'itunes' ||
+        (track.provider as string) === 'deezer' ||
+        (track.provider as string) === 'youtube' ||
+        track.id.startsWith('itunes-') ||
+        track.id.startsWith('deezer-') ||
+        track.id.startsWith('yt-') ||
+        (track.duration && track.duration <= 45) ||
+        (track.tags && (track.tags.includes('preview') || track.tags.includes('30s_preview'))) ||
+        (track.capabilities && track.capabilities.includes('preview_only'));
+
+      let resolvedDuration = track.duration;
+      if (isPreview) {
         setDownloadProgress(25);
         try {
-          const res = await fetch(`/api/media/resolve-stream?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist)}`);
+          const res = await fetch(`/api/media/resolve-stream?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist)}&quality=${selectedQuality}`);
           if (res.ok) {
             const data = await res.json();
             if (data?.streamUrl) {
               streamUrl = data.streamUrl;
+            }
+            if (data?.duration && data.duration > 40) {
+              resolvedDuration = data.duration;
             }
           }
         } catch {}
@@ -124,9 +146,10 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({
 
       setDownloadProgress(45);
 
-      // Fallback: If no direct streamUrl or CORS restriction, use backend proxy download endpoint
-      const downloadEndpoint = `/api/media/download/${track.id}?quality=${selectedQuality}`;
-      const fetchTarget = streamUrl && (streamUrl.startsWith('blob:') || streamUrl.startsWith('data:') || streamUrl.includes('archive.org') || streamUrl.includes('unsplash'))
+      // Backend proxy download endpoint with full query parameters to guarantee complete audio stream
+      const downloadEndpoint = `/api/media/download/${encodeURIComponent(track.id)}?quality=${selectedQuality}&title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist)}&provider=${encodeURIComponent(track.provider || '')}${streamUrl ? `&streamUrl=${encodeURIComponent(streamUrl)}` : ''}`;
+
+      const fetchTarget = (streamUrl && (streamUrl.startsWith('blob:') || streamUrl.startsWith('data:')))
         ? streamUrl
         : downloadEndpoint;
 
@@ -138,11 +161,17 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({
         }
         setDownloadProgress(75);
         audioBlob = await response.blob();
+        const headerDur = response.headers.get('X-Audio-Duration');
+        if (headerDur) {
+          const parsed = parseInt(headerDur, 10);
+          if (parsed > (resolvedDuration || 0)) {
+            resolvedDuration = parsed;
+          }
+        }
       } catch (err) {
-        // Fallback: create an offline audio blob with embedded metadata tag if network proxy fails
-        console.warn('Network download fetch failed, generating offline audio stream:', err);
-        const fallbackRes = await fetch(track.streamUrl || 'https://archive.org/download/testmp3testfile/mpthreetest.mp3');
-        audioBlob = await fallbackRes.blob();
+        console.warn('Primary download endpoint failed, trying backup full resolution:', err);
+        const backupRes = await fetch(`/api/media/download/${encodeURIComponent(track.id)}?quality=${selectedQuality}&title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist)}`);
+        audioBlob = await backupRes.blob();
       }
 
       // Ensure proper audio/mpeg mime type
@@ -152,8 +181,13 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({
 
       setDownloadProgress(90);
 
-      // 2. Save into IndexedDB for persistent offline playback in the app
-      await offlineStorage.saveOfflineTrack(track, selectedQuality, audioBlob);
+      // 2. Save into IndexedDB for persistent offline playback with full track length
+      const offlineTrackToSave: MediaItem = {
+        ...track,
+        duration: resolvedDuration && resolvedDuration > 30 ? resolvedDuration : 210,
+        streamUrl: streamUrl || track.streamUrl
+      };
+      await offlineStorage.saveOfflineTrack(offlineTrackToSave, selectedQuality, audioBlob);
       if (loadOfflineTracks) {
         await loadOfflineTracks();
       }

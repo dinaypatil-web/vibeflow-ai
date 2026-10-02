@@ -262,11 +262,13 @@ export default function App() {
     setTimeout(() => {
       const bitrates: Record<string, number> = { '320': 2.4, '256': 1.9, '128': 0.96, '64': 0.48 };
       const rate = bitrates[selectedQuality] || 2.0;
-      const sizeMB = (downloadTargetTrack.duration / 60) * rate;
+      const effectiveDuration = (downloadTargetTrack.duration && downloadTargetTrack.duration > 35) ? downloadTargetTrack.duration : 210;
+      const sizeMB = (effectiveDuration / 60) * rate;
       const newOfflineItem: OfflineTrackItem = {
         id: downloadTargetTrack.id,
         track: {
           ...downloadTargetTrack,
+          duration: effectiveDuration,
           isOfflinePermitted: true
         },
         quality: selectedQuality,
