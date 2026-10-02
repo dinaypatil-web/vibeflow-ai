@@ -16,7 +16,8 @@ import {
   Sparkles,
   Youtube,
   HardDrive,
-  Waves
+  Waves,
+  Download
 } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
 
@@ -43,6 +44,7 @@ export const MiniPlayer: React.FC = () => {
     toggleFavorite,
     setNowPlayingOpen,
     setSleepTimer,
+    openDownloadModal,
     setSpotifyConnectModalOpen,
     spotifyAccount
   } = usePlayerStore();
@@ -230,6 +232,15 @@ export const MiniPlayer: React.FC = () => {
 
         {/* Right Volume & Tools */}
         <div className="flex items-center gap-3">
+          {/* Download for offline listening */}
+          <button
+            onClick={() => openDownloadModal(currentTrack)}
+            className="p-2 rounded-lg text-slate-400 hover:text-brand-300 hover:bg-surface-750 transition-colors"
+            title="Download MP3 for offline listening"
+          >
+            <Download className="w-4 h-4" />
+          </button>
+
           {/* Sleep timer quick setting */}
           <button
             onClick={() => {

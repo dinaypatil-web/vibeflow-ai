@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import { MediaItem, User, UserPreferences, SourceAccount, AppTheme } from '../types';
+import { MediaItem, User, UserPreferences, SourceAccount, AppTheme, OfflineTrack } from '../types';
 import { api } from '../services/api';
+import { offlineStorage } from '../services/offlineStorage';
 
 export type TabType = 'home' | 'search' | 'explore' | 'playlists' | 'library' | 'ai-studio' | 'settings';
 export type RepeatMode = 'off' | 'all' | 'one';
@@ -111,6 +112,17 @@ interface PlayerState {
   spotifyAccount: SourceAccount;
   theme: AppTheme;
 
+  // Download Modal & Offline Tracks
+  downloadModalTrack: MediaItem | null;
+  isDownloadModalOpen: boolean;
+  offlineTracks: OfflineTrack[];
+  offlineStorageStats: { totalBytes: number; count: number };
+  openDownloadModal: (track: MediaItem) => void;
+  closeDownloadModal: () => void;
+  loadOfflineTracks: () => Promise<void>;
+  removeOfflineTrack: (id: string) => Promise<void>;
+  clearOfflineStorage: () => Promise<void>;
+
   // Actions
   setTheme: (theme: AppTheme) => void;
   setSpotifyConnectModalOpen: (open: boolean) => void;
@@ -179,6 +191,44 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   spotifyAccount: persisted.spotifyAccount,
   theme: persisted.theme,
 
+  downloadModalTrack: null,
+  isDownloadModalOpen: false,
+  offlineTracks: [],
+  offlineStorageStats: { totalBytes: 0, count: 0 },
+
+  openDownloadModal: (track: MediaItem) => set({ downloadModalTrack: track, isDownloadModalOpen: true }),
+  closeDownloadModal: () => set({ downloadModalTrack: null, isDownloadModalOpen: false }),
+
+  loadOfflineTracks: async () => {
+    try {
+      const tracks = await offlineStorage.getAllOfflineTracks();
+      const stats = await offlineStorage.getOfflineStorageStats();
+      set({ offlineTracks: tracks, offlineStorageStats: stats });
+    } catch (e) {
+      console.warn('Failed to load offline tracks:', e);
+    }
+  },
+
+  removeOfflineTrack: async (id: string) => {
+    try {
+      await offlineStorage.deleteOfflineTrack(id);
+      const tracks = await offlineStorage.getAllOfflineTracks();
+      const stats = await offlineStorage.getOfflineStorageStats();
+      set({ offlineTracks: tracks, offlineStorageStats: stats });
+    } catch (e) {
+      console.warn('Failed to remove offline track:', e);
+    }
+  },
+
+  clearOfflineStorage: async () => {
+    try {
+      await offlineStorage.clearAllOfflineStorage();
+      set({ offlineTracks: [], offlineStorageStats: { totalBytes: 0, count: 0 } });
+    } catch (e) {
+      console.warn('Failed to clear offline storage:', e);
+    }
+  },
+
   setTheme: (theme: AppTheme) => {
     try {
       localStorage.setItem(LS_THEME, theme);
@@ -215,30 +265,38 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     let queue = get().queue;
     let queueIndex = get().queueIndex;
 
+    // Check if track is available in local offline vault
+    const offlineMatch = get().offlineTracks.find(t => t.id === track.id);
+    const resolvedTrack: MediaItem = offlineMatch?.offlineUrl ? {
+      ...track,
+      streamUrl: offlineMatch.offlineUrl,
+      isOfflinePermitted: true
+    } : track;
+
     if (newQueue && newQueue.length > 0) {
       queue = newQueue;
-      queueIndex = queue.findIndex(t => t.id === track.id);
+      queueIndex = queue.findIndex(t => t.id === resolvedTrack.id);
       if (queueIndex === -1) {
-        queue = [track, ...queue];
+        queue = [resolvedTrack, ...queue];
         queueIndex = 0;
       }
     } else {
       if (queue.length === 0) {
-        queue = [track];
+        queue = [resolvedTrack];
         queueIndex = 0;
       } else {
-        const found = queue.findIndex(t => t.id === track.id);
+        const found = queue.findIndex(t => t.id === resolvedTrack.id);
         if (found !== -1) {
           queueIndex = found;
         } else {
-          queue = [...queue, track];
+          queue = [...queue, resolvedTrack];
           queueIndex = queue.length - 1;
         }
       }
     }
 
     set({
-      currentTrack: track,
+      currentTrack: resolvedTrack,
       isPlaying: true,
       queue,
       queueIndex,

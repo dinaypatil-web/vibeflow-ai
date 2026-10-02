@@ -65,7 +65,8 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
     setSleepTimer,
     playTrack,
     spotifyAccount,
-    setSpotifyConnectModalOpen
+    setSpotifyConnectModalOpen,
+    openDownloadModal
   } = usePlayerStore();
 
   const [activeTab, setActiveTab] = useState<'visualizer' | 'video' | 'spotify' | 'lyrics' | 'queue'>('visualizer');
@@ -567,8 +568,17 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
                 </div>
               </div>
 
-              {/* Sleep timer & Favorite buttons */}
+              {/* Download, Sleep timer & Favorite buttons */}
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => openDownloadModal(currentTrack)}
+                  className="px-3 py-1.5 rounded-xl bg-surface-800 hover:bg-brand-600 hover:text-white text-slate-300 flex items-center gap-1.5 font-medium transition-all border border-white/5"
+                  title="Download MP3 for offline listening"
+                >
+                  <DownloadCloud className="w-3.5 h-3.5 text-brand-400" />
+                  <span className="text-xs">Download MP3</span>
+                </button>
+
                 <button
                   onClick={() => setShowSleepModal(!showSleepModal)}
                   className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 font-medium transition-all ${

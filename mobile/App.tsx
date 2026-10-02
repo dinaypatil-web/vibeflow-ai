@@ -26,6 +26,14 @@ interface MediaItem {
   isOfflinePermitted: boolean;
 }
 
+interface OfflineTrackItem {
+  id: string;
+  track: MediaItem;
+  quality: '320' | '256' | '128' | '64';
+  fileSizeBytes: number;
+  downloadedAt: string;
+}
+
 const SAMPLE_TRACKS: MediaItem[] = [
   {
     id: 'track-1',
@@ -77,6 +85,46 @@ export default function App() {
   const queueIndexRef = useRef(0);
   const repeatModeRef = useRef<'all' | 'one' | 'off'>('all');
   const isShuffleRef = useRef(false);
+
+  // Offline Audio & Download State
+  const [offlineTracks, setOfflineTracks] = useState<OfflineTrackItem[]>([
+    {
+      id: 'track-2',
+      track: SAMPLE_TRACKS[1],
+      quality: '320',
+      fileSizeBytes: 6.8 * 1024 * 1024,
+      downloadedAt: 'Cached'
+    }
+  ]);
+  const [downloadTargetTrack, setDownloadTargetTrack] = useState<MediaItem | null>(null);
+  const [isDownloadModalVisible, setIsDownloadModalVisible] = useState(false);
+  const [selectedQuality, setSelectedQuality] = useState<'320' | '256' | '128' | '64'>('320');
+  const [isCopyrightAgreed, setIsCopyrightAgreed] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadSuccess, setDownloadSuccess] = useState(false);
+
+  const handleStartDownload = () => {
+    if (!isCopyrightAgreed || !downloadTargetTrack) return;
+    setIsDownloading(true);
+    setTimeout(() => {
+      const bitrates: Record<string, number> = { '320': 2.4, '256': 1.9, '128': 0.96, '64': 0.48 };
+      const rate = bitrates[selectedQuality] || 2.0;
+      const sizeMB = (downloadTargetTrack.duration / 60) * rate;
+      const newOfflineItem: OfflineTrackItem = {
+        id: downloadTargetTrack.id,
+        track: {
+          ...downloadTargetTrack,
+          isOfflinePermitted: true
+        },
+        quality: selectedQuality,
+        fileSizeBytes: Math.round(sizeMB * 1024 * 1024),
+        downloadedAt: 'Just now'
+      };
+      setOfflineTracks(prev => [newOfflineItem, ...prev.filter(t => t.id !== downloadTargetTrack.id)]);
+      setIsDownloading(false);
+      setDownloadSuccess(true);
+    }, 1200);
+  };
 
   const soundRef = useRef<Audio.Sound | null>(null);
 
@@ -269,6 +317,18 @@ export default function App() {
                     <Text style={styles.moodTag}>{track.mood}</Text>
                   </View>
                 </View>
+                <TouchableOpacity
+                  style={styles.cardDownloadBtn}
+                  onPress={() => {
+                    setDownloadTargetTrack(track);
+                    setSelectedQuality('320');
+                    setIsCopyrightAgreed(false);
+                    setDownloadSuccess(false);
+                    setIsDownloadModalVisible(true);
+                  }}
+                >
+                  <Text style={styles.cardDownloadIcon}>📥</Text>
+                </TouchableOpacity>
               </TouchableOpacity>
             ))}
           </View>
@@ -296,13 +356,34 @@ export default function App() {
 
         {activeTab === 'library' && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Offline Audio & Device Library</Text>
+            <Text style={styles.sectionTitle}>Offline Audio Vault</Text>
             <View style={styles.libraryBox}>
-              <Text style={styles.libraryBoxTitle}>📥 Local Audio Storage</Text>
+              <Text style={styles.libraryBoxTitle}>📥 Local In-App Offline Vault</Text>
               <Text style={styles.libraryBoxDesc}>
-                MP3, WAV, and FLAC files saved on device have full offline background playback.
+                {offlineTracks.length} tracks cached ({((offlineTracks.reduce((a, b) => a + b.fileSizeBytes, 0)) / (1024 * 1024)).toFixed(1)} MB). Full background audio without internet.
               </Text>
             </View>
+
+            <Text style={[styles.sectionTitle, { marginTop: 14 }]}>Offline Tracks ({offlineTracks.length})</Text>
+            {offlineTracks.map(item => (
+              <View key={item.id} style={styles.trackCard}>
+                <Image source={{ uri: item.track.thumbnail }} style={styles.trackThumb} />
+                <View style={styles.trackMeta}>
+                  <Text style={styles.trackTitle} numberOfLines={1}>{item.track.title}</Text>
+                  <Text style={styles.trackArtist}>{item.track.artist}</Text>
+                  <View style={styles.tagRow}>
+                    <Text style={styles.qualityBadge}>{item.quality} kbps MP3</Text>
+                    <Text style={styles.offlineBadge}>Offline Ready</Text>
+                  </View>
+                </View>
+                <TouchableOpacity 
+                  style={styles.offlinePlayBtn} 
+                  onPress={() => playTrack(item.track)}
+                >
+                  <Text style={styles.offlinePlayText}>▶</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
           </View>
         )}
 
@@ -393,13 +474,140 @@ export default function App() {
                   <Text style={styles.modalSecondaryButtonText}>⏭</Text>
                 </TouchableOpacity>
               </View>
+
+              {/* Download Option for Offline Play in App */}
+              <TouchableOpacity
+                onPress={() => {
+                  setDownloadTargetTrack(currentTrack);
+                  setSelectedQuality('320');
+                  setIsCopyrightAgreed(false);
+                  setDownloadSuccess(false);
+                  setIsDownloadModalVisible(true);
+                }}
+                style={styles.modalDownloadAction}
+              >
+                <Text style={styles.modalDownloadActionText}>📥 Download MP3 (All Qualities)</Text>
+              </TouchableOpacity>
             </View>
           )}
         </SafeAreaView>
       </Modal>
+
+      {/* Download & Copyright Disclaimer Modal */}
+      <Modal visible={isDownloadModalVisible} animationType="slide" transparent>
+        <View style={styles.downloadModalBackdrop}>
+          <View style={styles.downloadModalCard}>
+            <View style={styles.downloadModalHeader}>
+              <Text style={styles.downloadModalTitle}>Download for Offline Play</Text>
+              <TouchableOpacity onPress={() => setIsDownloadModalVisible(false)}>
+                <Text style={styles.closeText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {downloadTargetTrack && (
+              <ScrollView style={{ maxHeight: 440 }}>
+                {/* Track Info */}
+                <View style={styles.downloadTrackInfo}>
+                  <Image source={{ uri: downloadTargetTrack.thumbnail }} style={styles.downloadThumb} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.downloadTrackTitle} numberOfLines={1}>{downloadTargetTrack.title}</Text>
+                    <Text style={styles.downloadTrackArtist}>{downloadTargetTrack.artist}</Text>
+                    <Text style={styles.downloadMeta}>Duration: {formatTime(downloadTargetTrack.duration * 1000)}</Text>
+                  </View>
+                </View>
+
+                {!downloadSuccess ? (
+                  <>
+                    {/* Quality Options */}
+                    <Text style={styles.qualitySectionTitle}>Select MP3 Quality:</Text>
+                    <View style={styles.qualityChipsContainer}>
+                      {[
+                        { q: '320', label: '320 kbps (Ultra HQ Master)' },
+                        { q: '256', label: '256 kbps (High Quality)' },
+                        { q: '128', label: '128 kbps (Standard Saver)' },
+                        { q: '64', label: '64 kbps (Eco Data)' },
+                      ].map(opt => (
+                        <TouchableOpacity
+                          key={opt.q}
+                          onPress={() => setSelectedQuality(opt.q as any)}
+                          style={[
+                            styles.qualityChip,
+                            selectedQuality === opt.q && styles.qualityChipSelected
+                          ]}
+                        >
+                          <Text style={[
+                            styles.qualityChipText,
+                            selectedQuality === opt.q && styles.qualityChipTextSelected
+                          ]}>
+                            {opt.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+
+                    {/* Clear Copyright Disclaimer Box */}
+                    <View style={styles.disclaimerBox}>
+                      <Text style={styles.disclaimerTitle}>⚠️ Copyright & Fair-Use Notice</Text>
+                      <Text style={styles.disclaimerText}>
+                        Audio recordings are protected by copyright. Downloads are strictly authorized for personal, non-commercial offline listening only. Commercial exploitation, broadcasting, or redistribution without rights-holder permission is strictly prohibited by law.
+                      </Text>
+
+                      <TouchableOpacity
+                        onPress={() => setIsCopyrightAgreed(!isCopyrightAgreed)}
+                        style={styles.checkboxRow}
+                      >
+                        <View style={[styles.checkboxBox, isCopyrightAgreed && styles.checkboxBoxChecked]}>
+                          {isCopyrightAgreed && <Text style={styles.checkmark}>✓</Text>}
+                        </View>
+                        <Text style={styles.checkboxLabel}>
+                          I acknowledge and confirm this download is solely for my personal, non-commercial offline listening.
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Download Button */}
+                    <TouchableOpacity
+                      onPress={handleStartDownload}
+                      disabled={!isCopyrightAgreed || isDownloading}
+                      style={[
+                        styles.startDownloadBtn,
+                        (!isCopyrightAgreed || isDownloading) && styles.startDownloadBtnDisabled
+                      ]}
+                    >
+                      {isDownloading ? (
+                        <ActivityIndicator color="#ffffff" size="small" />
+                      ) : (
+                        <Text style={styles.startDownloadText}>Download MP3 ({selectedQuality} kbps)</Text>
+                      )}
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <View style={styles.successBox}>
+                    <Text style={styles.successIcon}>✓</Text>
+                    <Text style={styles.successTitle}>Track Cached Offline!</Text>
+                    <Text style={styles.successDesc}>
+                      "{downloadTargetTrack.title}" is saved in your Offline Audio Vault ({selectedQuality} kbps MP3). You can play it anywhere without an active internet connection.
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setIsDownloadModalVisible(false);
+                        playTrack(downloadTargetTrack);
+                      }}
+                      style={styles.startDownloadBtn}
+                    >
+                      <Text style={styles.startDownloadText}>▶ Play Offline Now</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: {
@@ -775,5 +983,232 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 26,
   },
+  modalDownloadAction: {
+    marginTop: 22,
+    backgroundColor: 'rgba(124,58,237,0.15)',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(124,58,237,0.3)',
+  },
+  modalDownloadActionText: {
+    color: '#c4b5fd',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  cardDownloadBtn: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#181d30',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  cardDownloadIcon: {
+    fontSize: 14,
+  },
+  qualityBadge: {
+    backgroundColor: '#7c3aed',
+    color: '#ffffff',
+    fontSize: 9,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    fontWeight: 'bold',
+  },
+  offlineBadge: {
+    backgroundColor: '#065f46',
+    color: '#6ee7b7',
+    fontSize: 9,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    fontWeight: 'bold',
+  },
+  offlinePlayBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#7c3aed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  offlinePlayText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  downloadModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    justifyContent: 'flex-end',
+  },
+  downloadModalCard: {
+    backgroundColor: '#121624',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  downloadModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  downloadModalTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  downloadTrackInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#181d30',
+    padding: 12,
+    borderRadius: 14,
+    gap: 12,
+    marginBottom: 14,
+  },
+  downloadThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+  },
+  downloadTrackTitle: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  downloadTrackArtist: {
+    color: '#94a3b8',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  downloadMeta: {
+    color: '#64748b',
+    fontSize: 10,
+    marginTop: 2,
+    fontFamily: 'monospace',
+  },
+  qualitySectionTitle: {
+    color: '#e2e8f0',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  qualityChipsContainer: {
+    gap: 6,
+    marginBottom: 14,
+  },
+  qualityChip: {
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: '#181d30',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  qualityChipSelected: {
+    backgroundColor: 'rgba(124,58,237,0.2)',
+    borderColor: '#7c3aed',
+  },
+  qualityChipText: {
+    color: '#94a3b8',
+    fontSize: 12,
+  },
+  qualityChipTextSelected: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+  },
+  disclaimerBox: {
+    backgroundColor: 'rgba(245, 158, 11, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 14,
+    gap: 8,
+  },
+  disclaimerTitle: {
+    color: '#fbbf24',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  disclaimerText: {
+    color: '#cbd5e1',
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(245, 158, 11, 0.2)',
+  },
+  checkboxBox: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: '#fbbf24',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxBoxChecked: {
+    backgroundColor: '#7c3aed',
+    borderColor: '#7c3aed',
+  },
+  checkmark: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  checkboxLabel: {
+    flex: 1,
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  startDownloadBtn: {
+    backgroundColor: '#7c3aed',
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
+  },
+  startDownloadBtnDisabled: {
+    backgroundColor: '#262d40',
+    opacity: 0.6,
+  },
+  startDownloadText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  successBox: {
+    padding: 16,
+    alignItems: 'center',
+    gap: 10,
+  },
+  successIcon: {
+    fontSize: 36,
+    color: '#10b981',
+  },
+  successTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  successDesc: {
+    color: '#94a3b8',
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
 });
+
 

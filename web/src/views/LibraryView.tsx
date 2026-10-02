@@ -11,9 +11,12 @@ import {
   Play, 
   FileAudio, 
   Trash2, 
-  PieChart 
+  PieChart,
+  Download,
+  ShieldCheck,
+  Music
 } from 'lucide-react';
-import { MediaItem } from '../types';
+import { MediaItem, OfflineTrack } from '../types';
 import { api } from '../services/api';
 import { TrackCard } from '../components/TrackCard';
 import { usePlayerStore } from '../store/playerStore';
@@ -30,7 +33,17 @@ export const LibraryView: React.FC = () => {
   const [favSort, setFavSort] = useState<string>('default');
   const [localSort, setLocalSort] = useState<string>('default');
 
-  const { user, playTrack, setNowPlayingOpen } = usePlayerStore();
+  const { 
+    user, 
+    playTrack, 
+    setNowPlayingOpen,
+    offlineTracks,
+    offlineStorageStats,
+    loadOfflineTracks,
+    removeOfflineTrack,
+    clearOfflineStorage,
+    openDownloadModal
+  } = usePlayerStore();
 
   const sortedFavorites = useMemo(() => {
     return sortMediaItems(favorites, favSort);
@@ -42,7 +55,8 @@ export const LibraryView: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, [user]);
+    loadOfflineTracks();
+  }, [user, loadOfflineTracks]);
 
   const loadData = async () => {
     try {
@@ -248,36 +262,169 @@ export const LibraryView: React.FC = () => {
       {subTab === 'downloads' && (
         <section className="space-y-6">
           {/* Storage telemetry overview card */}
-          <div className="p-6 rounded-3xl bg-surface-850 border border-white/5 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-md">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-accent-cyan/20 border border-accent-cyan/30 text-accent-cyan flex items-center justify-center">
-                <PieChart className="w-6 h-6" />
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-white">Offline Audio Storage</h4>
-                <p className="text-xs text-slate-400 mt-0.5">24.8 MB used of 2000 MB allocated offline cache</p>
-                <div className="w-48 h-1.5 bg-surface-750 rounded-full mt-2 overflow-hidden">
-                  <div className="w-3/12 h-full bg-accent-cyan rounded-full" />
+          {(() => {
+            const usedMB = (offlineStorageStats.totalBytes / (1024 * 1024)).toFixed(1);
+            const maxMB = 2048;
+            const pct = Math.min(100, Math.max(1, ((offlineStorageStats.totalBytes / (1024 * 1024)) / maxMB) * 100));
+
+            return (
+              <div className="p-6 rounded-3xl bg-surface-850 border border-white/5 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-md">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-accent-cyan/20 border border-accent-cyan/30 text-accent-cyan flex items-center justify-center shrink-0">
+                    <PieChart className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white">Offline In-App Vault</h4>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {usedMB} MB used of {maxMB} MB allocated • {offlineTracks.length} tracks available offline
+                    </p>
+                    <div className="w-48 sm:w-64 h-1.5 bg-surface-750 rounded-full mt-2 overflow-hidden">
+                      <div 
+                        className="h-full bg-gradient-to-r from-brand-500 to-accent-cyan rounded-full transition-all duration-300" 
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  {offlineTracks.length > 0 && (
+                    <button 
+                      onClick={() => {
+                        if (window.confirm('Are you sure you want to clear all offline cached tracks?')) {
+                          clearOfflineStorage();
+                        }
+                      }}
+                      className="px-3.5 py-2 bg-surface-800 hover:bg-rose-950/60 text-slate-300 hover:text-rose-400 text-xs font-semibold rounded-xl border border-white/5 transition-colors"
+                    >
+                      Clear Vault
+                    </button>
+                  )}
                 </div>
               </div>
-            </div>
+            );
+          })()}
 
-            <div className="flex items-center gap-3">
-              <button 
-                onClick={() => alert('Offline cache cleared successfully.')}
-                className="px-3.5 py-2 bg-surface-800 hover:bg-rose-950/60 text-slate-300 hover:text-rose-400 text-xs font-semibold rounded-xl border border-white/5 transition-colors"
-              >
-                Clear Cache
-              </button>
+          {/* Download Legal Compliance & Copyright Disclaimer Notice */}
+          <div className="p-4 rounded-2xl bg-amber-950/20 border border-amber-500/30 text-xs text-slate-300 space-y-2 shadow-sm">
+            <div className="flex items-center gap-2 text-amber-300 font-bold">
+              <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>Legal Notice & Copyright Compliance:</span>
             </div>
+            <p className="text-slate-400 leading-relaxed">
+              VibeFlow AI provides offline MP3 caching strictly for personal, non-commercial offline listening. Audio tracks remain the intellectual property of their respective copyright owners and recording labels. Redistribution, commercial exploitation, or public broadcast without permission is strictly prohibited.
+            </p>
           </div>
 
-          {/* Download Legal Compliance Notice */}
-          <div className="p-4 rounded-2xl bg-surface-800/80 border border-brand-500/20 text-xs text-slate-300 space-y-1">
-            <span className="font-semibold text-white">Authorized Download Policy:</span>
-            <p className="text-slate-400 leading-relaxed">
-              VibeFlow AI only permits direct local downloading for user-owned audio files and open-licensed Creative Commons master recordings. YouTube and Spotify streams are delivered through authorized embed players and comply strictly with platform terms without DRM extraction.
-            </p>
+          {/* Offline Tracks Grid / List */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <span>Downloaded Offline Tracks</span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-brand-500/20 text-brand-300 border border-brand-500/30 font-mono">
+                  {offlineTracks.length}
+                </span>
+              </h3>
+            </div>
+
+            {offlineTracks.length > 0 ? (
+              <div className="space-y-2">
+                {offlineTracks.map((item) => {
+                  const sizeMB = (item.fileSizeBytes / (1024 * 1024)).toFixed(1);
+                  const formatDuration = (secs: number) => {
+                    const m = Math.floor(secs / 60);
+                    const s = Math.floor(secs % 60);
+                    return `${m}:${s < 10 ? '0' : ''}${s}`;
+                  };
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="p-3.5 rounded-2xl bg-surface-850 hover:bg-surface-800 border border-white/5 flex items-center justify-between gap-4 transition-colors group"
+                    >
+                      {/* Left: Thumbnail & Details */}
+                      <div 
+                        onClick={() => playTrack(item.mediaItem)}
+                        className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
+                      >
+                        <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-surface-800 shrink-0 ring-1 ring-white/10 group-hover:brightness-110 transition-all">
+                          <img 
+                            src={item.mediaItem.thumbnail} 
+                            alt={item.mediaItem.title} 
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                            <Play className="w-5 h-5 text-white fill-current translate-x-0.5" />
+                          </div>
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-sm font-bold text-white truncate group-hover:text-brand-300 transition-colors">
+                              {item.mediaItem.title}
+                            </h4>
+                            <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-brand-500/20 text-brand-300 border border-brand-500/30 shrink-0">
+                              {item.quality} kbps MP3
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
+                            <span className="truncate">{item.mediaItem.artist}</span>
+                            <span>•</span>
+                            <span className="font-mono">{formatDuration(item.mediaItem.duration)}</span>
+                            <span>•</span>
+                            <span className="font-mono text-slate-500">{sizeMB} MB</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right: Actions */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {/* Play Offline */}
+                        <button
+                          onClick={() => playTrack(item.mediaItem)}
+                          className="px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs"
+                          title="Play offline in app"
+                        >
+                          <Play className="w-3.5 h-3.5 fill-current" />
+                          <span className="hidden sm:inline">Play Offline</span>
+                        </button>
+
+                        {/* Export .MP3 to device disk */}
+                        {item.offlineUrl && (
+                          <a
+                            href={item.offlineUrl}
+                            download={`${item.mediaItem.artist} - ${item.mediaItem.title} [${item.quality}kbps].mp3`}
+                            className="p-2 rounded-xl bg-surface-750 hover:bg-surface-700 text-slate-300 hover:text-white transition-colors border border-white/5"
+                            title="Save MP3 file to device disk"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+
+                        {/* Delete from offline vault */}
+                        <button
+                          onClick={() => removeOfflineTrack(item.id)}
+                          className="p-2 rounded-xl bg-surface-750 hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 transition-colors border border-white/5"
+                          title="Remove from offline vault"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-8 rounded-3xl bg-surface-850/60 border border-dashed border-white/10 text-center space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-surface-800 text-slate-400 flex items-center justify-center mx-auto">
+                  <DownloadCloud className="w-6 h-6" />
+                </div>
+                <h4 className="text-sm font-bold text-white">No Offline Tracks Downloaded Yet</h4>
+                <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+                  Click the Download icon on any track across Explore, Home, or Now Playing to save it in MP3 format with your chosen quality (up to 320 kbps) for offline listening.
+                </p>
+              </div>
+            )}
           </div>
         </section>
       )}

@@ -198,6 +198,19 @@ export interface DownloadJob {
   completedAt?: string;
 }
 
+export interface OfflineTrack {
+  id: string;
+  mediaItem: MediaItem;
+  quality: '320' | '256' | '128' | '64';
+  bitrateKbps: number;
+  format: 'mp3';
+  fileSizeBytes: number;
+  downloadedAt: string;
+  offlineUrl?: string;
+  copyrightAcknowledged: boolean;
+}
+
+
 export interface RecommendationResponse {
   sectionTitle: string;
   description: string;

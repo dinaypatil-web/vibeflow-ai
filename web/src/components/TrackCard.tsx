@@ -12,7 +12,8 @@ import {
   Music2,
   Headphones,
   Waves,
-  Globe
+  Globe,
+  Download
 } from 'lucide-react';
 import { MediaItem } from '../types';
 import { usePlayerStore } from '../store/playerStore';
@@ -30,7 +31,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({
   onFindSimilar, 
   onAddToPlaylist 
 }) => {
-  const { currentTrack, isPlaying, playTrack, togglePlay, favorites, toggleFavorite } = usePlayerStore();
+  const { currentTrack, isPlaying, playTrack, togglePlay, favorites, toggleFavorite, openDownloadModal } = usePlayerStore();
 
   const isCurrent = currentTrack?.id === track.id;
   const isCurrentlyPlaying = isCurrent && isPlaying;
@@ -191,18 +192,31 @@ export const TrackCard: React.FC<TrackCardProps> = ({
           </button>
         )}
 
-        {onAddToPlaylist && (
+        <div className="flex items-center gap-1">
+          {onAddToPlaylist && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddToPlaylist(track);
+              }}
+              className="p-1.5 rounded-lg hover:bg-surface-750 hover:text-white transition-colors"
+              title="Add to playlist"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+          )}
+
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onAddToPlaylist(track);
+              openDownloadModal(track);
             }}
-            className="p-1.5 rounded-lg hover:bg-surface-750 hover:text-white transition-colors"
-            title="Add to playlist"
+            className="p-1.5 rounded-lg hover:bg-brand-500/20 text-slate-400 hover:text-brand-300 transition-colors"
+            title="Download MP3 for offline playback"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Download className="w-3.5 h-3.5" />
           </button>
-        )}
+        </div>
       </div>
     </div>
   );

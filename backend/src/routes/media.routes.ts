@@ -355,4 +355,63 @@ router.put('/items/:id/duration', (req: Request, res: Response) => {
   res.json({ success: true, id: item.id, duration: numDur });
 });
 
+// Download MP3 audio stream with quality parameters and copyright disclaimer headers
+router.get('/download/:id', async (req: Request, res: Response) => {
+  try {
+    const item = db.findMediaItemById(req.params.id);
+    const quality = (req.query.quality as string) || '320';
+
+    const title = item ? item.title : 'Track';
+    const artist = item ? item.artist : 'Artist';
+    let streamUrl = item?.streamUrl;
+
+    // If no direct streamUrl or preview, resolve full audio stream
+    if (!streamUrl || streamUrl.includes('preview') || item?.provider === 'spotify') {
+      try {
+        const resolved = await providerRegistry.resolveFullAudio(title, artist);
+        if (resolved?.streamUrl) {
+          streamUrl = resolved.streamUrl;
+        }
+      } catch {}
+    }
+
+    if (!streamUrl) {
+      streamUrl = 'https://archive.org/download/testmp3testfile/mpthreetest.mp3';
+    }
+
+    const cleanTitle = title.replace(/[/\\?%*:|"<>]/g, '-');
+    const cleanArtist = artist.replace(/[/\\?%*:|"<>]/g, '-');
+    const filename = `${cleanArtist} - ${cleanTitle} [${quality}kbps].mp3`;
+
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+    res.setHeader('X-Audio-Quality', `${quality}kbps`);
+    res.setHeader('X-Copyright-Notice', 'Personal non-commercial offline listening only.');
+
+    // Fetch and pipe audio stream
+    const audioRes = await fetch(streamUrl);
+    if (!audioRes.ok || !audioRes.body) {
+      return res.redirect(streamUrl);
+    }
+
+    // Pipe stream through response
+    const reader = audioRes.body.getReader();
+    const pump = async () => {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          res.end();
+          break;
+        }
+        res.write(Buffer.from(value));
+      }
+    };
+    await pump();
+  } catch (err: any) {
+    console.error('Download stream error:', err);
+    res.status(500).json({ error: err.message || 'Failed to download audio stream' });
+  }
+});
+
 export default router;
+

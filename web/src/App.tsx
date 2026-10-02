@@ -17,6 +17,7 @@ import { AIStudioView } from './views/AIStudioView';
 import { SettingsView } from './views/SettingsView';
 import { AuthModal } from './components/AuthModal';
 import { SpotifyConnectModal } from './components/SpotifyConnectModal';
+import { DownloadModal } from './components/DownloadModal';
 import { 
   Home, 
   Search,
@@ -28,7 +29,15 @@ import {
 } from 'lucide-react';
 
 export const App: React.FC = () => {
-  const { activeTab, setActiveTab, theme } = usePlayerStore();
+  const { 
+    activeTab, 
+    setActiveTab, 
+    theme, 
+    downloadModalTrack, 
+    isDownloadModalOpen, 
+    closeDownloadModal, 
+    loadOfflineTracks 
+  } = usePlayerStore();
   const [selectedMood, setSelectedMood] = useState<MoodCategory | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isImportUrlModalOpen, setIsImportUrlModalOpen] = useState(false);
@@ -38,6 +47,10 @@ export const App: React.FC = () => {
   React.useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  React.useEffect(() => {
+    loadOfflineTracks();
+  }, [loadOfflineTracks]);
 
   const handleSelectMood = (mood: MoodCategory | null) => {
     setSelectedMood(mood);
@@ -193,6 +206,13 @@ export const App: React.FC = () => {
 
         {/* Spotify Source Login Modal */}
         <SpotifyConnectModal />
+
+        {/* MP3 Offline Download & Copyright Disclaimer Modal */}
+        <DownloadModal 
+          isOpen={isDownloadModalOpen}
+          track={downloadModalTrack}
+          onClose={closeDownloadModal}
+        />
       </div>
     </div>
   );
