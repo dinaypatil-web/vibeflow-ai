@@ -120,6 +120,7 @@ interface PlayerState {
   togglePlay: () => void;
   setPlaying: (isPlaying: boolean) => void;
   nextTrack: () => void;
+  getNextTrack: () => { track: MediaItem; index: number } | null;
   previousTrack: () => void;
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
@@ -288,6 +289,29 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         duration: nextTrack.duration || 0
       });
     }
+  },
+
+  getNextTrack: () => {
+    const { queue, queueIndex, isShuffle, repeatMode, currentTrack } = get();
+    if (queue.length === 0) return null;
+
+    if (repeatMode === 'one' && currentTrack) {
+      return { track: currentTrack, index: queueIndex };
+    }
+
+    let nextIndex = queueIndex + 1;
+    if (isShuffle) {
+      nextIndex = Math.floor(Math.random() * queue.length);
+    } else if (nextIndex >= queue.length) {
+      if (repeatMode === 'all') {
+        nextIndex = 0;
+      } else {
+        return null;
+      }
+    }
+
+    const next = queue[nextIndex];
+    return next ? { track: next, index: nextIndex } : null;
   },
 
   previousTrack: () => {

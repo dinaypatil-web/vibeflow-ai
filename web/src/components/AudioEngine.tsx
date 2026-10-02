@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { usePlayerStore } from '../store/playerStore';
 import { api } from '../services/api';
 
@@ -11,8 +11,9 @@ export const AudioEngine: React.FC = () => {
   const ytPlayerRef = useRef<any>(null);
   const [isYtApiLoaded, setIsYtApiLoaded] = useState(false);
   const [isYtReady, setIsYtReady] = useState(false);
-  // Tracks whether the current YouTube video failed to embed so we fall back to streamUrl
+  // Tracks whether current YouTube video failed or was switched to audio stream for background/lock-screen playback
   const ytEmbedFailedRef = useRef(false);
+  const wakeLockRef = useRef<any>(null);
 
   const {
     currentTrack,
@@ -26,12 +27,13 @@ export const AudioEngine: React.FC = () => {
     setDuration,
     setPlaying,
     nextTrack,
+    previousTrack,
+    seekTo,
     tickSleepTimer,
     sleepTimerRemainingSeconds,
     user
   } = usePlayerStore();
 
-  // Helper: reads store directly so it is always fresh inside YT event callbacks (avoids stale closures)
   const getCurrentStreamUrl = (): string | undefined => {
     return usePlayerStore.getState().currentTrack?.streamUrl;
   };
@@ -60,7 +62,7 @@ export const AudioEngine: React.FC = () => {
     }
   }, []);
 
-  // 2. Setup Web Audio API Analyser for dynamic canvas waveforms
+  // 2. Setup Web Audio API Analyser for visualizers + auto-resume protector
   useEffect(() => {
     if (!audioRef.current) return;
     try {
@@ -74,13 +76,183 @@ export const AudioEngine: React.FC = () => {
         const source = globalAudioContext.createMediaElementSource(audioRef.current);
         source.connect(analyser);
         analyser.connect(globalAudioContext.destination);
+
+        // Auto-resume if browser suspends context in background
+        globalAudioContext.onstatechange = () => {
+          if (globalAudioContext?.state === 'suspended' && usePlayerStore.getState().isPlaying) {
+            globalAudioContext.resume().catch(() => {});
+          }
+        };
       }
     } catch (e) {
       // Audio element might already be connected
     }
   }, []);
 
-  // 3. Sleep timer interval
+  // 3. Screen Wake Lock API — keeps audio thread uninterrupted
+  const requestWakeLock = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && 'wakeLock' in navigator && !wakeLockRef.current) {
+      try {
+        wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+        wakeLockRef.current.addEventListener('release', () => {
+          wakeLockRef.current = null;
+        });
+      } catch {}
+    }
+  }, []);
+
+  const releaseWakeLock = useCallback(() => {
+    if (wakeLockRef.current) {
+      try {
+        wakeLockRef.current.release();
+      } catch {}
+      wakeLockRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isPlaying) {
+      requestWakeLock();
+    } else {
+      releaseWakeLock();
+    }
+    return () => releaseWakeLock();
+  }, [isPlaying, requestWakeLock, releaseWakeLock]);
+
+  // 4. Media Session API — Lock Screen & Notification Center Playback Controls
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator) || !currentTrack) return;
+
+    try {
+      const artworkSizes = [96, 128, 192, 256, 384, 512];
+      const artwork = artworkSizes.map(size => ({
+        src: currentTrack.thumbnail || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=512&q=80',
+        sizes: `${size}x${size}`,
+        type: 'image/jpeg'
+      }));
+
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: currentTrack.title || 'VibeFlow Track',
+        artist: currentTrack.artist || 'VibeFlow AI',
+        album: currentTrack.genre || 'VibeFlow Playlist',
+        artwork
+      });
+
+      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+
+      // Lock Screen Action Handlers
+      navigator.mediaSession.setActionHandler('play', () => {
+        setPlaying(true);
+      });
+
+      navigator.mediaSession.setActionHandler('pause', () => {
+        setPlaying(false);
+      });
+
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        previousTrack();
+      });
+
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        // Trigger continuous advance
+        onEnded();
+      });
+
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (details.seekTime !== undefined && details.seekTime !== null) {
+          seekTo(details.seekTime);
+        }
+      });
+
+      navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+        const skip = details.seekOffset || 10;
+        const cur = usePlayerStore.getState().currentTime;
+        seekTo(Math.max(0, cur - skip));
+      });
+
+      navigator.mediaSession.setActionHandler('seekforward', (details) => {
+        const skip = details.seekOffset || 10;
+        const cur = usePlayerStore.getState().currentTime;
+        const dur = usePlayerStore.getState().duration;
+        seekTo(Math.min(dur || 999999, cur + skip));
+      });
+
+      navigator.mediaSession.setActionHandler('stop', () => {
+        setPlaying(false);
+      });
+    } catch (e) {
+      console.warn('[AudioEngine] MediaSession configuration warning:', e);
+    }
+  }, [currentTrack?.id, isPlaying, setPlaying, previousTrack, seekTo]);
+
+  // Update MediaSession Position State for lock-screen scrubber
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator) || !('setPositionState' in navigator.mediaSession)) return;
+    if (!currentTrack) return;
+
+    try {
+      const dur = usePlayerStore.getState().duration;
+      const cur = usePlayerStore.getState().currentTime;
+      if (typeof dur === 'number' && dur > 0 && typeof cur === 'number' && cur >= 0 && cur <= dur) {
+        navigator.mediaSession.setPositionState({
+          duration: Math.round(dur),
+          playbackRate: playbackSpeed || 1.0,
+          position: Math.min(Math.round(cur), Math.round(dur))
+        });
+      }
+    } catch {}
+  }, [playbackSpeed]);
+
+  // 5. Background / Minimized / Lock Screen Continuity Manager
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const handleVisibilityChange = () => {
+      const state = usePlayerStore.getState();
+      if (!state.isPlaying || !state.currentTrack) return;
+
+      if (document.hidden) {
+        // Screen locked or tab minimized:
+        // If current track is playing via YouTube video iframe, browsers will pause the iframe.
+        // Transfer playback seamlessly to HTML5 pure audio stream so music continues playing uninterrupted!
+        if (state.currentTrack.provider === 'youtube' && !ytEmbedFailedRef.current) {
+          const fallbackUrl = state.currentTrack.streamUrl;
+          if (fallbackUrl && audioRef.current) {
+            try {
+              let curTime = 0;
+              if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
+                curTime = ytPlayerRef.current.getCurrentTime() || 0;
+                ytPlayerRef.current.pauseVideo();
+              }
+              ytEmbedFailedRef.current = true;
+              audioRef.current.src = fallbackUrl;
+              audioRef.current.currentTime = curTime;
+              audioRef.current.play().catch(() => {});
+            } catch {}
+          }
+        }
+
+        // Keep Web Audio API Context active in background
+        if (globalAudioContext && globalAudioContext.state === 'suspended') {
+          globalAudioContext.resume().catch(() => {});
+        }
+      } else {
+        // Tab brought back into view: re-acquire wake lock if playing
+        if (state.isPlaying) {
+          requestWakeLock();
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handleVisibilityChange);
+    };
+  }, [requestWakeLock]);
+
+  // 6. Sleep timer interval
   useEffect(() => {
     if (sleepTimerRemainingSeconds === null) return;
     const interval = setInterval(() => {
@@ -89,17 +261,17 @@ export const AudioEngine: React.FC = () => {
     return () => clearInterval(interval);
   }, [sleepTimerRemainingSeconds, tickSleepTimer]);
 
-  // 3b. Reset embed-failed flag whenever the track changes
+  // Reset embed-failed flag when track changes
   useEffect(() => {
     ytEmbedFailedRef.current = false;
   }, [currentTrack?.id]);
 
-  // 4. Initialize or update YouTube Player
+  // 7. Initialize or update YouTube Player
   useEffect(() => {
     if (!isYtApiLoaded || !currentTrack) return;
 
     if (currentTrack.provider === 'youtube') {
-      // Pause HTML5 audio when switching to a YouTube track
+      // Pause HTML5 audio when switching to YouTube video track
       if (audioRef.current) audioRef.current.pause();
 
       if (ytPlayerRef.current && isYtReady) {
@@ -147,28 +319,36 @@ export const AudioEngine: React.FC = () => {
                   const dur = event.target.getDuration();
                   if (dur && dur > 0) setDuration(dur);
                 } else if (event.data === YTState.PAUSED) {
-                  // User paused inside player
+                  // If browser paused YouTube iframe because screen was locked or minimised:
+                  // seamlessly switch to audio stream without stopping the music!
+                  const curState = usePlayerStore.getState();
+                  if (curState.isPlaying && document.hidden && curState.currentTrack?.streamUrl) {
+                    const curTime = event.target.getCurrentTime() || 0;
+                    ytEmbedFailedRef.current = true;
+                    if (audioRef.current) {
+                      audioRef.current.src = curState.currentTrack.streamUrl;
+                      audioRef.current.currentTime = curTime;
+                      audioRef.current.play().catch(() => {});
+                    }
+                  }
                 } else if (event.data === YTState.ENDED) {
                   onEnded();
                 }
               },
               onError: (event: any) => {
                 console.warn('YouTube Player error code:', event.data);
-                // Codes 100/101/150: video unavailable or embedding blocked by copyright
                 if (event.data === 101 || event.data === 150 || event.data === 100) {
                   const fallbackUrl = getCurrentStreamUrl();
                   if (fallbackUrl && audioRef.current) {
-                    console.info('YouTube embed blocked - falling back to streamUrl:', fallbackUrl);
                     ytEmbedFailedRef.current = true;
                     audioRef.current.src = fallbackUrl;
                     audioRef.current.load();
                     if (globalAudioContext && globalAudioContext.state === 'suspended') {
-                      globalAudioContext.resume();
+                      globalAudioContext.resume().catch(() => {});
                     }
                     audioRef.current.play().catch(e => console.warn('Fallback stream play error:', e));
                   } else {
-                    console.warn('No fallback streamUrl - skipping to next track');
-                    nextTrack();
+                    onEnded();
                   }
                 }
               }
@@ -179,7 +359,6 @@ export const AudioEngine: React.FC = () => {
         }
       }
     } else {
-      // Pause YouTube player if active
       if (ytPlayerRef.current && isYtReady) {
         try {
           ytPlayerRef.current.pauseVideo();
@@ -188,11 +367,10 @@ export const AudioEngine: React.FC = () => {
     }
   }, [currentTrack?.id, isYtApiLoaded]);
 
-  // 5. Handle Play / Pause State synchronization
+  // 8. Handle Play / Pause State synchronization
   useEffect(() => {
     if (!currentTrack) return;
 
-    // If YouTube embed failed, the HTML5 audio element has already taken over.
     const isYtEmbedFallback = currentTrack.provider === 'youtube' && ytEmbedFailedRef.current;
 
     if (currentTrack.provider === 'youtube' && !isYtEmbedFallback) {
@@ -208,7 +386,6 @@ export const AudioEngine: React.FC = () => {
         }
       }
     } else {
-      // HTML5 audio path (native tracks OR YouTube embed-blocked fallback)
       const audio = audioRef.current;
       if (!audio) return;
 
@@ -231,7 +408,7 @@ export const AudioEngine: React.FC = () => {
       if (streamUrlToUse || isYtEmbedFallback) {
         if (isPlaying) {
           if (globalAudioContext && globalAudioContext.state === 'suspended') {
-            globalAudioContext.resume();
+            globalAudioContext.resume().catch(() => {});
           }
           audio.play().catch(err => {
             console.warn('Autoplay prevented or stream error:', err);
@@ -243,7 +420,7 @@ export const AudioEngine: React.FC = () => {
     }
   }, [isPlaying, isYtReady, currentTrack?.id]);
 
-  // 5b. Automatic Spotify Full-Track Stream Bridge
+  // 9. Automatic Spotify Full-Track Stream Bridge
   useEffect(() => {
     if (!currentTrack || currentTrack.provider !== 'spotify') return;
     const isPreview = (
@@ -257,7 +434,7 @@ export const AudioEngine: React.FC = () => {
         .then(r => r.json())
         .then(data => {
           if (data?.streamUrl && data.streamUrl !== currentTrack.streamUrl && data.streamUrl.startsWith('http')) {
-            console.log('[AudioEngine] Bridged Spotify track to verified full-length audio stream:', data.streamUrl);
+            console.log('[AudioEngine] Bridged Spotify track to full-length audio stream:', data.streamUrl);
             currentTrack.streamUrl = data.streamUrl;
             if (data.duration && data.duration > 35) {
               currentTrack.duration = data.duration;
@@ -276,7 +453,7 @@ export const AudioEngine: React.FC = () => {
     }
   }, [currentTrack?.id]);
 
-  // 6. Handle Volume, Mute & Playback Speed
+  // 10. Handle Volume, Mute & Playback Speed
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.volume = isMuted ? 0 : volume;
@@ -290,7 +467,7 @@ export const AudioEngine: React.FC = () => {
     }
   }, [volume, isMuted, playbackSpeed, isYtReady]);
 
-  // 7. Handle Seeking
+  // 11. Handle Seeking
   useEffect(() => {
     if (seekRequestedTime === null) return;
 
@@ -308,7 +485,7 @@ export const AudioEngine: React.FC = () => {
     clearSeekRequest();
   }, [seekRequestedTime, clearSeekRequest, currentTrack?.provider, isYtReady]);
 
-  // 8. Time ticker for YouTube player
+  // 12. Time ticker for YouTube player
   useEffect(() => {
     if (!isPlaying || currentTrack?.provider !== 'youtube' || !isYtReady) return;
     if (ytEmbedFailedRef.current) return;
@@ -331,7 +508,7 @@ export const AudioEngine: React.FC = () => {
     return () => clearInterval(interval);
   }, [isPlaying, currentTrack?.provider, isYtReady, setCurrentTime, setDuration]);
 
-  // 9. HTML5 Audio event listeners
+  // 13. HTML5 Audio event listeners
   const onTimeUpdate = () => {
     if (audioRef.current) {
       if (currentTrack?.provider !== 'youtube' || ytEmbedFailedRef.current) {
@@ -351,17 +528,47 @@ export const AudioEngine: React.FC = () => {
   const onAudioError = (e: React.SyntheticEvent<HTMLAudioElement, Event>) => {
     const mediaError = (e.target as HTMLAudioElement).error;
     console.warn('HTML5 Audio playback error:', mediaError?.code, mediaError?.message);
-    // 800ms was too aggressive - give stream 2.5s to recover before auto-advancing
     setTimeout(() => {
-      nextTrack();
-    }, 2500);
+      onEnded();
+    }, 2000);
   };
 
+  // 14. Seamless Continuous Playlist Track Transition
+  // Executed synchronously within onEnded so mobile OS / background tabs do NOT block autoplay!
   const onEnded = () => {
-    if (currentTrack && user) {
-      api.recordHistory(user.id, currentTrack.id, Math.floor(currentTrack.duration), 1.0);
+    const state = usePlayerStore.getState();
+    const current = state.currentTrack;
+    if (current && state.user) {
+      api.recordHistory(state.user.id, current.id, Math.floor(current.duration), 1.0);
     }
-    nextTrack();
+
+    const nextData = state.getNextTrack();
+    if (nextData && nextData.track) {
+      const next = nextData.track;
+
+      // CRITICAL: Synchronously load and trigger play on audio element
+      // while still inside the user-authorized 'ended' event context.
+      // This bypasses browser background autoplay restrictions on locked/minimized devices!
+      const audio = audioRef.current;
+      if (audio) {
+        const streamUrl = next.streamUrl;
+        if (streamUrl) {
+          audio.src = streamUrl;
+          audio.currentTime = 0;
+          if (globalAudioContext && globalAudioContext.state === 'suspended') {
+            globalAudioContext.resume().catch(() => {});
+          }
+          audio.play().catch(e => {
+            console.warn('[AudioEngine] Seamless background track play caught:', e);
+          });
+        }
+      }
+
+      // Advance queue state in store
+      state.nextTrack();
+    } else {
+      usePlayerStore.setState({ isPlaying: false });
+    }
   };
 
   return (
@@ -371,10 +578,12 @@ export const AudioEngine: React.FC = () => {
       style={{ position: 'fixed', bottom: '-9999px', right: '-9999px', width: '320px', height: '240px' }}
       aria-hidden="true"
     >
-      {/* HTML5 Audio Player */}
+      {/* HTML5 Audio Player with background audio capability */}
       <audio
         ref={audioRef}
         crossOrigin="anonymous"
+        playsInline
+        preload="auto"
         onTimeUpdate={onTimeUpdate}
         onLoadedMetadata={onLoadedMetadata}
         onEnded={onEnded}

@@ -71,9 +71,16 @@ export default function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
+  const [queue, setQueue] = useState<MediaItem[]>(SAMPLE_TRACKS);
+  const [queueIndex, setQueueIndex] = useState(0);
+  const queueRef = useRef<MediaItem[]>(SAMPLE_TRACKS);
+  const queueIndexRef = useRef(0);
+  const repeatModeRef = useRef<'all' | 'one' | 'off'>('all');
+  const isShuffleRef = useRef(false);
+
   const soundRef = useRef<Audio.Sound | null>(null);
 
-  // Configure Expo AV for Background Audio Playback
+  // Configure Expo AV for Background Audio Playback like VLC
   useEffect(() => {
     async function initAudio() {
       try {
@@ -96,12 +103,21 @@ export default function App() {
     };
   }, []);
 
-  const playTrack = async (track: MediaItem) => {
+  const playTrack = async (track: MediaItem, newQueue?: MediaItem[], startIndex?: number) => {
     try {
       if (soundRef.current) {
         await soundRef.current.unloadAsync();
         soundRef.current = null;
       }
+
+      const activeQueue = newQueue || queueRef.current;
+      queueRef.current = activeQueue;
+      setQueue(activeQueue);
+
+      const idx = startIndex !== undefined ? startIndex : activeQueue.findIndex(t => t.id === track.id);
+      const safeIdx = idx >= 0 ? idx : 0;
+      queueIndexRef.current = safeIdx;
+      setQueueIndex(safeIdx);
 
       setCurrentTrack(track);
       if (!track.streamUrl) return;
@@ -115,7 +131,8 @@ export default function App() {
             setDurationMillis(status.durationMillis || 0);
             setIsPlaying(status.isPlaying);
             if (status.didJustFinish) {
-              setIsPlaying(false);
+              // Seamless continuous background playback of next track
+              playNextTrack();
             }
           }
         }
@@ -125,6 +142,45 @@ export default function App() {
       setIsPlaying(true);
     } catch (err) {
       console.warn('Failed to play audio track on mobile', err);
+    }
+  };
+
+  const playNextTrack = () => {
+    const q = queueRef.current;
+    if (!q || q.length === 0) return;
+
+    if (repeatModeRef.current === 'one') {
+      const cur = q[queueIndexRef.current];
+      if (cur) playTrack(cur);
+      return;
+    }
+
+    let nextIdx = queueIndexRef.current + 1;
+    if (isShuffleRef.current) {
+      nextIdx = Math.floor(Math.random() * q.length);
+    } else if (nextIdx >= q.length) {
+      if (repeatModeRef.current === 'all') {
+        nextIdx = 0;
+      } else {
+        setIsPlaying(false);
+        return;
+      }
+    }
+
+    const next = q[nextIdx];
+    if (next) {
+      playTrack(next, q, nextIdx);
+    }
+  };
+
+  const playPreviousTrack = () => {
+    const q = queueRef.current;
+    if (!q || q.length === 0) return;
+    let prevIdx = queueIndexRef.current - 1;
+    if (prevIdx < 0) prevIdx = q.length - 1;
+    const prev = q[prevIdx];
+    if (prev) {
+      playTrack(prev, q, prevIdx);
     }
   };
 
@@ -327,8 +383,14 @@ export default function App() {
 
               {/* Controls */}
               <View style={styles.modalControls}>
+                <TouchableOpacity onPress={playPreviousTrack} style={styles.modalSecondaryButton}>
+                  <Text style={styles.modalSecondaryButtonText}>⏮</Text>
+                </TouchableOpacity>
                 <TouchableOpacity onPress={togglePlay} style={styles.modalPlayButton}>
                   <Text style={styles.modalPlayText}>{isPlaying ? '⏸' : '▶'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={playNextTrack} style={styles.modalSecondaryButton}>
+                  <Text style={styles.modalSecondaryButtonText}>⏭</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -676,18 +738,42 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
   },
   modalControls: {
-    marginTop: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 28,
+    marginTop: 28,
+  },
+  modalSecondaryButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#1e2436',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  modalSecondaryButtonText: {
+    color: '#ffffff',
+    fontSize: 18,
   },
   modalPlayButton: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     backgroundColor: '#7c3aed',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#7c3aed',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 6,
   },
   modalPlayText: {
     color: '#ffffff',
-    fontSize: 24,
+    fontSize: 26,
   },
 });
+
