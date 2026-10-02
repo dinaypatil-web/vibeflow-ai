@@ -1068,11 +1068,14 @@ class MemoryDatabase {
     if (!userIdOrIdent) return idSet;
     const clean = userIdOrIdent.trim().toLowerCase();
     idSet.add(clean);
-    const user = this.findUserById(userIdOrIdent) || this.findUserByIdentifier(userIdOrIdent);
+    const user = this.findUserById(userIdOrIdent) || 
+                 this.findUserByIdentifier(userIdOrIdent) || 
+                 this.findUserBySyncCode(userIdOrIdent);
     if (user) {
       if (user.id) idSet.add(user.id.toLowerCase());
       if (user.username) idSet.add(user.username.toLowerCase());
       if (user.email) idSet.add(user.email.toLowerCase());
+      if (user.syncCode) idSet.add(user.syncCode.toLowerCase());
     }
     return idSet;
   }
@@ -1090,7 +1093,9 @@ class MemoryDatabase {
     }
 
     // Check if playlist's creator or userId matches via user email or alias in database
-    const user = this.findUserById(userIdOrIdent) || this.findUserByIdentifier(userIdOrIdent);
+    const user = this.findUserById(userIdOrIdent) || 
+                 this.findUserByIdentifier(userIdOrIdent) || 
+                 this.findUserBySyncCode(userIdOrIdent);
     if (user) {
       if (pUid) {
         const plOwner = this.findUserById(pUid) || this.findUserByIdentifier(pUid);
@@ -1117,7 +1122,9 @@ class MemoryDatabase {
 
   public getPlaylistsByUserId(userId: string, clientPlaylistIds?: string[]): Playlist[] {
     if (!userId) return [];
-    const user = this.findUserById(userId) || this.findUserByIdentifier(userId);
+    const user = this.findUserById(userId) || 
+                 this.findUserByIdentifier(userId) || 
+                 this.findUserBySyncCode(userId);
     const clientSet = new Set<string>((clientPlaylistIds || []).filter(Boolean));
 
     const isLoggedIn = Boolean(user && user.id !== 'demo-user-id');

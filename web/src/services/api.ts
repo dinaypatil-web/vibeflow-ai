@@ -10,7 +10,7 @@ import {
   MediaProvider 
 } from '../types';
 
-const API_BASE = (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/$/, '') : '') || '/api';
+export const API_BASE = (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/$/, '') : '') || '/api';
 
 export function getStoredToken(): string | null {
   try {
@@ -600,6 +600,19 @@ export const api = {
       headers: authHeaders(token),
       body: JSON.stringify({ userId, mediaItemId, playedSeconds, completionRate })
     });
+  },
+
+  getHistory: async (userId: string, token?: string | null): Promise<any[]> => {
+    try {
+      const res = await fetch(`${API_BASE}/library/history?userId=${encodeURIComponent(userId)}`, {
+        headers: authHeaders(token)
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.history || [];
+    } catch {
+      return [];
+    }
   },
 
   // Providers

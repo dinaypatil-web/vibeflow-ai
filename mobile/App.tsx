@@ -34,6 +34,28 @@ interface OfflineTrackItem {
   downloadedAt: string;
 }
 
+interface PlaylistItem {
+  id: string;
+  mediaItemId: string;
+  mediaItem: MediaItem;
+}
+
+interface Playlist {
+  id: string;
+  title: string;
+  description?: string;
+  coverArt?: string;
+  userId?: string;
+  itemCount?: number;
+  items?: PlaylistItem[];
+  creator?: {
+    id?: string;
+    name: string;
+    username?: string;
+    email?: string;
+  };
+}
+
 const SAMPLE_TRACKS: MediaItem[] = [
   {
     id: 'track-1',
@@ -70,6 +92,22 @@ const SAMPLE_TRACKS: MediaItem[] = [
   }
 ];
 
+const INITIAL_MOBILE_PLAYLISTS: Playlist[] = [
+  {
+    id: 'mobile-pl-1',
+    title: 'Daily Cloud Flow Mix',
+    description: 'Synced across devices • Bollywood, Lo-Fi & High-Energy',
+    coverArt: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?auto=format&fit=crop&w=600&q=80',
+    itemCount: 3,
+    creator: { name: 'VibeFlow Cloud' },
+    items: [
+      { id: 'pi-1', mediaItemId: 'track-1', mediaItem: SAMPLE_TRACKS[0] },
+      { id: 'pi-2', mediaItemId: 'track-2', mediaItem: SAMPLE_TRACKS[1] },
+      { id: 'pi-3', mediaItemId: 'track-4', mediaItem: SAMPLE_TRACKS[2] },
+    ]
+  }
+];
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<'home' | 'explore' | 'playlists' | 'library' | 'ai'>('home');
   const [currentTrack, setCurrentTrack] = useState<MediaItem | null>(SAMPLE_TRACKS[0]);
@@ -85,6 +123,121 @@ export default function App() {
   const queueIndexRef = useRef(0);
   const repeatModeRef = useRef<'all' | 'one' | 'off'>('all');
   const isShuffleRef = useRef(false);
+
+  // Playlists & Cloud Sync across devices
+  const [playlists, setPlaylists] = useState<Playlist[]>(INITIAL_MOBILE_PLAYLISTS);
+  const [apiBaseUrl, setApiBaseUrl] = useState<string>('http://localhost:4000/api');
+  const [isSyncModalVisible, setIsSyncModalVisible] = useState(false);
+  const [syncCodeInput, setSyncCodeInput] = useState('');
+  const [mySyncCode, setMySyncCode] = useState<string>('');
+  const [syncUser, setSyncUser] = useState<{ id: string; name: string; email?: string; syncCode?: string } | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncSuccess, setSyncSuccess] = useState<string | null>(null);
+
+  const fetchPlaylists = async (baseUrl = apiBaseUrl, uid = syncUser?.id || 'demo-user-id') => {
+    try {
+      const res = await fetch(`${baseUrl}/playlists?userId=${encodeURIComponent(uid)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.playlists && data.playlists.length > 0) {
+          const transformed = data.playlists.map((p: any) => ({
+            ...p,
+            items: (p.items || []).map((it: any) => ({
+              id: it.id,
+              mediaItemId: it.mediaItemId || it.mediaItem?.id,
+              mediaItem: it.mediaItem || {
+                id: it.mediaItemId || `track-${Math.random()}`,
+                title: it.title || 'Unknown Track',
+                artist: it.artist || 'Unknown Artist',
+                thumbnail: p.coverArt || SAMPLE_TRACKS[0].thumbnail,
+                duration: it.duration || 210,
+                genre: 'Electronic',
+                mood: 'Chill',
+                streamUrl: it.streamUrl || 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
+                isOfflinePermitted: true
+              }
+            }))
+          }));
+          setPlaylists(transformed);
+        }
+      }
+    } catch (err) {
+      console.warn('Network fetch playlists error:', err);
+    }
+  };
+
+  const fetchMySyncCode = async () => {
+    try {
+      const res = await fetch(`${apiBaseUrl}/playlists/sync/code`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.syncCode) setMySyncCode(data.syncCode);
+      }
+    } catch {}
+  };
+
+  const handleLinkSyncCode = async () => {
+    const code = syncCodeInput.trim().toUpperCase();
+    if (!code) return;
+    setIsSyncing(true);
+    setSyncError(null);
+    setSyncSuccess(null);
+    try {
+      const res = await fetch(`${apiBaseUrl}/playlists/sync/link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ syncCode: code })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Invalid sync code');
+      if (data.user) {
+        setSyncUser(data.user);
+        setMySyncCode(data.user.syncCode || code);
+        if (Array.isArray(data.playlists) && data.playlists.length > 0) {
+          const transformed = data.playlists.map((p: any) => ({
+            ...p,
+            items: (p.items || []).map((it: any) => ({
+              id: it.id,
+              mediaItemId: it.mediaItemId || it.mediaItem?.id,
+              mediaItem: it.mediaItem || {
+                id: it.mediaItemId || `track-${Math.random()}`,
+                title: it.title || 'Unknown Track',
+                artist: it.artist || 'Unknown Artist',
+                thumbnail: p.coverArt || SAMPLE_TRACKS[0].thumbnail,
+                duration: it.duration || 210,
+                genre: 'Electronic',
+                mood: 'Chill',
+                streamUrl: it.streamUrl || 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
+                isOfflinePermitted: true
+              }
+            }))
+          }));
+          setPlaylists(transformed);
+        } else {
+          fetchPlaylists(apiBaseUrl, data.user.id);
+        }
+        setSyncSuccess(`Connected to ${data.user.name}'s account! Playlists synced.`);
+        setTimeout(() => setIsSyncModalVisible(false), 1400);
+      }
+    } catch (err: any) {
+      setSyncError(err.message || 'Failed to sync. Please verify server address & code.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const playPlaylist = (pl: Playlist, startIndex = 0) => {
+    if (!pl.items || pl.items.length === 0) return;
+    const mediaTracks = pl.items.map(it => it.mediaItem).filter(Boolean);
+    if (mediaTracks.length === 0) return;
+    playTrack(mediaTracks[startIndex] || mediaTracks[0], mediaTracks, startIndex);
+  };
+
+  useEffect(() => {
+    fetchPlaylists();
+    fetchMySyncCode();
+  }, []);
 
   // Offline Audio & Download State
   const [offlineTracks, setOfflineTracks] = useState<OfflineTrackItem[]>([
@@ -269,6 +422,18 @@ export default function App() {
             <Text style={styles.brandSubtitle}>Intelligent Music & Video</Text>
           </View>
         </View>
+
+        <TouchableOpacity 
+          style={styles.syncHeaderBtn} 
+          onPress={() => {
+            fetchMySyncCode();
+            setIsSyncModalVisible(true);
+          }}
+        >
+          <Text style={styles.syncHeaderBtnText}>
+            {syncUser ? `☁️ ${syncUser.name.split(' ')[0]}` : '☁️ Sync'}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* Main Content Area */}
@@ -354,6 +519,66 @@ export default function App() {
           </View>
         )}
 
+        {activeTab === 'playlists' && (
+          <View style={styles.section}>
+            <View style={styles.playlistsHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionTitle}>Cloud Playlists</Text>
+                <Text style={styles.sectionSubtitle}>
+                  {syncUser ? `Account: ${syncUser.name} • Cross-Device Active` : 'Playlists synced across all your devices'}
+                </Text>
+              </View>
+              <TouchableOpacity 
+                style={styles.syncSmallBtn} 
+                onPress={() => {
+                  fetchMySyncCode();
+                  setIsSyncModalVisible(true);
+                }}
+              >
+                <Text style={styles.syncSmallBtnText}>🔄 Pair Code</Text>
+              </TouchableOpacity>
+            </View>
+
+            {playlists.map(pl => (
+              <View key={pl.id} style={styles.playlistCard}>
+                <Image source={{ uri: pl.coverArt || SAMPLE_TRACKS[0].thumbnail }} style={styles.playlistThumb} />
+                <View style={styles.playlistMeta}>
+                  <Text style={styles.playlistTitle} numberOfLines={1}>{pl.title}</Text>
+                  <Text style={styles.playlistDesc} numberOfLines={1}>{pl.description || 'Personal music mix'}</Text>
+                  <Text style={styles.playlistCount}>
+                    {pl.items?.length || pl.itemCount || 0} tracks • By {pl.creator?.name || 'You'}
+                  </Text>
+                </View>
+                <TouchableOpacity 
+                  style={styles.playlistPlayBtn}
+                  onPress={() => playPlaylist(pl)}
+                >
+                  <Text style={styles.playlistPlayText}>▶ Play All</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+
+            {playlists.length === 0 && (
+              <View style={styles.emptyPlaylistCard}>
+                <Text style={styles.emptyIcon}>☁️</Text>
+                <Text style={styles.emptyTitle}>No Synced Playlists</Text>
+                <Text style={styles.emptyDesc}>
+                  Enter the 6-character sync code from your web browser or another device to load all your playlists instantly!
+                </Text>
+                <TouchableOpacity 
+                  style={styles.linkSyncBtn}
+                  onPress={() => {
+                    fetchMySyncCode();
+                    setIsSyncModalVisible(true);
+                  }}
+                >
+                  <Text style={styles.linkSyncBtnText}>Pair with Device Sync Code</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
+
         {activeTab === 'library' && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Offline Audio Vault</Text>
@@ -423,6 +648,7 @@ export default function App() {
         {[
           { id: 'home', label: 'Home', icon: '🏠' },
           { id: 'explore', label: 'Explore', icon: '🧭' },
+          { id: 'playlists', label: 'Playlists', icon: '📋' },
           { id: 'library', label: 'Library', icon: '📚' },
           { id: 'ai', label: 'AI Studio', icon: '✨' },
         ].map(item => (
@@ -439,7 +665,7 @@ export default function App() {
         ))}
       </View>
 
-      {/* Fullscreen Now Playing Modal */}
+      {/* Fullscreen Now Playing Modal - Fully Vertically Scrollable */}
       <Modal visible={isModalOpen} animationType="slide" transparent={false}>
         <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalHeader}>
@@ -450,47 +676,143 @@ export default function App() {
           </View>
 
           {currentTrack && (
-            <View style={styles.modalBody}>
-              <Image source={{ uri: currentTrack.thumbnail }} style={styles.modalArtwork} />
-              <Text style={styles.modalTitle}>{currentTrack.title}</Text>
-              <Text style={styles.modalArtist}>{currentTrack.artist}</Text>
-              <Text style={styles.modalMoodBadge}>{currentTrack.genre} • {currentTrack.mood}</Text>
+            <ScrollView 
+              style={styles.modalScroll}
+              contentContainerStyle={styles.modalScrollContent}
+              showsVerticalScrollIndicator={true}
+              bounces={true}
+            >
+              <View style={styles.modalBody}>
+                <Image source={{ uri: currentTrack.thumbnail }} style={styles.modalArtwork} />
+                <Text style={styles.modalTitle}>{currentTrack.title}</Text>
+                <Text style={styles.modalArtist}>{currentTrack.artist}</Text>
+                <Text style={styles.modalMoodBadge}>{currentTrack.genre} • {currentTrack.mood}</Text>
 
-              {/* Progress */}
-              <View style={styles.progressRow}>
-                <Text style={styles.timeText}>{formatTime(positionMillis)}</Text>
-                <Text style={styles.timeText}>{formatTime(durationMillis || currentTrack.duration * 1000)}</Text>
+                {/* Progress */}
+                <View style={styles.progressRow}>
+                  <Text style={styles.timeText}>{formatTime(positionMillis)}</Text>
+                  <Text style={styles.timeText}>{formatTime(durationMillis || currentTrack.duration * 1000)}</Text>
+                </View>
+
+                {/* Controls */}
+                <View style={styles.modalControls}>
+                  <TouchableOpacity onPress={playPreviousTrack} style={styles.modalSecondaryButton}>
+                    <Text style={styles.modalSecondaryButtonText}>⏮</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={togglePlay} style={styles.modalPlayButton}>
+                    <Text style={styles.modalPlayText}>{isPlaying ? '⏸' : '▶'}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={playNextTrack} style={styles.modalSecondaryButton}>
+                    <Text style={styles.modalSecondaryButtonText}>⏭</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Download Option for Offline Play in App */}
+                <TouchableOpacity
+                  onPress={() => {
+                    setDownloadTargetTrack(currentTrack);
+                    setSelectedQuality('320');
+                    setIsCopyrightAgreed(false);
+                    setDownloadSuccess(false);
+                    setIsDownloadModalVisible(true);
+                  }}
+                  style={styles.modalDownloadAction}
+                >
+                  <Text style={styles.modalDownloadActionText}>📥 Download MP3 (All Qualities)</Text>
+                </TouchableOpacity>
               </View>
-
-              {/* Controls */}
-              <View style={styles.modalControls}>
-                <TouchableOpacity onPress={playPreviousTrack} style={styles.modalSecondaryButton}>
-                  <Text style={styles.modalSecondaryButtonText}>⏮</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={togglePlay} style={styles.modalPlayButton}>
-                  <Text style={styles.modalPlayText}>{isPlaying ? '⏸' : '▶'}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={playNextTrack} style={styles.modalSecondaryButton}>
-                  <Text style={styles.modalSecondaryButtonText}>⏭</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Download Option for Offline Play in App */}
-              <TouchableOpacity
-                onPress={() => {
-                  setDownloadTargetTrack(currentTrack);
-                  setSelectedQuality('320');
-                  setIsCopyrightAgreed(false);
-                  setDownloadSuccess(false);
-                  setIsDownloadModalVisible(true);
-                }}
-                style={styles.modalDownloadAction}
-              >
-                <Text style={styles.modalDownloadActionText}>📥 Download MP3 (All Qualities)</Text>
-              </TouchableOpacity>
-            </View>
+            </ScrollView>
           )}
         </SafeAreaView>
+      </Modal>
+
+      {/* Cross-Device Cloud Sync Modal */}
+      <Modal visible={isSyncModalVisible} animationType="slide" transparent>
+        <View style={styles.downloadModalBackdrop}>
+          <View style={styles.syncModalCard}>
+            <View style={styles.downloadModalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ fontSize: 20 }}>☁️</Text>
+                <Text style={styles.downloadModalTitle}>Cross-Device Playlist Sync</Text>
+              </View>
+              <TouchableOpacity onPress={() => setIsSyncModalVisible(false)}>
+                <Text style={styles.closeText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 460 }}>
+              {/* Device Sync Info Box */}
+              <View style={styles.syncInfoBox}>
+                <Text style={styles.syncInfoTitle}>🔄 Anywhere Access Active</Text>
+                <Text style={styles.syncInfoDesc}>
+                  Playlists created on your computer or phone are saved centrally. Pair your devices to seamlessly access your custom playlists anywhere.
+                </Text>
+              </View>
+
+              {/* Current Device Code */}
+              <View style={styles.syncCodeCard}>
+                <Text style={styles.syncCodeCardLabel}>THIS DEVICE SYNC CODE:</Text>
+                <Text style={styles.syncCodeDisplay}>{mySyncCode || 'VF-8492'}</Text>
+                <Text style={styles.syncCodeSub}>Enter this code on your desktop browser to link it.</Text>
+              </View>
+
+              {/* Enter Sync Code from other device */}
+              <Text style={styles.qualitySectionTitle}>Pair with Another Device Code:</Text>
+              <View style={styles.syncInputRow}>
+                <TextInput
+                  style={styles.syncTextInput}
+                  value={syncCodeInput}
+                  onChangeText={t => setSyncCodeInput(t.toUpperCase())}
+                  placeholder="e.g. VF-2849"
+                  placeholderTextColor="#64748b"
+                  autoCapitalize="characters"
+                />
+                <TouchableOpacity 
+                  style={[styles.syncSubmitBtn, (!syncCodeInput.trim() || isSyncing) && { opacity: 0.6 }]}
+                  disabled={!syncCodeInput.trim() || isSyncing}
+                  onPress={handleLinkSyncCode}
+                >
+                  {isSyncing ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.syncSubmitBtnText}>Link Device</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              {syncError && (
+                <View style={styles.syncErrorBox}>
+                  <Text style={styles.syncErrorText}>⚠️ {syncError}</Text>
+                </View>
+              )}
+
+              {syncSuccess && (
+                <View style={styles.syncSuccessBox}>
+                  <Text style={styles.syncSuccessText}>✓ {syncSuccess}</Text>
+                </View>
+              )}
+
+              {/* Backend URL config for LAN/Wi-Fi devices */}
+              <Text style={[styles.qualitySectionTitle, { marginTop: 14 }]}>Server API Endpoint:</Text>
+              <TextInput
+                style={styles.syncUrlInput}
+                value={apiBaseUrl}
+                onChangeText={setApiBaseUrl}
+                placeholder="http://localhost:4000/api"
+                placeholderTextColor="#64748b"
+                autoCapitalize="none"
+              />
+              <View style={styles.lanHelpersRow}>
+                <TouchableOpacity onPress={() => setApiBaseUrl('http://localhost:4000/api')}>
+                  <Text style={styles.lanHelperChip}>localhost</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setApiBaseUrl('http://10.0.2.2:4000/api')}>
+                  <Text style={styles.lanHelperChip}>Android Emulator (10.0.2.2)</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
       </Modal>
 
       {/* Download & Copyright Disclaimer Modal */}
@@ -619,6 +941,22 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#1e2436',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  syncHeaderBtn: {
+    backgroundColor: 'rgba(124, 58, 237, 0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(124, 58, 237, 0.4)',
+  },
+  syncHeaderBtnText: {
+    color: '#c4b5fd',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   brandRow: {
     flexDirection: 'row',
@@ -903,10 +1241,20 @@ const styles = StyleSheet.create({
     fontSize: 18,
     padding: 6,
   },
+  modalScroll: {
+    flex: 1,
+    width: '100%',
+  },
+  modalScrollContent: {
+    flexGrow: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+  },
   modalBody: {
     alignItems: 'center',
-    flex: 1,
-    justifyContent: 'center',
+    width: '100%',
   },
   modalArtwork: {
     width: 250,
@@ -1208,6 +1556,241 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     lineHeight: 18,
+  },
+  playlistsHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  sectionSubtitle: {
+    color: '#94a3b8',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  syncSmallBtn: {
+    backgroundColor: '#181d30',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  syncSmallBtnText: {
+    color: '#a78bfa',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  playlistCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#181d30',
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    gap: 12,
+  },
+  playlistThumb: {
+    width: 54,
+    height: 54,
+    borderRadius: 12,
+  },
+  playlistMeta: {
+    flex: 1,
+    gap: 2,
+  },
+  playlistTitle: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  playlistDesc: {
+    color: '#94a3b8',
+    fontSize: 11,
+  },
+  playlistCount: {
+    color: '#64748b',
+    fontSize: 10,
+    marginTop: 2,
+  },
+  playlistPlayBtn: {
+    backgroundColor: '#7c3aed',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  playlistPlayText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  emptyPlaylistCard: {
+    padding: 30,
+    backgroundColor: '#181d30',
+    borderRadius: 20,
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  emptyIcon: {
+    fontSize: 32,
+  },
+  emptyTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  emptyDesc: {
+    color: '#94a3b8',
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  linkSyncBtn: {
+    marginTop: 8,
+    backgroundColor: '#7c3aed',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  linkSyncBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  syncModalCard: {
+    backgroundColor: '#121624',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  syncInfoBox: {
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.25)',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 14,
+    gap: 4,
+  },
+  syncInfoTitle: {
+    color: '#34d399',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  syncInfoDesc: {
+    color: '#cbd5e1',
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  syncCodeCard: {
+    backgroundColor: '#181d30',
+    borderRadius: 14,
+    padding: 14,
+    alignItems: 'center',
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  syncCodeCardLabel: {
+    color: '#94a3b8',
+    fontSize: 10,
+    fontWeight: 'bold',
+    letterSpacing: 1,
+    marginBottom: 6,
+  },
+  syncCodeDisplay: {
+    color: '#c4b5fd',
+    fontSize: 22,
+    fontWeight: 'bold',
+    fontFamily: 'monospace',
+    letterSpacing: 3,
+  },
+  syncCodeSub: {
+    color: '#64748b',
+    fontSize: 10,
+    marginTop: 4,
+  },
+  syncInputRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 12,
+  },
+  syncTextInput: {
+    flex: 1,
+    backgroundColor: '#181d30',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: '#ffffff',
+    fontSize: 13,
+    fontFamily: 'monospace',
+  },
+  syncSubmitBtn: {
+    backgroundColor: '#7c3aed',
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  syncSubmitBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  syncErrorBox: {
+    backgroundColor: 'rgba(244, 63, 94, 0.1)',
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  syncErrorText: {
+    color: '#fb7185',
+    fontSize: 11,
+  },
+  syncSuccessBox: {
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  syncSuccessText: {
+    color: '#34d399',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  syncUrlInput: {
+    backgroundColor: '#181d30',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    color: '#cbd5e1',
+    fontSize: 11,
+    fontFamily: 'monospace',
+    marginBottom: 8,
+  },
+  lanHelpersRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+  },
+  lanHelperChip: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    color: '#94a3b8',
+    fontSize: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
   },
 });
 

@@ -67,9 +67,8 @@ export const LibraryView: React.FC = () => {
       setLocalItems(items.filter(i => i.isLocal));
 
       // Fetch history from database
-      const res = await fetch(`http://localhost:4000/api/library/history?userId=${user?.id || 'demo-user-id'}`);
-      const hData = await res.json();
-      setHistory(hData.history || []);
+      const hData = await api.getHistory(user?.id || 'demo-user-id');
+      setHistory(hData);
     } catch (err) {
       console.error('Failed to load library data', err);
     }

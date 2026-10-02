@@ -484,6 +484,36 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       localStorage.setItem(LS_TOKEN, token);
       localStorage.setItem(LS_USER, JSON.stringify(user));
       const favs: string[] = JSON.parse(localStorage.getItem(LS_FAVS(user.id)) || '[]');
+      
+      // Seamlessly link any guest-session created playlist IDs to this authenticated user account
+      if (user.id !== 'demo-user-id') {
+        try {
+          const userKey = `vibeflow_created_playlist_ids_${user.id}`;
+          const existingUserIds: string[] = JSON.parse(localStorage.getItem(userKey) || '[]');
+          const demoIds: string[] = JSON.parse(localStorage.getItem('vibeflow_created_playlist_ids_demo-user-id') || '[]');
+          const legacyIds: string[] = JSON.parse(localStorage.getItem('vibeflow_my_created_playlist_ids') || '[]');
+          const mergedIds = Array.from(new Set([...existingUserIds, ...demoIds, ...legacyIds]));
+          if (mergedIds.length > 0) {
+            localStorage.setItem(userKey, JSON.stringify(mergedIds.slice(0, 100)));
+          }
+
+          // Also migrate local playlist cache
+          const userCacheKey = `vibeflow_cached_playlists_${user.id}`;
+          const userCached: any[] = JSON.parse(localStorage.getItem(userCacheKey) || '[]');
+          const demoCached: any[] = JSON.parse(localStorage.getItem('vibeflow_cached_playlists_demo-user-id') || '[]');
+          const legacyCached: any[] = JSON.parse(localStorage.getItem('vibeflow_cached_playlists') || '[]');
+          const allCached = [...userCached];
+          for (const item of [...demoCached, ...legacyCached]) {
+            if (item && item.id && !allCached.some(c => c.id === item.id)) {
+              allCached.push({ ...item, userId: user.id });
+            }
+          }
+          if (allCached.length > 0) {
+            localStorage.setItem(userCacheKey, JSON.stringify(allCached.slice(0, 100)));
+          }
+        } catch {}
+      }
+
       set({ user, token, favorites: favs });
     } else {
       localStorage.removeItem(LS_TOKEN);

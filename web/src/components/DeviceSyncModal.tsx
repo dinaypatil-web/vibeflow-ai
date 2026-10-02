@@ -13,14 +13,14 @@ import {
   LogIn,
   KeyRound
 } from 'lucide-react';
-import { api } from '../services/api';
+import { api, saveLocalCreatedPlaylist } from '../services/api';
 import { usePlayerStore } from '../store/playerStore';
 
 interface DeviceSyncModalProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenAuth?: () => void;
-  onSynced?: () => void;
+  onSynced?: (user: any, token: string | null) => void;
 }
 
 export const DeviceSyncModal: React.FC<DeviceSyncModalProps> = ({
@@ -81,12 +81,18 @@ export const DeviceSyncModal: React.FC<DeviceSyncModalProps> = ({
     try {
       const res = await api.linkDeviceBySyncCode(clean);
       if (res.user) {
-        setUser(res.user, res.token || localStorage.getItem('vibeflow_token') || 'sync-token');
+        const token = res.token || localStorage.getItem('vibeflow_token') || 'sync-token';
+        setUser(res.user, token);
+        if (Array.isArray(res.playlists)) {
+          for (const pl of res.playlists) {
+            saveLocalCreatedPlaylist(pl, res.user.id);
+          }
+        }
         setSuccessMsg(`Device paired successfully! Welcome back, ${res.user.name}.`);
-        if (onSynced) onSynced();
+        if (onSynced) onSynced(res.user, token);
         setTimeout(() => {
           onClose();
-        }, 1500);
+        }, 1200);
       }
     } catch (err: any) {
       setError(err.message || 'Invalid sync code. Please check the code on your other device.');

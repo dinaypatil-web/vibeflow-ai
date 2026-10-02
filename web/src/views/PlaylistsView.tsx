@@ -25,7 +25,7 @@ import {
   Check
 } from 'lucide-react';
 import { Playlist, PlaylistItem, MediaItem } from '../types';
-import { api } from '../services/api';
+import { api, API_BASE } from '../services/api';
 import { usePlayerStore } from '../store/playerStore';
 import { SmartPlaylistModal } from '../components/SmartPlaylistModal';
 import { CreatePlaylistModal } from '../components/CreatePlaylistModal';
@@ -64,12 +64,14 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
       .filter(Boolean);
   }, [selectedPlaylist?.items, playlistSort]);
 
-  const fetchPlaylists = async (preferredPlaylistId?: string) => {
+  const fetchPlaylists = async (preferredPlaylistId?: string, overrideUser?: any, overrideToken?: string | null) => {
     setLoading(true);
     try {
-      const data = await api.getPlaylists(user?.id, token);
+      const activeUser = overrideUser !== undefined ? overrideUser : user;
+      const activeToken = overrideToken !== undefined ? overrideToken : token;
+      const data = await api.getPlaylists(activeUser?.id, activeToken);
       
-      const isLoggedIn = Boolean(user && user.id !== 'demo-user-id');
+      const isLoggedIn = Boolean(activeUser && activeUser.id !== 'demo-user-id');
 
       // Sort: User's personal custom playlists first (newest first), then shared with me
       const customPlaylists = data.filter(p => !p.id.startsWith('playlist-') && !p.isSharedWithMe)
@@ -339,7 +341,7 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
 
   const handleExport = (format: 'json' | 'm3u') => {
     if (!selectedPlaylist) return;
-    const url = `http://localhost:4000/api/playlists/${selectedPlaylist.id}/export?format=${format}`;
+    const url = `${API_BASE}/playlists/${selectedPlaylist.id}/export?format=${format}`;
     window.open(url, '_blank');
   };
 
@@ -915,8 +917,8 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
         isOpen={isSyncModalOpen}
         onClose={() => setIsSyncModalOpen(false)}
         onOpenAuth={onOpenAuth}
-        onSynced={() => {
-          fetchPlaylists();
+        onSynced={(syncedUser, syncedToken) => {
+          fetchPlaylists(undefined, syncedUser, syncedToken);
         }}
       />
     </div>
