@@ -18,6 +18,10 @@
     }
   },
   "include": [
-    "App.tsx"
+    "App.tsx",
+    "declarations.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    "**/*.d.ts"
   ]
 }
