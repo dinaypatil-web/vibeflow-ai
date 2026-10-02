@@ -13,6 +13,10 @@ declare module 'react-native' {
   export const Modal: any;
   export const StatusBar: any;
   export const ActivityIndicator: any;
+  export const AppState: {
+    currentState: string;
+    addEventListener: (type: 'change' | 'memoryWarning', listener: (state: string) => void) => { remove: () => void };
+  };
   export const Platform: {
     OS: 'ios' | 'android' | 'web';
     select: <T>(obj: { ios?: T; android?: T; web?: T; default?: T }) => T;

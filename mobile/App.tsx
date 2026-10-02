@@ -10,7 +10,8 @@ import {
   SafeAreaView, 
   Modal, 
   StatusBar,
-  ActivityIndicator
+  ActivityIndicator,
+  AppState
 } from 'react-native';
 import { Audio } from 'expo-av';
 
@@ -112,6 +113,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'home' | 'explore' | 'playlists' | 'library' | 'ai'>('home');
   const [currentTrack, setCurrentTrack] = useState<MediaItem | null>(SAMPLE_TRACKS[0]);
   const [isPlaying, setIsPlaying] = useState(false);
+  const isPlayingRef = useRef(false);
   const [positionMillis, setPositionMillis] = useState(0);
   const [durationMillis, setDurationMillis] = useState(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -130,14 +132,26 @@ export default function App() {
   const [isSyncModalVisible, setIsSyncModalVisible] = useState(false);
   const [syncCodeInput, setSyncCodeInput] = useState('');
   const [mySyncCode, setMySyncCode] = useState<string>('');
-  const [syncUser, setSyncUser] = useState<{ id: string; name: string; email?: string; syncCode?: string } | null>(null);
+  const [syncUser, setSyncUser] = useState<{ id: string; name: string; email?: string; username?: string; syncCode?: string } | null>(null);
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [authTab, setAuthTab] = useState<'login' | 'register' | 'syncCode'>('login');
+  const [authIdentifier, setAuthIdentifier] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authName, setAuthName] = useState('');
+  const [authUsername, setAuthUsername] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncSuccess, setSyncSuccess] = useState<string | null>(null);
 
-  const fetchPlaylists = async (baseUrl = apiBaseUrl, uid = syncUser?.id || 'demo-user-id') => {
+  const fetchPlaylists = async (baseUrl = apiBaseUrl, uid = syncUser?.id || 'demo-user-id', token = authToken) => {
     try {
-      const res = await fetch(`${baseUrl}/playlists?userId=${encodeURIComponent(uid)}`);
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      headers['x-user-id'] = uid;
+
+      const res = await fetch(`${baseUrl}/playlists?userId=${encodeURIComponent(uid)}`, { headers });
       if (res.ok) {
         const data = await res.json();
         if (data.playlists && data.playlists.length > 0) {
@@ -165,6 +179,117 @@ export default function App() {
     } catch (err) {
       console.warn('Network fetch playlists error:', err);
     }
+  };
+
+  const handleLogin = async () => {
+    const ident = authIdentifier.trim();
+    const pass = authPassword.trim();
+    if (!ident || !pass) {
+      setSyncError('Please enter your username/email and password.');
+      return;
+    }
+    setIsSyncing(true);
+    setSyncError(null);
+    setSyncSuccess(null);
+    try {
+      const res = await fetch(`${apiBaseUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: ident, password: pass })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Invalid credentials');
+      setSyncUser(data.user);
+      setAuthToken(data.token);
+      if (data.user.syncCode) setMySyncCode(data.user.syncCode);
+      setSyncSuccess(`Logged in as ${data.user.name}! Syncing all your cloud playlists...`);
+      await fetchPlaylists(apiBaseUrl, data.user.id, data.token);
+      setTimeout(() => {
+        setIsSyncModalVisible(false);
+        setSyncSuccess(null);
+      }, 1200);
+    } catch (err: any) {
+      setSyncError(err.message || 'Login failed. Check server address and credentials.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleRegister = async () => {
+    const name = authName.trim();
+    const ident = authIdentifier.trim();
+    const username = authUsername.trim() || (ident.includes('@') ? ident.split('@')[0] : ident);
+    const email = ident.includes('@') ? ident : `${username}@vibeflow.local`;
+    const password = authPassword.trim();
+    if (!password || password.length < 6) {
+      setSyncError('Password must be at least 6 characters.');
+      return;
+    }
+    if (!ident) {
+      setSyncError('Please enter an email or username.');
+      return;
+    }
+    setIsSyncing(true);
+    setSyncError(null);
+    setSyncSuccess(null);
+    try {
+      const res = await fetch(`${apiBaseUrl}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name || username, email, username, password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Registration failed');
+      setSyncUser(data.user);
+      setAuthToken(data.token);
+      setSyncSuccess(`Account created for ${data.user.name}! Playlists ready.`);
+      await fetchPlaylists(apiBaseUrl, data.user.id, data.token);
+      setTimeout(() => {
+        setIsSyncModalVisible(false);
+        setSyncSuccess(null);
+      }, 1200);
+    } catch (err: any) {
+      setSyncError(err.message || 'Registration failed.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleDemoLogin = async () => {
+    setIsSyncing(true);
+    setSyncError(null);
+    setSyncSuccess(null);
+    try {
+      const res = await fetch(`${apiBaseUrl}/auth/demo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Demo login failed');
+      setSyncUser(data.user);
+      setAuthToken(data.token);
+      setSyncSuccess(`Logged in as Demo User (${data.user.name})!`);
+      await fetchPlaylists(apiBaseUrl, data.user.id, data.token);
+      setTimeout(() => {
+        setIsSyncModalVisible(false);
+        setSyncSuccess(null);
+      }, 1200);
+    } catch (err: any) {
+      setSyncError(err.message || 'Demo login failed.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleLogout = () => {
+    setSyncUser(null);
+    setAuthToken(null);
+    setPlaylists(INITIAL_MOBILE_PLAYLISTS);
+    setSyncSuccess('Signed out. Switched to offline guest mode.');
+    setTimeout(() => {
+      setSyncSuccess(null);
+      setIsSyncModalVisible(false);
+    }, 900);
   };
 
   const fetchMySyncCode = async () => {
@@ -283,15 +408,17 @@ export default function App() {
 
   const soundRef = useRef<Audio.Sound | null>(null);
 
-  // Configure Expo AV for Background Audio Playback like VLC
+  // Configure Expo AV for Background & Lock-Screen Audio Playback like VLC / Spotify
   useEffect(() => {
     async function initAudio() {
       try {
         await Audio.setAudioModeAsync({
           staysActiveInBackground: true,
           playsInSilentModeIOS: true,
-          shouldDuckAndroid: true,
-          playThroughEarpieceAndroid: false
+          shouldDuckAndroid: false, // Critical: do NOT duck audio on Android lock screen or focus shifts
+          playThroughEarpieceAndroid: false,
+          interruptionModeAndroid: 1, // InterruptionModeAndroid.DoNotMix
+          interruptionModeIOS: 1, // InterruptionModeIOS.DoNotMix
         });
       } catch (err) {
         console.warn('Failed to set audio mode for background playback', err);
@@ -299,7 +426,17 @@ export default function App() {
     }
     initAudio();
 
+    // AppState listener: keep playback active when app is minimized or screen locked
+    const sub = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'background' || nextAppState === 'inactive') {
+        if (soundRef.current && isPlayingRef.current) {
+          soundRef.current.playAsync().catch(() => {});
+        }
+      }
+    });
+
     return () => {
+      sub.remove();
       if (soundRef.current) {
         soundRef.current.unloadAsync();
       }
@@ -325,14 +462,31 @@ export default function App() {
       setCurrentTrack(track);
       if (!track.streamUrl) return;
 
+      // Re-apply background audio mode immediately before starting playback
+      try {
+        await Audio.setAudioModeAsync({
+          staysActiveInBackground: true,
+          playsInSilentModeIOS: true,
+          shouldDuckAndroid: false,
+          playThroughEarpieceAndroid: false,
+          interruptionModeAndroid: 1,
+          interruptionModeIOS: 1,
+        });
+      } catch {}
+
       const { sound } = await Audio.Sound.createAsync(
         { uri: track.streamUrl },
-        { shouldPlay: true },
+        { 
+          shouldPlay: true, 
+          staysActiveInBackground: true,
+          progressUpdateIntervalMillis: 500
+        },
         (status: any) => {
           if (status.isLoaded) {
             setPositionMillis(status.positionMillis);
             setDurationMillis(status.durationMillis || 0);
             setIsPlaying(status.isPlaying);
+            isPlayingRef.current = status.isPlaying;
             if (status.didJustFinish) {
               // Seamless continuous background playback of next track
               playNextTrack();
@@ -343,6 +497,7 @@ export default function App() {
 
       soundRef.current = sound;
       setIsPlaying(true);
+      isPlayingRef.current = true;
     } catch (err) {
       console.warn('Failed to play audio track on mobile', err);
     }
@@ -366,6 +521,7 @@ export default function App() {
         nextIdx = 0;
       } else {
         setIsPlaying(false);
+        isPlayingRef.current = false;
         return;
       }
     }
@@ -396,9 +552,11 @@ export default function App() {
     if (isPlaying) {
       await soundRef.current.pauseAsync();
       setIsPlaying(false);
+      isPlayingRef.current = false;
     } else {
       await soundRef.current.playAsync();
       setIsPlaying(true);
+      isPlayingRef.current = true;
     }
   };
 
@@ -433,7 +591,7 @@ export default function App() {
           }}
         >
           <Text style={styles.syncHeaderBtnText}>
-            {syncUser ? `☁️ ${syncUser.name.split(' ')[0]}` : '☁️ Sync'}
+            {syncUser ? `👤 ${syncUser.name.split(' ')[0]}` : '👤 Sign In'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -537,7 +695,9 @@ export default function App() {
                   setIsSyncModalVisible(true);
                 }}
               >
-                <Text style={styles.syncSmallBtnText}>🔄 Pair Code</Text>
+                <Text style={styles.syncSmallBtnText}>
+                  {syncUser ? '⚙️ Account' : '🔑 Sign In'}
+                </Text>
               </TouchableOpacity>
             </View>
 
@@ -548,7 +708,7 @@ export default function App() {
                   <Text style={styles.playlistTitle} numberOfLines={1}>{pl.title}</Text>
                   <Text style={styles.playlistDesc} numberOfLines={1}>{pl.description || 'Personal music mix'}</Text>
                   <Text style={styles.playlistCount}>
-                    {pl.items?.length || pl.itemCount || 0} tracks • By {pl.creator?.name || 'You'}
+                    {pl.items?.length || pl.itemCount || 0} tracks • By {pl.creator?.name || (syncUser?.name ? syncUser.name : 'You')}
                   </Text>
                 </View>
                 <TouchableOpacity 
@@ -565,17 +725,29 @@ export default function App() {
                 <Text style={styles.emptyIcon}>☁️</Text>
                 <Text style={styles.emptyTitle}>No Synced Playlists</Text>
                 <Text style={styles.emptyDesc}>
-                  Enter the 6-character sync code from your web browser or another device to load all your playlists instantly!
+                  Sign in with your username or email to automatically load all playlists created on your other devices!
                 </Text>
-                <TouchableOpacity 
-                  style={styles.linkSyncBtn}
-                  onPress={() => {
-                    fetchMySyncCode();
-                    setIsSyncModalVisible(true);
-                  }}
-                >
-                  <Text style={styles.linkSyncBtnText}>Pair with Device Sync Code</Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+                  <TouchableOpacity 
+                    style={styles.linkSyncBtn}
+                    onPress={() => {
+                      setAuthTab('login');
+                      setIsSyncModalVisible(true);
+                    }}
+                  >
+                    <Text style={styles.linkSyncBtnText}>Sign In with Account</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.linkSyncBtn, { backgroundColor: '#1e2436', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }]}
+                    onPress={() => {
+                      setAuthTab('syncCode');
+                      fetchMySyncCode();
+                      setIsSyncModalVisible(true);
+                    }}
+                  >
+                    <Text style={styles.linkSyncBtnText}>Pair Code</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
           </View>
@@ -728,59 +900,236 @@ export default function App() {
         </SafeAreaView>
       </Modal>
 
-      {/* Cross-Device Cloud Sync Modal */}
+      {/* Cross-Device Cloud Sync & Account Modal */}
       <Modal visible={isSyncModalVisible} animationType="slide" transparent>
         <View style={styles.downloadModalBackdrop}>
           <View style={styles.syncModalCard}>
             <View style={styles.downloadModalHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Text style={{ fontSize: 20 }}>☁️</Text>
-                <Text style={styles.downloadModalTitle}>Cross-Device Playlist Sync</Text>
+                <Text style={{ fontSize: 20 }}>👤</Text>
+                <Text style={styles.downloadModalTitle}>
+                  {syncUser ? 'Account & Device Sync' : 'Sign In / Device Sync'}
+                </Text>
               </View>
               <TouchableOpacity onPress={() => setIsSyncModalVisible(false)}>
                 <Text style={styles.closeText}>✕</Text>
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={{ maxHeight: 460 }}>
-              {/* Device Sync Info Box */}
-              <View style={styles.syncInfoBox}>
-                <Text style={styles.syncInfoTitle}>🔄 Anywhere Access Active</Text>
-                <Text style={styles.syncInfoDesc}>
-                  Playlists created on your computer or phone are saved centrally. Pair your devices to seamlessly access your custom playlists anywhere.
-                </Text>
-              </View>
+            <ScrollView style={{ maxHeight: 520 }} showsVerticalScrollIndicator={false}>
+              {syncUser ? (
+                /* Authenticated Profile View */
+                <View style={styles.profileSection}>
+                  <View style={styles.profileCard}>
+                    <View style={styles.profileAvatar}>
+                      <Text style={styles.profileAvatarText}>
+                        {(syncUser.name || 'U').charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.profileName}>{syncUser.name}</Text>
+                      <Text style={styles.profileEmail}>{syncUser.email || syncUser.username || 'Logged In User'}</Text>
+                      <Text style={styles.profileSyncBadge}>☁️ Cross-Device Cloud Sync Active</Text>
+                    </View>
+                  </View>
 
-              {/* Current Device Code */}
-              <View style={styles.syncCodeCard}>
-                <Text style={styles.syncCodeCardLabel}>THIS DEVICE SYNC CODE:</Text>
-                <Text style={styles.syncCodeDisplay}>{mySyncCode || 'VF-8492'}</Text>
-                <Text style={styles.syncCodeSub}>Enter this code on your desktop browser to link it.</Text>
-              </View>
+                  <View style={styles.syncInfoBox}>
+                    <Text style={styles.syncInfoTitle}>✓ Synced with Web & Devices</Text>
+                    <Text style={styles.syncInfoDesc}>
+                      {playlists.length} playlists loaded. Playlists created on your computer or here appear everywhere automatically.
+                    </Text>
+                  </View>
 
-              {/* Enter Sync Code from other device */}
-              <Text style={styles.qualitySectionTitle}>Pair with Another Device Code:</Text>
-              <View style={styles.syncInputRow}>
-                <TextInput
-                  style={styles.syncTextInput}
-                  value={syncCodeInput}
-                  onChangeText={(t: string) => setSyncCodeInput(t.toUpperCase())}
-                  placeholder="e.g. VF-2849"
-                  placeholderTextColor="#64748b"
-                  autoCapitalize="characters"
-                />
-                <TouchableOpacity 
-                  style={[styles.syncSubmitBtn, (!syncCodeInput.trim() || isSyncing) && { opacity: 0.6 }]}
-                  disabled={!syncCodeInput.trim() || isSyncing}
-                  onPress={handleLinkSyncCode}
-                >
-                  {isSyncing ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={styles.syncSubmitBtnText}>Link Device</Text>
+                  {mySyncCode ? (
+                    <View style={styles.syncCodeCard}>
+                      <Text style={styles.syncCodeCardLabel}>YOUR ACCOUNT SYNC CODE:</Text>
+                      <Text style={styles.syncCodeDisplay}>{mySyncCode}</Text>
+                      <Text style={styles.syncCodeSub}>Use this code on any device without entering passwords.</Text>
+                    </View>
+                  ) : null}
+
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+                    <TouchableOpacity 
+                      style={[styles.syncSubmitBtn, { flex: 1, paddingVertical: 12 }]}
+                      onPress={() => {
+                        fetchPlaylists(apiBaseUrl, syncUser.id, authToken);
+                        setSyncSuccess('Playlists refreshed from cloud!');
+                        setTimeout(() => setSyncSuccess(null), 2000);
+                      }}
+                    >
+                      <Text style={styles.syncSubmitBtnText}>🔄 Refresh</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[styles.syncSubmitBtn, { flex: 1, backgroundColor: '#334155', paddingVertical: 12 }]}
+                      onPress={handleLogout}
+                    >
+                      <Text style={styles.syncSubmitBtnText}>🚪 Sign Out</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                /* Auth Tabs */
+                <View>
+                  <View style={styles.authTabsRow}>
+                    <TouchableOpacity 
+                      style={[styles.authTabBtn, authTab === 'login' && styles.authTabBtnActive]}
+                      onPress={() => { setAuthTab('login'); setSyncError(null); }}
+                    >
+                      <Text style={[styles.authTabBtnText, authTab === 'login' && styles.authTabBtnTextActive]}>
+                        Sign In
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[styles.authTabBtn, authTab === 'register' && styles.authTabBtnActive]}
+                      onPress={() => { setAuthTab('register'); setSyncError(null); }}
+                    >
+                      <Text style={[styles.authTabBtnText, authTab === 'register' && styles.authTabBtnTextActive]}>
+                        Register
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[styles.authTabBtn, authTab === 'syncCode' && styles.authTabBtnActive]}
+                      onPress={() => { setAuthTab('syncCode'); setSyncError(null); }}
+                    >
+                      <Text style={[styles.authTabBtnText, authTab === 'syncCode' && styles.authTabBtnTextActive]}>
+                        Sync Code
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {authTab === 'login' && (
+                    <View style={styles.authForm}>
+                      <Text style={styles.authFormDesc}>
+                        Sign in with the same credentials used on web to access all your playlists.
+                      </Text>
+                      <Text style={styles.inputLabel}>Username or Email:</Text>
+                      <TextInput
+                        style={styles.authTextInput}
+                        value={authIdentifier}
+                        onChangeText={setAuthIdentifier}
+                        placeholder="e.g. aarav@vibeflow.ai or demo"
+                        placeholderTextColor="#64748b"
+                        autoCapitalize="none"
+                      />
+                      <Text style={styles.inputLabel}>Password:</Text>
+                      <TextInput
+                        style={styles.authTextInput}
+                        value={authPassword}
+                        onChangeText={setAuthPassword}
+                        placeholder="••••••••"
+                        placeholderTextColor="#64748b"
+                        secureTextEntry
+                      />
+                      <TouchableOpacity 
+                        style={[styles.authPrimaryBtn, isSyncing && { opacity: 0.6 }]}
+                        disabled={isSyncing}
+                        onPress={handleLogin}
+                      >
+                        {isSyncing ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <Text style={styles.authPrimaryBtnText}>Sign In & Load Playlists</Text>
+                        )}
+                      </TouchableOpacity>
+
+                      <TouchableOpacity 
+                        style={styles.demoLoginBtn}
+                        disabled={isSyncing}
+                        onPress={handleDemoLogin}
+                      >
+                        <Text style={styles.demoLoginBtnText}>⚡ 1-Click Demo Login</Text>
+                      </TouchableOpacity>
+                    </View>
                   )}
-                </TouchableOpacity>
-              </View>
+
+                  {authTab === 'register' && (
+                    <View style={styles.authForm}>
+                      <Text style={styles.authFormDesc}>
+                        Create an account to save playlists and sync across all devices.
+                      </Text>
+                      <Text style={styles.inputLabel}>Full Name:</Text>
+                      <TextInput
+                        style={styles.authTextInput}
+                        value={authName}
+                        onChangeText={setAuthName}
+                        placeholder="e.g. Arjun Sharma"
+                        placeholderTextColor="#64748b"
+                      />
+                      <Text style={styles.inputLabel}>Email Address:</Text>
+                      <TextInput
+                        style={styles.authTextInput}
+                        value={authIdentifier}
+                        onChangeText={setAuthIdentifier}
+                        placeholder="e.g. arjun@example.com"
+                        placeholderTextColor="#64748b"
+                        autoCapitalize="none"
+                      />
+                      <Text style={styles.inputLabel}>Username (optional):</Text>
+                      <TextInput
+                        style={styles.authTextInput}
+                        value={authUsername}
+                        onChangeText={setAuthUsername}
+                        placeholder="e.g. arjun_beats"
+                        placeholderTextColor="#64748b"
+                        autoCapitalize="none"
+                      />
+                      <Text style={styles.inputLabel}>Password:</Text>
+                      <TextInput
+                        style={styles.authTextInput}
+                        value={authPassword}
+                        onChangeText={setAuthPassword}
+                        placeholder="Min 6 characters"
+                        placeholderTextColor="#64748b"
+                        secureTextEntry
+                      />
+                      <TouchableOpacity 
+                        style={[styles.authPrimaryBtn, isSyncing && { opacity: 0.6 }]}
+                        disabled={isSyncing}
+                        onPress={handleRegister}
+                      >
+                        {isSyncing ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <Text style={styles.authPrimaryBtnText}>Create Account & Sync</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {authTab === 'syncCode' && (
+                    <View style={styles.authForm}>
+                      <View style={styles.syncCodeCard}>
+                        <Text style={styles.syncCodeCardLabel}>THIS DEVICE SYNC CODE:</Text>
+                        <Text style={styles.syncCodeDisplay}>{mySyncCode || 'VF-8492'}</Text>
+                        <Text style={styles.syncCodeSub}>Enter this code on your web browser to link this device.</Text>
+                      </View>
+
+                      <Text style={styles.qualitySectionTitle}>Or Enter Code from Another Device:</Text>
+                      <View style={styles.syncInputRow}>
+                        <TextInput
+                          style={styles.syncTextInput}
+                          value={syncCodeInput}
+                          onChangeText={(t: string) => setSyncCodeInput(t.toUpperCase())}
+                          placeholder="e.g. VF-2849"
+                          placeholderTextColor="#64748b"
+                          autoCapitalize="characters"
+                        />
+                        <TouchableOpacity 
+                          style={[styles.syncSubmitBtn, (!syncCodeInput.trim() || isSyncing) && { opacity: 0.6 }]}
+                          disabled={!syncCodeInput.trim() || isSyncing}
+                          onPress={handleLinkSyncCode}
+                        >
+                          {isSyncing ? (
+                            <ActivityIndicator size="small" color="#fff" />
+                          ) : (
+                            <Text style={styles.syncSubmitBtnText}>Link</Text>
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              )}
 
               {syncError && (
                 <View style={styles.syncErrorBox}>
@@ -1793,6 +2142,126 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
+  },
+  profileSection: {
+    gap: 12,
+    marginBottom: 16,
+  },
+  profileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#181d30',
+    padding: 14,
+    borderRadius: 16,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  profileAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#7c3aed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileAvatarText: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  profileName: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: 'bold',
+  },
+  profileEmail: {
+    color: '#94a3b8',
+    fontSize: 12,
+    marginTop: 1,
+  },
+  profileSyncBadge: {
+    color: '#34d399',
+    fontSize: 10,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  authTabsRow: {
+    flexDirection: 'row',
+    backgroundColor: '#181d30',
+    borderRadius: 12,
+    padding: 3,
+    marginBottom: 14,
+  },
+  authTabBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 10,
+  },
+  authTabBtnActive: {
+    backgroundColor: '#7c3aed',
+  },
+  authTabBtnText: {
+    color: '#94a3b8',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  authTabBtnTextActive: {
+    color: '#ffffff',
+  },
+  authForm: {
+    gap: 10,
+    marginBottom: 14,
+  },
+  authFormDesc: {
+    color: '#94a3b8',
+    fontSize: 11,
+    lineHeight: 16,
+    marginBottom: 4,
+  },
+  inputLabel: {
+    color: '#cbd5e1',
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: -4,
+  },
+  authTextInput: {
+    backgroundColor: '#181d30',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: '#ffffff',
+    fontSize: 13,
+  },
+  authPrimaryBtn: {
+    backgroundColor: '#7c3aed',
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  authPrimaryBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  demoLoginBtn: {
+    backgroundColor: 'rgba(124, 58, 237, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(124, 58, 237, 0.3)',
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  demoLoginBtnText: {
+    color: '#c4b5fd',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
 });
 

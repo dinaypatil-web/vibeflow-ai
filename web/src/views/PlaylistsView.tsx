@@ -146,7 +146,16 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
 
   useEffect(() => {
     fetchPlaylists();
-  }, [user?.id]);
+
+    const handleAuthChange = (e: any) => {
+      const u = e?.detail?.user !== undefined ? e.detail.user : usePlayerStore.getState().user;
+      const t = e?.detail?.token !== undefined ? e.detail.token : usePlayerStore.getState().token;
+      fetchPlaylists(undefined, u, t);
+    };
+
+    window.addEventListener('vibeflow:auth_change', handleAuthChange);
+    return () => window.removeEventListener('vibeflow:auth_change', handleAuthChange);
+  }, [user?.id, token]);
 
   // Auto-resolve real track durations for playlists that have fallback or preview tracks
   useEffect(() => {

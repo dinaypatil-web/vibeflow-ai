@@ -50,8 +50,12 @@ function resolveUserId(req: Request): string {
       if (decoded?.userId) return decoded.userId;
     } catch {}
   }
-  if (req.query.userId) return req.query.userId as string;
-  if (req.body?.userId) return req.body.userId as string;
+  const rawId = (req.headers['x-user-id'] || req.query.userId || req.body?.userId) as string;
+  if (rawId && rawId !== 'demo-user-id') {
+    const u = db.findUserById(rawId) || db.findUserByIdentifier(rawId) || db.findUserBySyncCode(rawId);
+    if (u) return u.id;
+    return rawId;
+  }
   return 'demo-user-id';
 }
 

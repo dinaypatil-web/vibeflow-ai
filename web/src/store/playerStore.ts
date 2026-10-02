@@ -515,10 +515,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       }
 
       set({ user, token, favorites: favs });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('vibeflow:auth_change', { detail: { user, token } }));
+      }
     } else {
       localStorage.removeItem(LS_TOKEN);
       localStorage.removeItem(LS_USER);
       set({ user: null, token: null, favorites: [] });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('vibeflow:auth_change', { detail: { user: null, token: null } }));
+      }
     }
   },
 

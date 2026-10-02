@@ -232,6 +232,11 @@ export const AudioEngine: React.FC = () => {
           }
         }
 
+        // For JioSaavn and other audio streams: ensure HTML5 audio element does not get paused by the browser
+        if (audioRef.current && audioRef.current.paused) {
+          audioRef.current.play().catch(() => {});
+        }
+
         // Keep Web Audio API Context active in background
         if (globalAudioContext && globalAudioContext.state === 'suspended') {
           globalAudioContext.resume().catch(() => {});
@@ -244,9 +249,22 @@ export const AudioEngine: React.FC = () => {
       }
     };
 
+    // Periodic watchdog to maintain audio decode thread in background tabs
+    const backgroundWatchdog = setInterval(() => {
+      const state = usePlayerStore.getState();
+      if (!state.isPlaying) return;
+      if (globalAudioContext && globalAudioContext.state === 'suspended') {
+        globalAudioContext.resume().catch(() => {});
+      }
+      if (document.hidden && audioRef.current && audioRef.current.paused) {
+        audioRef.current.play().catch(() => {});
+      }
+    }, 1000);
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('pagehide', handleVisibilityChange);
     return () => {
+      clearInterval(backgroundWatchdog);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('pagehide', handleVisibilityChange);
     };
@@ -571,6 +589,16 @@ export const AudioEngine: React.FC = () => {
     }
   };
 
+  const handleAudioPause = () => {
+    const state = usePlayerStore.getState();
+    // If the browser paused the audio because the screen locked or tab minimized, but the user is playing:
+    if (state.isPlaying && (document.hidden || !document.hasFocus())) {
+      if (audioRef.current) {
+        audioRef.current.play().catch(() => {});
+      }
+    }
+  };
+
   return (
     <div
       id="vf-audio-engine-mount"
@@ -588,6 +616,7 @@ export const AudioEngine: React.FC = () => {
         onLoadedMetadata={onLoadedMetadata}
         onEnded={onEnded}
         onError={onAudioError}
+        onPause={handleAudioPause}
       />
 
       {/* Target DOM element for YouTube IFrame API Player */}

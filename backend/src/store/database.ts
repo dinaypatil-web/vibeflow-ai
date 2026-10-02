@@ -1075,6 +1075,10 @@ class MemoryDatabase {
       if (user.id) idSet.add(user.id.toLowerCase());
       if (user.username) idSet.add(user.username.toLowerCase());
       if (user.email) idSet.add(user.email.toLowerCase());
+      if (user.name) {
+        idSet.add(user.name.toLowerCase());
+        idSet.add(user.name.toLowerCase().replace(/\s+/g, ''));
+      }
       if (user.syncCode) idSet.add(user.syncCode.toLowerCase());
     }
     return idSet;
@@ -1087,12 +1091,19 @@ class MemoryDatabase {
     const pCreatorId = (playlist.creator?.id || '').toLowerCase();
     const pCreatorUser = (playlist.creator?.username || '').toLowerCase();
     const pCreatorEmail = (playlist.creator?.email || '').toLowerCase();
+    const pCreatorName = (playlist.creator?.name || '').toLowerCase();
 
-    if (idSet.has(pUid) || idSet.has(pCreatorId) || idSet.has(pCreatorUser) || idSet.has(pCreatorEmail)) {
+    if (
+      idSet.has(pUid) || 
+      idSet.has(pCreatorId) || 
+      idSet.has(pCreatorUser) || 
+      idSet.has(pCreatorEmail) ||
+      (pCreatorName && pCreatorName !== 'music lover' && pCreatorName !== 'vibeflow cloud' && idSet.has(pCreatorName))
+    ) {
       return true;
     }
 
-    // Check if playlist's creator or userId matches via user email or alias in database
+    // Check if playlist's creator or userId matches via user email, name, or alias in database
     const user = this.findUserById(userIdOrIdent) || 
                  this.findUserByIdentifier(userIdOrIdent) || 
                  this.findUserBySyncCode(userIdOrIdent);
@@ -1107,6 +1118,12 @@ class MemoryDatabase {
         }
       }
       if (pCreatorEmail && user.email && pCreatorEmail === user.email.toLowerCase()) {
+        return true;
+      }
+      if (pCreatorId && user.id && pCreatorId === user.id.toLowerCase()) {
+        return true;
+      }
+      if (pCreatorName && user.name && pCreatorName !== 'music lover' && pCreatorName === user.name.toLowerCase()) {
         return true;
       }
     }

@@ -3580,6 +3580,35 @@
         "theme": "dark"
       },
       "createdAt": "2026-10-01T19:51:38.275Z"
+    },
+    {
+      "id": "usr-dev1-1790970525145",
+      "email": "tester_1790970525145@vibeflow.ai",
+      "name": "Rohit Verma",
+      "username": "user_1790970525145",
+      "role": "user",
+      "preferences": {
+        "userId": "usr-dev1-1790970525145",
+        "favoriteGenres": [
+          "Bollywood"
+        ],
+        "favoriteMoods": [
+          "Calm & Peaceful"
+        ],
+        "preferredLanguages": [
+          "Hindi"
+        ],
+        "favoriteArtists": [
+          "Arijit Singh"
+        ],
+        "autoPlaySimilar": true,
+        "streamQuality": "high",
+        "downloadQuality": "high",
+        "wifiOnlyDownloads": true,
+        "enableListeningHistory": true,
+        "theme": "dark"
+      },
+      "createdAt": "2026-10-02T19:48:45.238Z"
     }
   ],
   "passwords": {
@@ -3852,7 +3881,10 @@
     "dev_user_a_1790884297745": "$2a$10$mDbMk0qxjn2yKJQv/YSpPetH7xLr3uhtkImg.CdWxLznOK3q2NeL6",
     "usr-1790884298275": "$2a$10$3k5OvkL2y0TYVyOTqLy2leNN0xJmJZbPJUoIQD4.HNsY8cGWA1M8i",
     "dev_user_b_1790884297745@vibeflow.local": "$2a$10$3k5OvkL2y0TYVyOTqLy2leNN0xJmJZbPJUoIQD4.HNsY8cGWA1M8i",
-    "dev_user_b_1790884297745": "$2a$10$3k5OvkL2y0TYVyOTqLy2leNN0xJmJZbPJUoIQD4.HNsY8cGWA1M8i"
+    "dev_user_b_1790884297745": "$2a$10$3k5OvkL2y0TYVyOTqLy2leNN0xJmJZbPJUoIQD4.HNsY8cGWA1M8i",
+    "usr-dev1-1790970525145": "$2a$10$0k/gaQQzGpJJKV.BFZsQ.esxafa3m02ma3cybiU0d7jFhj9xnTk4e",
+    "tester_1790970525145@vibeflow.ai": "$2a$10$0k/gaQQzGpJJKV.BFZsQ.esxafa3m02ma3cybiU0d7jFhj9xnTk4e",
+    "user_1790970525145": "$2a$10$0k/gaQQzGpJJKV.BFZsQ.esxafa3m02ma3cybiU0d7jFhj9xnTk4e"
   },
   "mediaItems": [
     {
@@ -76484,6 +76516,55 @@
       "isSharedWithMe": false,
       "createdAt": "2026-10-01T19:51:38.519Z",
       "updatedAt": "2026-10-01T19:51:38.519Z"
+    },
+    {
+      "id": "pl-test-1790970525273",
+      "userId": "usr-dev1-1790970525145",
+      "title": "Rohit Late Night Bollywood Vibes",
+      "description": "Created on Device 1 (Web)",
+      "coverArt": "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?auto=format&fit=crop&w=600&q=80",
+      "isSmart": false,
+      "isPrivate": true,
+      "isShareable": true,
+      "itemCount": 1,
+      "creator": {
+        "id": "usr-dev1-1790970525145",
+        "name": "Rohit Verma",
+        "username": "user_1790970525145",
+        "email": "tester_1790970525145@vibeflow.ai"
+      },
+      "items": [
+        {
+          "id": "item-1",
+          "playlistId": "pl-test-1790970525273",
+          "mediaItemId": "jiosaavn-kesariya",
+          "orderIndex": 0,
+          "addedAt": "2026-10-02T19:48:45.273Z",
+          "mediaItem": {
+            "id": "jiosaavn-kesariya",
+            "provider": "jiosaavn",
+            "providerId": "kesariya-1",
+            "title": "Kesariya",
+            "artist": "Arijit Singh",
+            "thumbnail": "https://images.unsplash.com/photo-1518609878373-06d740f60d8b",
+            "duration": 268,
+            "genre": "Bollywood",
+            "mood": "Romantic",
+            "streamUrl": "https://aac.saavncdn.com/871/c2febd353f3a076a406fa37510f31f9f_160.mp4",
+            "isOfflinePermitted": true,
+            "isLocal": false,
+            "capabilities": [
+              "stream_direct",
+              "offline_download"
+            ]
+          }
+        }
+      ],
+      "createdAt": "2026-10-02T19:48:45.273Z",
+      "updatedAt": "2026-10-02T19:48:45.273Z",
+      "sharedWith": [],
+      "sharedWithUsers": [],
+      "shareToken": "st-1790970525274-fmc9of"
     }
   ],
   "favorites": [],
