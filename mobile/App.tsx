@@ -273,7 +273,7 @@ export default function App() {
         fileSizeBytes: Math.round(sizeMB * 1024 * 1024),
         downloadedAt: 'Just now'
       };
-      setOfflineTracks(prev => [newOfflineItem, ...prev.filter(t => t.id !== downloadTargetTrack.id)]);
+      setOfflineTracks((prev: OfflineTrackItem[]) => [newOfflineItem, ...prev.filter((t: OfflineTrackItem) => t.id !== downloadTargetTrack.id)]);
       setIsDownloading(false);
       setDownloadSuccess(true);
     }, 1200);
@@ -315,7 +315,7 @@ export default function App() {
       queueRef.current = activeQueue;
       setQueue(activeQueue);
 
-      const idx = startIndex !== undefined ? startIndex : activeQueue.findIndex(t => t.id === track.id);
+      const idx = startIndex !== undefined ? startIndex : activeQueue.findIndex((t: MediaItem) => t.id === track.id);
       const safeIdx = idx >= 0 ? idx : 0;
       queueIndexRef.current = safeIdx;
       setQueueIndex(safeIdx);
@@ -326,7 +326,7 @@ export default function App() {
       const { sound } = await Audio.Sound.createAsync(
         { uri: track.streamUrl },
         { shouldPlay: true },
-        (status) => {
+        (status: any) => {
           if (status.isLoaded) {
             setPositionMillis(status.positionMillis);
             setDurationMillis(status.durationMillis || 0);
@@ -539,7 +539,7 @@ export default function App() {
               </TouchableOpacity>
             </View>
 
-            {playlists.map(pl => (
+            {playlists.map((pl: Playlist) => (
               <View key={pl.id} style={styles.playlistCard}>
                 <Image source={{ uri: pl.coverArt || SAMPLE_TRACKS[0].thumbnail }} style={styles.playlistThumb} />
                 <View style={styles.playlistMeta}>
@@ -585,12 +585,12 @@ export default function App() {
             <View style={styles.libraryBox}>
               <Text style={styles.libraryBoxTitle}>📥 Local In-App Offline Vault</Text>
               <Text style={styles.libraryBoxDesc}>
-                {offlineTracks.length} tracks cached ({((offlineTracks.reduce((a, b) => a + b.fileSizeBytes, 0)) / (1024 * 1024)).toFixed(1)} MB). Full background audio without internet.
+                {offlineTracks.length} tracks cached ({((offlineTracks.reduce((a: number, b: OfflineTrackItem) => a + b.fileSizeBytes, 0)) / (1024 * 1024)).toFixed(1)} MB). Full background audio without internet.
               </Text>
             </View>
 
             <Text style={[styles.sectionTitle, { marginTop: 14 }]}>Offline Tracks ({offlineTracks.length})</Text>
-            {offlineTracks.map(item => (
+            {offlineTracks.map((item: OfflineTrackItem) => (
               <View key={item.id} style={styles.trackCard}>
                 <Image source={{ uri: item.track.thumbnail }} style={styles.trackThumb} />
                 <View style={styles.trackMeta}>
@@ -762,7 +762,7 @@ export default function App() {
                 <TextInput
                   style={styles.syncTextInput}
                   value={syncCodeInput}
-                  onChangeText={t => setSyncCodeInput(t.toUpperCase())}
+                  onChangeText={(t: string) => setSyncCodeInput(t.toUpperCase())}
                   placeholder="e.g. VF-2849"
                   placeholderTextColor="#64748b"
                   autoCapitalize="characters"
