@@ -56,19 +56,26 @@ export const LibraryView: React.FC = () => {
   useEffect(() => {
     loadData();
     loadOfflineTracks();
-  }, [user, loadOfflineTracks]);
+
+    const onHistUpdate = () => {
+      api.getHistory(user?.id || 'demo-user-id').then(res => setHistory(res || []));
+    };
+
+    window.addEventListener('vibeflow:history_updated', onHistUpdate);
+    return () => window.removeEventListener('vibeflow:history_updated', onHistUpdate);
+  }, [user?.id, subTab, loadOfflineTracks]);
 
   const loadData = async () => {
     try {
-      const favs = await api.getFavorites(user?.id || 'demo-user-id');
-      setFavorites(favs);
-
-      const items = await api.getItems();
-      setLocalItems(items.filter(i => i.isLocal));
-
-      // Fetch history from database
-      const hData = await api.getHistory(user?.id || 'demo-user-id');
-      setHistory(hData);
+      const uid = user?.id || 'demo-user-id';
+      const [favs, items, hData] = await Promise.all([
+        api.getFavorites(uid),
+        api.getItems(),
+        api.getHistory(uid)
+      ]);
+      setFavorites(favs || []);
+      setLocalItems((items || []).filter(i => i.isLocal));
+      setHistory(hData || []);
     } catch (err) {
       console.error('Failed to load library data', err);
     }
@@ -438,25 +445,41 @@ export const LibraryView: React.FC = () => {
 
           {history.length > 0 ? (
             <div className="space-y-2">
-              {history.map((h, idx) => (
+              {history.filter(h => h && h.mediaItem).map((h, idx) => (
                 <div 
-                  key={idx}
+                  key={h.id || idx}
                   onClick={() => playTrack(h.mediaItem)}
-                  className="flex items-center justify-between p-3 rounded-2xl bg-surface-850 hover:bg-surface-800 border border-white/5 cursor-pointer transition-colors"
+                  className="group flex items-center justify-between p-3 rounded-2xl bg-surface-850 hover:bg-surface-800 border border-white/5 cursor-pointer transition-colors"
                 >
                   <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <img src={h.mediaItem.thumbnail} alt="" className="w-10 h-10 rounded-xl object-cover shrink-0" />
+                    <div className="relative w-11 h-11 shrink-0 rounded-xl overflow-hidden bg-surface-900">
+                      <img 
+                        src={h.mediaItem.thumbnail || 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?auto=format&fit=crop&w=300&q=80'} 
+                        alt="" 
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
+                      />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                        <Play className="w-5 h-5 text-white fill-white" />
+                      </div>
+                    </div>
                     <div className="min-w-0">
-                      <h5 className="text-sm font-semibold text-white truncate">{h.mediaItem.title}</h5>
+                      <h5 className="text-sm font-semibold text-white group-hover:text-brand-300 transition-colors truncate">{h.mediaItem.title}</h5>
                       <p className="text-xs text-slate-400 truncate">{h.mediaItem.artist}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4 text-xs text-slate-400">
-                    <span className="px-2 py-0.5 rounded-full bg-brand-500/20 text-brand-300 text-[11px]">
-                      {h.mediaItem.mood}
-                    </span>
-                    <span className="text-[11px] text-slate-500">
-                      {new Date(h.listenedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  <div className="flex items-center gap-3 text-xs text-slate-400 shrink-0">
+                    {h.mediaItem.genre && (
+                      <span className="hidden sm:inline-block px-2 py-0.5 rounded-full bg-white/5 text-slate-300 text-[10px]">
+                        {h.mediaItem.genre}
+                      </span>
+                    )}
+                    {h.mediaItem.mood && (
+                      <span className="px-2 py-0.5 rounded-full bg-brand-500/20 text-brand-300 text-[11px] font-medium border border-brand-500/30">
+                        {h.mediaItem.mood}
+                      </span>
+                    )}
+                    <span className="text-[11px] text-slate-500 font-mono">
+                      {h.listenedAt ? new Date(h.listenedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently'}
                     </span>
                   </div>
                 </div>

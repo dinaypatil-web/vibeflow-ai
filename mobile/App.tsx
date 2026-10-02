@@ -142,6 +142,9 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncSuccess, setSyncSuccess] = useState<string | null>(null);
+  const syncUserRef = useRef(syncUser);
+  syncUserRef.current = syncUser;
+  const historyRecordedTrackIdRef = useRef<string | null>(null);
 
   const fetchPlaylists = async (baseUrl = apiBaseUrl, uid = syncUser?.id || 'demo-user-id', token = authToken) => {
     try {
@@ -460,6 +463,7 @@ export default function App() {
       setQueueIndex(safeIdx);
 
       setCurrentTrack(track);
+      historyRecordedTrackIdRef.current = null;
       if (!track.streamUrl) return;
 
       // Re-apply background audio mode immediately before starting playback
@@ -487,7 +491,40 @@ export default function App() {
             setDurationMillis(status.durationMillis || 0);
             setIsPlaying(status.isPlaying);
             isPlayingRef.current = status.isPlaying;
+
+            // Record listening history once track plays for >= 5 seconds
+            if (status.positionMillis >= 5000 && track?.id && historyRecordedTrackIdRef.current !== track.id) {
+              historyRecordedTrackIdRef.current = track.id;
+              const uid = syncUserRef.current?.id || syncUserRef.current?.email || 'demo-user-id';
+              const durSecs = (status.durationMillis || 180000) / 1000;
+              const rate = durSecs > 0 ? Math.min(1.0, (status.positionMillis / 1000) / durSecs) : 0.5;
+              fetch(`${apiBaseUrl}/library/history`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  userId: uid,
+                  mediaItemId: track.id,
+                  playedSeconds: Math.floor(status.positionMillis / 1000),
+                  completionRate: rate,
+                  mediaItem: track
+                })
+              }).catch(() => {});
+            }
+
             if (status.didJustFinish) {
+              const uid = syncUserRef.current?.id || syncUserRef.current?.email || 'demo-user-id';
+              fetch(`${apiBaseUrl}/library/history`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  userId: uid,
+                  mediaItemId: track.id,
+                  playedSeconds: Math.floor((status.durationMillis || 180000) / 1000),
+                  completionRate: 1.0,
+                  mediaItem: track
+                })
+              }).catch(() => {});
+              historyRecordedTrackIdRef.current = null;
               // Seamless continuous background playback of next track
               playNextTrack();
             }

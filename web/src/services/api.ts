@@ -594,25 +594,61 @@ export const api = {
   },
 
   // History
-  recordHistory: async (userId: string, mediaItemId: string, playedSeconds: number, completionRate: number, token?: string | null) => {
-    await fetch(`${API_BASE}/library/history`, {
-      method: 'POST',
-      headers: authHeaders(token),
-      body: JSON.stringify({ userId, mediaItemId, playedSeconds, completionRate })
-    });
+  recordHistory: async (userId: string, mediaItemId: string, playedSeconds: number, completionRate: number, token?: string | null, mediaItem?: MediaItem) => {
+    const uid = userId || getStoredUserId();
+    const t = token !== undefined ? token : getStoredToken();
+    try {
+      await fetch(`${API_BASE}/library/history`, {
+        method: 'POST',
+        headers: authHeaders(t),
+        body: JSON.stringify({ userId: uid, mediaItemId, playedSeconds, completionRate, mediaItem })
+      });
+
+      // Maintain client-side local cache as instant backup
+      if (typeof window !== 'undefined' && mediaItem) {
+        try {
+          const raw = localStorage.getItem('vibeflow:local_history');
+          const list: any[] = raw ? JSON.parse(raw) : [];
+          const entry = {
+            mediaItem,
+            playedSeconds,
+            completionRate,
+            listenedAt: new Date().toISOString()
+          };
+          const filtered = list.filter(item => item.mediaItem?.id !== mediaItem.id);
+          filtered.unshift(entry);
+          localStorage.setItem('vibeflow:local_history', JSON.stringify(filtered.slice(0, 100)));
+          window.dispatchEvent(new CustomEvent('vibeflow:history_updated', { detail: { entry } }));
+        } catch {}
+      }
+    } catch (e) {
+      console.warn('Failed to record history', e);
+    }
   },
 
   getHistory: async (userId: string, token?: string | null): Promise<any[]> => {
+    const uid = userId || getStoredUserId();
+    const t = token !== undefined ? token : getStoredToken();
     try {
-      const res = await fetch(`${API_BASE}/library/history?userId=${encodeURIComponent(userId)}`, {
-        headers: authHeaders(token)
+      const res = await fetch(`${API_BASE}/library/history?userId=${encodeURIComponent(uid)}`, {
+        headers: authHeaders(t)
       });
-      if (!res.ok) return [];
-      const data = await res.json();
-      return data.history || [];
-    } catch {
-      return [];
+      if (res.ok) {
+        const data = await res.json();
+        if (data.history && data.history.length > 0) {
+          return data.history;
+        }
+      }
+    } catch {}
+
+    // Fallback to local storage cache if server is offline or empty
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('vibeflow:local_history');
+        if (raw) return JSON.parse(raw);
+      } catch {}
     }
+    return [];
   },
 
   // Providers

@@ -70544,6 +70544,45 @@
         "full_length"
       ],
       "playbackCount": 50319738
+    },
+    {
+      "id": "jiosaavn-tum-hi-ho-test",
+      "provider": "jiosaavn",
+      "providerId": "tum-hi-ho-1",
+      "title": "Tum Hi Ho",
+      "artist": "Arijit Singh",
+      "thumbnail": "https://images.unsplash.com/photo-1518609878373-06d740f60d8b",
+      "duration": 262,
+      "genre": "Bollywood",
+      "mood": "Romantic",
+      "streamUrl": "https://aac.saavncdn.com/test/tum_hi_ho.mp4",
+      "isOfflinePermitted": true,
+      "isLocal": false,
+      "capabilities": [
+        "stream_direct",
+        "offline_download"
+      ],
+      "releaseDate": "2024-01-01",
+      "playbackCount": 1
+    },
+    {
+      "id": "yt-lofi-midnight-chill",
+      "provider": "youtube",
+      "providerId": "lofi-midnight",
+      "title": "Midnight Tokyo Chill Lo-Fi",
+      "artist": "Lofi Girl & Chillhop",
+      "thumbnail": "https://images.unsplash.com/photo-1518609878373-06d740f60d8b",
+      "duration": 180,
+      "genre": "Lo-Fi & Chill",
+      "mood": "Focus & Study",
+      "streamUrl": "https://youtube.com/watch?v=test",
+      "isOfflinePermitted": true,
+      "isLocal": false,
+      "capabilities": [
+        "stream_direct"
+      ],
+      "releaseDate": "2024-01-01",
+      "playbackCount": 1
     }
   ],
   "playlists": [
@@ -76569,6 +76608,61 @@
   ],
   "favorites": [],
   "history": [
+    {
+      "id": "hist-1790971523771-430",
+      "userId": "usr-dinay-patil",
+      "mediaItemId": "yt-lofi-midnight-chill",
+      "playedSeconds": 180,
+      "completionRate": 1,
+      "mediaItem": {
+        "id": "yt-lofi-midnight-chill",
+        "provider": "youtube",
+        "providerId": "lofi-midnight",
+        "title": "Midnight Tokyo Chill Lo-Fi",
+        "artist": "Lofi Girl & Chillhop",
+        "thumbnail": "https://images.unsplash.com/photo-1518609878373-06d740f60d8b",
+        "duration": 180,
+        "genre": "Lo-Fi & Chill",
+        "mood": "Focus & Study",
+        "streamUrl": "https://youtube.com/watch?v=test",
+        "isOfflinePermitted": true,
+        "isLocal": false,
+        "capabilities": [
+          "stream_direct"
+        ],
+        "releaseDate": "2024-01-01",
+        "playbackCount": 1
+      },
+      "listenedAt": "2026-10-02T20:05:23.771Z"
+    },
+    {
+      "id": "hist-1790971523711-323",
+      "userId": "usr-dinay-patil",
+      "mediaItemId": "jiosaavn-tum-hi-ho-test",
+      "playedSeconds": 45,
+      "completionRate": 0.17,
+      "mediaItem": {
+        "id": "jiosaavn-tum-hi-ho-test",
+        "provider": "jiosaavn",
+        "providerId": "tum-hi-ho-1",
+        "title": "Tum Hi Ho",
+        "artist": "Arijit Singh",
+        "thumbnail": "https://images.unsplash.com/photo-1518609878373-06d740f60d8b",
+        "duration": 262,
+        "genre": "Bollywood",
+        "mood": "Romantic",
+        "streamUrl": "https://aac.saavncdn.com/test/tum_hi_ho.mp4",
+        "isOfflinePermitted": true,
+        "isLocal": false,
+        "capabilities": [
+          "stream_direct",
+          "offline_download"
+        ],
+        "releaseDate": "2024-01-01",
+        "playbackCount": 1
+      },
+      "listenedAt": "2026-10-02T20:05:23.711Z"
+    },
     {
       "id": "hist-1790452015172",
       "userId": "usr-1790444365718",

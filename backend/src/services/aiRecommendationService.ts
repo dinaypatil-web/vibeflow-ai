@@ -226,16 +226,51 @@ export class AIRecommendationService {
     const favorites = db.getFavorites(user ? user.id : userId);
     const history = db.getHistory(user ? user.id : userId);
 
+    // Dynamic Taste Analysis from Listening History
+    const historyGenresMap: Record<string, number> = {};
+    const historyArtistsMap: Record<string, number> = {};
+    const historyMoodsMap: Record<string, number> = {};
+    const uniqueHistoryTracks: MediaItem[] = [];
+    const seenTrackIds = new Set<string>();
+
+    history.forEach(h => {
+      const item = h.mediaItem;
+      if (!item) return;
+      if (!seenTrackIds.has(item.id)) {
+        seenTrackIds.add(item.id);
+        uniqueHistoryTracks.push(item);
+      }
+      if (item.genre) {
+        historyGenresMap[item.genre] = (historyGenresMap[item.genre] || 0) + 1;
+      }
+      if (item.artist) {
+        const aKey = item.artist.toLowerCase();
+        historyArtistsMap[aKey] = (historyArtistsMap[aKey] || 0) + 1;
+      }
+      if (item.mood) {
+        historyMoodsMap[item.mood] = (historyMoodsMap[item.mood] || 0) + 1;
+      }
+    });
+
+    const topHistoryGenres = Object.entries(historyGenresMap)
+      .sort((a, b) => b[1] - a[1])
+      .map(entry => entry[0]);
+
+    const topHistoryArtists = Object.entries(historyArtistsMap)
+      .sort((a, b) => b[1] - a[1])
+      .map(entry => entry[0]);
+
     const preferredGenres: string[] = user?.preferences?.favoriteGenres?.length 
       ? user.preferences.favoriteGenres 
-      : ['Bollywood', 'Lo-Fi & Chill', 'Hindi Retro', 'Marathi'];
+      : (topHistoryGenres.length > 0 ? topHistoryGenres : ['Bollywood', 'Lo-Fi & Chill', 'Hindi Retro', 'Marathi']);
 
     const preferredMoods: string[] = user?.preferences?.favoriteMoods?.length 
       ? user.preferences.favoriteMoods 
       : ['Calm & Peaceful', 'Focus & Study', 'Workout & Energy', 'Romantic'];
 
     const preferredLanguages: string[] = user?.preferences?.preferredLanguages || [];
-    const favoriteArtists: string[] = user?.preferences?.favoriteArtists || [];    const feed: RecommendationResponse[] = [];
+    const favoriteArtists: string[] = user?.preferences?.favoriteArtists || [];
+    const feed: RecommendationResponse[] = [];
 
     const userSummary = {
       id: user ? user.id : userId,
@@ -252,7 +287,7 @@ export class AIRecommendationService {
       }));
     };
 
-    // Helper: calculate user affinity score for a track
+    // Helper: calculate user affinity score for a track (Preferences + Real-time History weights)
     const scoreItem = (item: MediaItem): number => {
       let score = 0;
       if (preferredGenres.includes(item.genre)) score += 35;
@@ -262,23 +297,64 @@ export class AIRecommendationService {
         item.artist.toLowerCase().includes(a.toLowerCase()) || a.toLowerCase().includes(item.artist.toLowerCase())
       )) score += 45;
       if (favorites.some(f => f.id === item.id)) score += 15;
+
+      // Dynamic History Affinity Boost: Prioritize artists, genres, and vibes the user actually listens to!
+      const aLower = item.artist.toLowerCase();
+      if (historyArtistsMap[aLower]) {
+        score += Math.min(50, historyArtistsMap[aLower] * 20);
+      }
+      if (historyGenresMap[item.genre]) {
+        score += Math.min(35, historyGenresMap[item.genre] * 12);
+      }
+      if (historyMoodsMap[item.mood]) {
+        score += Math.min(25, historyMoodsMap[item.mood] * 10);
+      }
+
       score += Math.min(10, (item.playbackCount || 0) / 1000);
       return score;
     };
 
-    // 1. Recommended for You (Weighted by preferences + history)
+    // Section 1: "Jump Back In" (Based on User's Recorded History)
+    if (uniqueHistoryTracks.length > 0) {
+      feed.push({
+        sectionTitle: 'Jump Back In',
+        description: 'Pick up right where you left off with your recent listening telemetry.',
+        reason: `Resumed from your playback history (${uniqueHistoryTracks.length} session${uniqueHistoryTracks.length > 1 ? 's' : ''} analyzed).`,
+        curatedFor: userSummary,
+        items: enrichItems(uniqueHistoryTracks.slice(0, 6))
+      });
+
+      // Section 2: "Because You Listened To [Recent Track]" (Acoustic Match)
+      const seedTrack = uniqueHistoryTracks[0];
+      const { similar, reason: seedReason } = this.getSimilarTracks(seedTrack.id, 6);
+      if (similar.length > 0) {
+        feed.push({
+          sectionTitle: `Because You Listened to "${seedTrack.title}"`,
+          description: `Melodic companions and companion acoustic vibes inspired by ${seedTrack.artist}.`,
+          reason: seedReason || `AI acoustic match based on your recent play of "${seedTrack.title}".`,
+          curatedFor: userSummary,
+          items: enrichItems(similar)
+        });
+      }
+    }
+
+    // Section 3: Recommended for You (Weighted by preferences + history)
     const scoredItems = [...allItems]
       .map(item => ({ item, score: scoreItem(item) }))
       .sort((a, b) => b.score - a.score);
 
     const recForYou = scoredItems.filter(s => s.score > 0).map(s => s.item).slice(0, 6);
     const topReasonParts: string[] = [];
-    if (preferredGenres.length > 0) topReasonParts.push(preferredGenres.slice(0, 2).join(' & '));
+    if (topHistoryGenres.length > 0) {
+      topReasonParts.push(`${topHistoryGenres.slice(0, 2).join(' & ')} history`);
+    } else if (preferredGenres.length > 0) {
+      topReasonParts.push(preferredGenres.slice(0, 2).join(' & '));
+    }
     if (preferredMoods.length > 0) topReasonParts.push(preferredMoods.slice(0, 2).join(' & '));
 
     feed.push({
       sectionTitle: user?.name ? `Made for ${user.name.split(' ')[0]}` : 'Recommended for You',
-      description: 'Crafted by VibeFlow AI directly from your saved genres, moods, and artist affinities.',
+      description: 'Crafted by VibeFlow AI directly from your listening history, saved genres, moods, and artist affinities.',
       reason: topReasonParts.length > 0
         ? `Personalized from your affinity for ${topReasonParts.join(' • ')}.`
         : 'Curated based on your listening profile.',

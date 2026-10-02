@@ -18,7 +18,7 @@ export interface DatabaseSchema {
   mediaItems: MediaItem[];
   playlists: Playlist[];
   favorites: { id: string; userId: string; mediaItemId: string; createdAt: string }[];
-  history: { id: string; userId: string; mediaItemId: string; playedSeconds: number; completionRate: number; listenedAt: string }[];
+  history: { id: string; userId: string; mediaItemId: string; playedSeconds: number; completionRate: number; listenedAt: string; mediaItem?: MediaItem }[];
   downloadJobs: DownloadJob[];
   userFeedback: { id: string; userId: string; targetId: string; feedbackType: string; payload?: any; createdAt: string }[];
 }
@@ -1467,21 +1467,51 @@ class MemoryDatabase {
   }
 
   // History
-  public recordHistory(userId: string, mediaItemId: string, playedSeconds: number, completionRate: number) {
-    this.data.history.unshift({
-      id: `hist-${Date.now()}`,
-      userId,
-      mediaItemId,
-      playedSeconds,
-      completionRate,
-      listenedAt: new Date().toISOString()
-    });
-    // Increment playback count on media item
-    const media = this.findMediaItemById(mediaItemId);
-    if (media) {
-      media.playbackCount = (media.playbackCount || 0) + 1;
+  public recordHistory(userId: string, mediaItemId: string, playedSeconds: number, completionRate: number, mediaItem?: MediaItem) {
+    const user = this.findUserById(userId) || this.findUserByIdentifier(userId) || this.findUserBySyncCode(userId);
+    const targetUserId = user ? user.id : (userId || 'demo-user-id');
+
+    // Ensure media item exists in catalog if provided
+    let resolvedItem = this.findMediaItemById(mediaItemId);
+    if (!resolvedItem && mediaItem) {
+      resolvedItem = this.addMediaItem(mediaItem);
     }
-    // keep history reasonable
+    const finalItem = resolvedItem || mediaItem;
+
+    // Check if recent session exists within recent 15 entries for the same track & user
+    const existingIndex = this.data.history.slice(0, 15).findIndex(
+      h => (h.userId.toLowerCase() === targetUserId.toLowerCase() || (user && h.userId.toLowerCase() === user.id.toLowerCase())) && 
+           h.mediaItemId === mediaItemId
+    );
+
+    if (existingIndex !== -1) {
+      // Update existing recent record
+      this.data.history[existingIndex].playedSeconds = Math.max(this.data.history[existingIndex].playedSeconds || 0, playedSeconds);
+      this.data.history[existingIndex].completionRate = Math.max(this.data.history[existingIndex].completionRate || 0, completionRate);
+      this.data.history[existingIndex].listenedAt = new Date().toISOString();
+      if (finalItem && !this.data.history[existingIndex].mediaItem) {
+        this.data.history[existingIndex].mediaItem = finalItem;
+      }
+    } else {
+      this.data.history.unshift({
+        id: `hist-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        userId: targetUserId,
+        mediaItemId,
+        playedSeconds,
+        completionRate,
+        mediaItem: finalItem,
+        listenedAt: new Date().toISOString()
+      });
+    }
+
+    // Increment playback count on media item
+    if (resolvedItem) {
+      resolvedItem.playbackCount = (resolvedItem.playbackCount || 0) + 1;
+    } else if (finalItem) {
+      finalItem.playbackCount = (finalItem.playbackCount || 0) + 1;
+    }
+
+    // Keep history reasonable
     if (this.data.history.length > 500) {
       this.data.history = this.data.history.slice(0, 500);
     }
@@ -1489,10 +1519,25 @@ class MemoryDatabase {
   }
 
   public getHistory(userId: string): { mediaItem: MediaItem; playedSeconds: number; listenedAt: string }[] {
+    const user = this.findUserById(userId) || this.findUserByIdentifier(userId) || this.findUserBySyncCode(userId);
+    const idSet = this.getUserAliasSet(userId);
+
     return this.data.history
-      .filter(h => h.userId === userId)
+      .filter(h => {
+        if (!h.userId) return false;
+        const hUid = h.userId.toLowerCase();
+        if (idSet.has(hUid) || hUid === userId.toLowerCase()) return true;
+        if (user && (
+          hUid === user.id.toLowerCase() || 
+          (user.email && hUid === user.email.toLowerCase()) || 
+          (user.username && hUid === user.username.toLowerCase())
+        )) {
+          return true;
+        }
+        return false;
+      })
       .map(h => {
-        const item = this.findMediaItemById(h.mediaItemId);
+        const item = this.findMediaItemById(h.mediaItemId) || (h as any).mediaItem;
         return item ? { mediaItem: item, playedSeconds: h.playedSeconds, listenedAt: h.listenedAt } : null;
       })
       .filter(Boolean) as { mediaItem: MediaItem; playedSeconds: number; listenedAt: string }[];

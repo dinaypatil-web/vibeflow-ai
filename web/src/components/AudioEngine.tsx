@@ -14,6 +14,7 @@ export const AudioEngine: React.FC = () => {
   // Tracks whether current YouTube video failed or was switched to audio stream for background/lock-screen playback
   const ytEmbedFailedRef = useRef(false);
   const wakeLockRef = useRef<any>(null);
+  const historyRecordedTrackIdRef = useRef<string | null>(null);
 
   const {
     currentTrack,
@@ -515,6 +516,12 @@ export const AudioEngine: React.FC = () => {
           const dur = ytPlayerRef.current.getDuration();
           if (typeof curTime === 'number' && !isNaN(curTime)) {
             setCurrentTime(curTime);
+            // Record history telemetry once track plays for >= 5 seconds
+            if (curTime >= 5 && currentTrack?.id && historyRecordedTrackIdRef.current !== currentTrack.id) {
+              historyRecordedTrackIdRef.current = currentTrack.id;
+              const rate = typeof dur === 'number' && dur > 0 ? Math.min(1.0, curTime / dur) : 0.5;
+              recordHistoryTelemetry(rate);
+            }
           }
           if (typeof dur === 'number' && dur > 0 && !isNaN(dur)) {
             setDuration(dur);
@@ -524,13 +531,43 @@ export const AudioEngine: React.FC = () => {
     }, 250);
 
     return () => clearInterval(interval);
-  }, [isPlaying, currentTrack?.provider, isYtReady, setCurrentTime, setDuration]);
+  }, [isPlaying, currentTrack?.provider, currentTrack?.id, isYtReady, setCurrentTime, setDuration]);
+
+  // Helper to record history telemetry
+  const recordHistoryTelemetry = (completionRate = 0.5) => {
+    const state = usePlayerStore.getState();
+    const current = state.currentTrack;
+    if (!current) return;
+    const uid = state.user?.id || 'demo-user-id';
+    const token = state.token;
+    let curTime = 0;
+    if (audioRef.current && typeof audioRef.current.currentTime === 'number') {
+      curTime = audioRef.current.currentTime;
+    } else if (state.currentTime) {
+      curTime = state.currentTime;
+    }
+    const playedSecs = Math.max(5, Math.floor(curTime));
+    api.recordHistory(uid, current.id, playedSecs, completionRate, token, current);
+  };
+
+  // Reset history recorded flag when track changes
+  useEffect(() => {
+    historyRecordedTrackIdRef.current = null;
+  }, [currentTrack?.id]);
 
   // 13. HTML5 Audio event listeners
   const onTimeUpdate = () => {
     if (audioRef.current) {
       if (currentTrack?.provider !== 'youtube' || ytEmbedFailedRef.current) {
-        setCurrentTime(audioRef.current.currentTime);
+        const cur = audioRef.current.currentTime;
+        setCurrentTime(cur);
+        // Record history telemetry once HTML5 track plays for >= 5 seconds
+        if (cur >= 5 && currentTrack?.id && historyRecordedTrackIdRef.current !== currentTrack.id) {
+          historyRecordedTrackIdRef.current = currentTrack.id;
+          const dur = audioRef.current.duration || currentTrack.duration || 180;
+          const rate = dur > 0 ? Math.min(1.0, cur / dur) : 0.5;
+          recordHistoryTelemetry(rate);
+        }
       }
     }
   };
@@ -554,11 +591,9 @@ export const AudioEngine: React.FC = () => {
   // 14. Seamless Continuous Playlist Track Transition
   // Executed synchronously within onEnded so mobile OS / background tabs do NOT block autoplay!
   const onEnded = () => {
+    recordHistoryTelemetry(1.0);
+    historyRecordedTrackIdRef.current = null;
     const state = usePlayerStore.getState();
-    const current = state.currentTrack;
-    if (current && state.user) {
-      api.recordHistory(state.user.id, current.id, Math.floor(current.duration), 1.0);
-    }
 
     const nextData = state.getNextTrack();
     if (nextData && nextData.track) {
