@@ -436,41 +436,51 @@ export default function App() {
   };
   // ─────────────────────────────────────────────────────────────────────────
 
-  // ── Saavn CDN URL hardening ───────────────────────────────────────────────
-  // Saavn streams are AAC wrapped in .mp4 containers. Android MediaPlayer (ExoPlayer)
-  // requires a browser-like User-Agent and explicit overrideFileExtensionWithSourceFormat
-  // to handle them correctly in background. We build a hardened AVPlaybackSource here.
+  // ── Stream Source Hardening (Saavn, Spotify, etc.) ────────────────────────
+  // Remote streams need browser-like headers so CDNs don't drop connections in background/locked modes.
+  // Saavn streams are AAC wrapped in .mp4 containers, which need overrideFileExtensionWithSourceFormat: 'm4a'.
   const buildAudioSource = (streamUrl: string): { uri: string; headers?: Record<string, string>; overrideFileExtensionWithSourceFormat?: string } => {
     const isSaavn = streamUrl.includes('saavncdn.com') || streamUrl.includes('jiosaavn.com');
-    if (isSaavn) {
+    const isRemote = streamUrl.startsWith('http://') || streamUrl.startsWith('https://');
+
+    if (isRemote) {
+      const headers: Record<string, string> = {
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+        'Accept': '*/*',
+        'Accept-Ranges': 'bytes',
+        'Connection': 'keep-alive',
+      };
+      if (isSaavn) {
+        return {
+          uri: streamUrl,
+          headers,
+          // Tell ExoPlayer this is an m4a/AAC stream despite the .mp4 extension
+          overrideFileExtensionWithSourceFormat: 'm4a',
+        };
+      }
       return {
         uri: streamUrl,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Linux; Android 11; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-          'Accept': '*/*',
-          'Accept-Ranges': 'bytes',
-          'Connection': 'keep-alive',
-        },
-        // Tell Expo AV this is an m4a/AAC stream despite the .mp4 extension
-        overrideFileExtensionWithSourceFormat: 'm4a',
+        headers,
       };
     }
     return { uri: streamUrl };
   };
   // ─────────────────────────────────────────────────────────────────────────
 
-  // Configure Expo AV for Background & Lock-Screen Audio Playback like VLC / Spotify
+  // Configure Expo AV for Background & Lock-Screen Audio Playback like Spotify / VLC
   useEffect(() => {
     async function initAudio() {
       try {
         await Audio.setAudioModeAsync({
           staysActiveInBackground: true,
           playsInSilentModeIOS: true,
-          // Android: DONT_MIX keeps exclusive audio focus even on lock screen
-          shouldDuckAndroid: false,
+          // CRITICAL: shouldDuckAndroid MUST be true! If false, transient audio focus losses
+          // (such as screen-lock sound, power button click, or notifications) trigger
+          // AUDIOFOCUS_LOSS_TRANSIENT which causes expo-av to PAUSE the music immediately.
+          shouldDuckAndroid: true,
           playThroughEarpieceAndroid: false,
-          interruptionModeAndroid: 1, // InterruptionModeAndroid.DO_NOT_MIX
-          interruptionModeIOS: 1,     // InterruptionModeIOS.DO_NOT_MIX
+          interruptionModeAndroid: 1, // InterruptionModeAndroid.DO_NOT_MIX (1)
+          interruptionModeIOS: 1,     // InterruptionModeIOS.DO_NOT_MIX (1)
         });
       } catch (err) {
         console.warn('Failed to set audio mode for background playback', err);
@@ -488,19 +498,19 @@ export default function App() {
               await Audio.setAudioModeAsync({
                 staysActiveInBackground: true,
                 playsInSilentModeIOS: true,
-                shouldDuckAndroid: false,
+                shouldDuckAndroid: true,
                 playThroughEarpieceAndroid: false,
                 interruptionModeAndroid: 1,
                 interruptionModeIOS: 1,
               });
               const { sound } = await Audio.Sound.createAsync(
-                buildAudioSource(track.streamUrl), // ← hardened for Saavn
+                buildAudioSource(track.streamUrl),
                 {
                   shouldPlay: false,       // paused — user taps ▶ to resume
                   positionMillis: positionMs,
                   staysActiveInBackground: true,
                   progressUpdateIntervalMillis: 500,
-                  androidImplementation: 'MediaPlayer', // ExoPlayer: handles AAC/MP4 CDN streams in background
+                  // Use default ExoPlayer backend — robust HTTPS streaming in background
                 },
                 (status: any) => {
                   if (status.isLoaded) {
@@ -538,11 +548,11 @@ export default function App() {
     initAudio();
 
     // AppState listener:
-    // • background / inactive → save position immediately
-    // • active (foreground) → re-request audio focus so Saavn stream resumes
+    // • background / inactive → persist position in case OS kills process
+    // • active (foreground) → sync UI status without interrupting ExoPlayer background thread
     const sub = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'background' || nextAppState === 'inactive') {
-        // Persist position so a process kill is covered too
+        // Persist position so a cold restart can resume from here
         const currentTrackSnapshot = currentTrackRef.current;
         if (currentTrackSnapshot && soundRef.current) {
           soundRef.current.getStatusAsync().then((status: any) => {
@@ -551,32 +561,19 @@ export default function App() {
             }
           }).catch(() => {});
         }
-        // Re-assert playback — critical for Saavn streams losing audio focus on Android lock screen
-        if (soundRef.current && isPlayingRef.current) {
-          // Re-apply audio mode to re-claim audio focus before playing
-          Audio.setAudioModeAsync({
-            staysActiveInBackground: true,
-            playsInSilentModeIOS: true,
-            shouldDuckAndroid: false,
-            playThroughEarpieceAndroid: false,
-            interruptionModeAndroid: 1,
-            interruptionModeIOS: 1,
-          }).then(() => {
-            soundRef.current?.playAsync().catch(() => {});
-          }).catch(() => {
-            soundRef.current?.playAsync().catch(() => {});
-          });
-        }
+        // NOTE: Do NOT call setAudioModeAsync or playAsync from background!
+        // ExoPlayer with staysActiveInBackground: true continues playing natively.
+        // Calling setAudioModeAsync or playAsync from background disrupts audio focus and stops playback.
       } else if (nextAppState === 'active') {
-        // App came to foreground: re-claim audio focus for Saavn CDN streams
-        if (soundRef.current && isPlayingRef.current) {
-          Audio.setAudioModeAsync({
-            staysActiveInBackground: true,
-            playsInSilentModeIOS: true,
-            shouldDuckAndroid: false,
-            playThroughEarpieceAndroid: false,
-            interruptionModeAndroid: 1,
-            interruptionModeIOS: 1,
+        // App returned to foreground: sync UI playback status with background player
+        if (soundRef.current) {
+          soundRef.current.getStatusAsync().then((status: any) => {
+            if (status.isLoaded) {
+              setPositionMillis(status.positionMillis);
+              setDurationMillis(status.durationMillis || 0);
+              setIsPlaying(status.isPlaying);
+              isPlayingRef.current = status.isPlaying;
+            }
           }).catch(() => {});
         }
       }
@@ -617,28 +614,26 @@ export default function App() {
       lastPersistedTimeRef.current = 0;
       if (!track.streamUrl) return;
 
-      // Re-apply background audio mode + re-claim audio focus before starting playback
+      // Re-apply background audio mode before starting playback
       try {
         await Audio.setAudioModeAsync({
           staysActiveInBackground: true,
           playsInSilentModeIOS: true,
-          shouldDuckAndroid: false,
+          // CRITICAL: shouldDuckAndroid MUST be true! Prevents lock screen sounds / power button from pausing audio
+          shouldDuckAndroid: true,
           playThroughEarpieceAndroid: false,
-          interruptionModeAndroid: 1, // DO_NOT_MIX — keeps Saavn stream alive on lock screen
+          interruptionModeAndroid: 1, // DO_NOT_MIX
           interruptionModeIOS: 1,
         });
       } catch {}
 
       const { sound } = await Audio.Sound.createAsync(
-        buildAudioSource(track.streamUrl), // ← hardened source with Saavn CDN headers
+        buildAudioSource(track.streamUrl),
         { 
           shouldPlay: true, 
           staysActiveInBackground: true,
           progressUpdateIntervalMillis: 500,
-          // Force Android MediaPlayer (ExoPlayer backend) — handles AAC-in-MP4 Saavn CDN
-          // streams reliably in background, minimised, and lock-screen modes.
-          // SoundPool (default) drops audio focus on screen lock; MediaPlayer does not.
-          androidImplementation: 'MediaPlayer',
+          // ExoPlayer (default in expo-av) reliably handles streaming chunks, headers, and background audio
         },
         (status: any) => {
           if (status.isLoaded) {
