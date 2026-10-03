@@ -13,6 +13,8 @@
     "isolatedModules": true,
     "noEmit": true,
     "baseUrl": ".",
+    "allowSyntheticDefaultImports": true,
+    "typeRoots": ["./node_modules/@types"],
     "paths": {
       "*": ["../web/node_modules/*", "*"]
     }

@@ -14,6 +14,7 @@ import {
   AppState
 } from 'react-native';
 import { Audio } from 'expo-av';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface MediaItem {
   id: string;
@@ -411,6 +412,53 @@ export default function App() {
 
   const soundRef = useRef<Audio.Sound | null>(null);
 
+  // ── Playback Persistence ──────────────────────────────────────────────────
+  const PLAYBACK_STATE_KEY = '@vibeflow:playback_state';
+  // Tracks last position persisted to AsyncStorage so we throttle writes to once per 5s
+  const lastPersistedPositionRef = useRef<number>(-1);
+  const lastPersistedTimeRef = useRef<number>(0);
+
+  const savePlaybackState = async (trackId: string, positionMs: number) => {
+    try {
+      await AsyncStorage.setItem(
+        PLAYBACK_STATE_KEY,
+        JSON.stringify({ trackId, positionMs })
+      );
+    } catch (err) {
+      console.warn('[VibeFlow] Failed to save playback state:', err);
+    }
+  };
+
+  const clearPlaybackState = async () => {
+    try {
+      await AsyncStorage.removeItem(PLAYBACK_STATE_KEY);
+    } catch {}
+  };
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // ── Saavn CDN URL hardening ───────────────────────────────────────────────
+  // Saavn streams are AAC wrapped in .mp4 containers. Android MediaPlayer (ExoPlayer)
+  // requires a browser-like User-Agent and explicit overrideFileExtensionWithSourceFormat
+  // to handle them correctly in background. We build a hardened AVPlaybackSource here.
+  const buildAudioSource = (streamUrl: string): { uri: string; headers?: Record<string, string>; overrideFileExtensionWithSourceFormat?: string } => {
+    const isSaavn = streamUrl.includes('saavncdn.com') || streamUrl.includes('jiosaavn.com');
+    if (isSaavn) {
+      return {
+        uri: streamUrl,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Linux; Android 11; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+          'Accept': '*/*',
+          'Accept-Ranges': 'bytes',
+          'Connection': 'keep-alive',
+        },
+        // Tell Expo AV this is an m4a/AAC stream despite the .mp4 extension
+        overrideFileExtensionWithSourceFormat: 'm4a',
+      };
+    }
+    return { uri: streamUrl };
+  };
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Configure Expo AV for Background & Lock-Screen Audio Playback like VLC / Spotify
   useEffect(() => {
     async function initAudio() {
@@ -418,22 +466,118 @@ export default function App() {
         await Audio.setAudioModeAsync({
           staysActiveInBackground: true,
           playsInSilentModeIOS: true,
-          shouldDuckAndroid: false, // Critical: do NOT duck audio on Android lock screen or focus shifts
+          // Android: DONT_MIX keeps exclusive audio focus even on lock screen
+          shouldDuckAndroid: false,
           playThroughEarpieceAndroid: false,
-          interruptionModeAndroid: 1, // InterruptionModeAndroid.DoNotMix
-          interruptionModeIOS: 1, // InterruptionModeIOS.DoNotMix
+          interruptionModeAndroid: 1, // InterruptionModeAndroid.DO_NOT_MIX
+          interruptionModeIOS: 1,     // InterruptionModeIOS.DO_NOT_MIX
         });
       } catch (err) {
         console.warn('Failed to set audio mode for background playback', err);
       }
+
+      // ── Restore last playback session ──────────────────────────────────────
+      try {
+        const saved = await AsyncStorage.getItem(PLAYBACK_STATE_KEY);
+        if (saved) {
+          const { trackId, positionMs } = JSON.parse(saved) as { trackId: string; positionMs: number };
+          const allTracks = [...SAMPLE_TRACKS];
+          const track = allTracks.find(t => t.id === trackId);
+          if (track && track.streamUrl && positionMs >= 0) {
+            try {
+              await Audio.setAudioModeAsync({
+                staysActiveInBackground: true,
+                playsInSilentModeIOS: true,
+                shouldDuckAndroid: false,
+                playThroughEarpieceAndroid: false,
+                interruptionModeAndroid: 1,
+                interruptionModeIOS: 1,
+              });
+              const { sound } = await Audio.Sound.createAsync(
+                buildAudioSource(track.streamUrl), // ← hardened for Saavn
+                {
+                  shouldPlay: false,       // paused — user taps ▶ to resume
+                  positionMillis: positionMs,
+                  staysActiveInBackground: true,
+                  progressUpdateIntervalMillis: 500,
+                  androidImplementation: 'MediaPlayer', // ExoPlayer: handles AAC/MP4 CDN streams in background
+                },
+                (status: any) => {
+                  if (status.isLoaded) {
+                    setPositionMillis(status.positionMillis);
+                    setDurationMillis(status.durationMillis || 0);
+                    setIsPlaying(status.isPlaying);
+                    isPlayingRef.current = status.isPlaying;
+                    if (status.didJustFinish) {
+                      clearPlaybackState();
+                      playNextTrack();
+                    }
+                  }
+                }
+              );
+              soundRef.current = sound;
+              const idx = queueRef.current.findIndex(t => t.id === track.id);
+              const safeIdx = idx >= 0 ? idx : 0;
+              queueIndexRef.current = safeIdx;
+              setQueueIndex(safeIdx);
+              setCurrentTrack(track);
+              currentTrackRef.current = track;
+              setPositionMillis(positionMs);
+              setIsPlaying(false);
+              isPlayingRef.current = false;
+            } catch (restoreErr) {
+              console.warn('[VibeFlow] Failed to restore playback session:', restoreErr);
+            }
+          }
+        }
+      } catch (readErr) {
+        console.warn('[VibeFlow] Failed to read saved playback state:', readErr);
+      }
+      // ──────────────────────────────────────────────────────────────────────
     }
     initAudio();
 
-    // AppState listener: keep playback active when app is minimized or screen locked
+    // AppState listener:
+    // • background / inactive → save position immediately
+    // • active (foreground) → re-request audio focus so Saavn stream resumes
     const sub = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'background' || nextAppState === 'inactive') {
+        // Persist position so a process kill is covered too
+        const currentTrackSnapshot = currentTrackRef.current;
+        if (currentTrackSnapshot && soundRef.current) {
+          soundRef.current.getStatusAsync().then((status: any) => {
+            if (status.isLoaded) {
+              savePlaybackState(currentTrackSnapshot.id, status.positionMillis);
+            }
+          }).catch(() => {});
+        }
+        // Re-assert playback — critical for Saavn streams losing audio focus on Android lock screen
         if (soundRef.current && isPlayingRef.current) {
-          soundRef.current.playAsync().catch(() => {});
+          // Re-apply audio mode to re-claim audio focus before playing
+          Audio.setAudioModeAsync({
+            staysActiveInBackground: true,
+            playsInSilentModeIOS: true,
+            shouldDuckAndroid: false,
+            playThroughEarpieceAndroid: false,
+            interruptionModeAndroid: 1,
+            interruptionModeIOS: 1,
+          }).then(() => {
+            soundRef.current?.playAsync().catch(() => {});
+          }).catch(() => {
+            soundRef.current?.playAsync().catch(() => {});
+          });
+        }
+      } else if (nextAppState === 'active') {
+        // App came to foreground: re-claim audio focus for Saavn CDN streams
+        if (soundRef.current && isPlayingRef.current) {
+          Audio.setAudioModeAsync({
+            staysActiveInBackground: true,
+            playsInSilentModeIOS: true,
+            shouldDuckAndroid: false,
+            playThroughEarpieceAndroid: false,
+            interruptionModeAndroid: 1,
+            interruptionModeIOS: 1,
+          }).catch(() => {});
         }
       }
     });
@@ -445,6 +589,9 @@ export default function App() {
       }
     };
   }, []);
+
+  // Ref so AppState handler can read currentTrack without stale closure
+  const currentTrackRef = useRef<MediaItem | null>(SAMPLE_TRACKS[0]);
 
   const playTrack = async (track: MediaItem, newQueue?: MediaItem[], startIndex?: number) => {
     try {
@@ -463,27 +610,35 @@ export default function App() {
       setQueueIndex(safeIdx);
 
       setCurrentTrack(track);
+      currentTrackRef.current = track; // keep ref in sync
       historyRecordedTrackIdRef.current = null;
+      // Reset position persistence tracking for new track
+      lastPersistedPositionRef.current = -1;
+      lastPersistedTimeRef.current = 0;
       if (!track.streamUrl) return;
 
-      // Re-apply background audio mode immediately before starting playback
+      // Re-apply background audio mode + re-claim audio focus before starting playback
       try {
         await Audio.setAudioModeAsync({
           staysActiveInBackground: true,
           playsInSilentModeIOS: true,
           shouldDuckAndroid: false,
           playThroughEarpieceAndroid: false,
-          interruptionModeAndroid: 1,
+          interruptionModeAndroid: 1, // DO_NOT_MIX — keeps Saavn stream alive on lock screen
           interruptionModeIOS: 1,
         });
       } catch {}
 
       const { sound } = await Audio.Sound.createAsync(
-        { uri: track.streamUrl },
+        buildAudioSource(track.streamUrl), // ← hardened source with Saavn CDN headers
         { 
           shouldPlay: true, 
           staysActiveInBackground: true,
-          progressUpdateIntervalMillis: 500
+          progressUpdateIntervalMillis: 500,
+          // Force Android MediaPlayer (ExoPlayer backend) — handles AAC-in-MP4 Saavn CDN
+          // streams reliably in background, minimised, and lock-screen modes.
+          // SoundPool (default) drops audio focus on screen lock; MediaPlayer does not.
+          androidImplementation: 'MediaPlayer',
         },
         (status: any) => {
           if (status.isLoaded) {
@@ -491,6 +646,19 @@ export default function App() {
             setDurationMillis(status.durationMillis || 0);
             setIsPlaying(status.isPlaying);
             isPlayingRef.current = status.isPlaying;
+
+            // ── Throttled position persistence (every 5 seconds) ────────────
+            const now = Date.now();
+            if (
+              status.isPlaying &&
+              track?.id &&
+              now - lastPersistedTimeRef.current >= 5000
+            ) {
+              lastPersistedTimeRef.current = now;
+              lastPersistedPositionRef.current = status.positionMillis;
+              savePlaybackState(track.id, status.positionMillis);
+            }
+            // ───────────────────────────────────────────────────────────────
 
             // Record listening history once track plays for >= 5 seconds
             if (status.positionMillis >= 5000 && track?.id && historyRecordedTrackIdRef.current !== track.id) {
@@ -525,6 +693,7 @@ export default function App() {
                 })
               }).catch(() => {});
               historyRecordedTrackIdRef.current = null;
+              clearPlaybackState(); // track finished — nothing to resume
               // Seamless continuous background playback of next track
               playNextTrack();
             }

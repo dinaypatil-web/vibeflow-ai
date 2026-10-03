@@ -417,36 +417,70 @@ router.get('/download/:id', async (req: Request, res: Response) => {
     const cleanArtist = artist.replace(/[/\\?%*:|"<>]/g, '-');
     const filename = `${cleanArtist} - ${cleanTitle} [${quality}kbps].mp3`;
 
-    // Fetch master audio stream from upstream CDN
-    const audioRes = await fetch(streamUrl);
+    // ── Saavn CDN requires browser-like headers or it returns 403 / redirect ────────
+    const isSaavnUrl = streamUrl.includes('saavncdn.com') || streamUrl.includes('jiosaavn.com');
+    const upstreamHeaders: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': '*/*',
+      'Accept-Encoding': 'identity', // Disable gzip so we can pipe raw bytes accurately
+      'Connection': 'keep-alive',
+    };
+    if (isSaavnUrl) {
+      upstreamHeaders['Referer'] = 'https://www.jiosaavn.com/';
+      upstreamHeaders['Origin'] = 'https://www.jiosaavn.com';
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // Fetch upstream with a generous timeout: 5 minutes covers even very large tracks
+    const audioRes = await fetch(streamUrl, {
+      headers: upstreamHeaders,
+      signal: AbortSignal.timeout(300_000), // 5 min — prevents mid-stream kill on big files
+    });
+
     if (!audioRes.ok || !audioRes.body) {
       return res.redirect(streamUrl);
     }
 
     const contentLength = audioRes.headers.get('content-length');
+    const upstreamType = audioRes.headers.get('content-type') || (isSaavnUrl ? 'audio/mp4' : 'audio/mpeg');
+
+    // Only set Content-Length if the upstream provided it — for large chunked CDN streams
+    // omitting it prevents the client from treating a partial byte range as the full file.
     if (contentLength) {
       res.setHeader('Content-Length', contentLength);
     }
-    const upstreamType = audioRes.headers.get('content-type') || 'audio/mpeg';
     res.setHeader('Content-Type', upstreamType);
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
     res.setHeader('X-Audio-Quality', `${quality}kbps`);
     res.setHeader('X-Audio-Duration', String(item?.duration || 210));
     res.setHeader('X-Copyright-Notice', 'Personal non-commercial offline listening only.');
     res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'no-store');
 
-    // Pipe stream with Node Readable to ensure backpressure management and complete byte transmission
+    // ── Pipe with proper backpressure and cleanup ─────────────────────────────────
     const nodeStream = Readable.fromWeb(audioRes.body as any);
-    nodeStream.on('error', (err: any) => {
-      console.error('Audio stream pipe error:', err);
-      if (!res.headersSent) {
-        res.status(500).end();
-      }
+
+    // If the client disconnects mid-download, destroy the upstream read to free memory
+    res.on('close', () => {
+      if (!nodeStream.destroyed) nodeStream.destroy();
     });
+    req.on('aborted', () => {
+      if (!nodeStream.destroyed) nodeStream.destroy();
+    });
+
+    nodeStream.on('error', (err: any) => {
+      console.error('[VibeFlow] Audio stream pipe error:', err.message);
+      if (!res.headersSent) res.status(500).end();
+      else if (!res.writableEnded) res.end();
+    });
+
     nodeStream.pipe(res);
+    // ────────────────────────────────────────────────────────────────────
   } catch (err: any) {
-    console.error('Download stream error:', err);
-    res.status(500).json({ error: err.message || 'Failed to download audio stream' });
+    console.error('[VibeFlow] Download stream error:', err.message);
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message || 'Failed to download audio stream' });
+    }
   }
 });
 
