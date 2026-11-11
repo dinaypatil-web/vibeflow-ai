@@ -1190,6 +1190,120 @@ async function runTests() {
     }
   });
 
+  // 37. Cross-Device Playlist Deletion Synchronization
+  await test('Cross-Device Playlist Deletion Sync (Deleted on Device A is Deleted on Device B)', async () => {
+    // 1. User signs in / registers
+    const username = `crossdev_${Date.now()}`;
+    const password = 'CrossDevicePass2026!';
+    const regRes = await fetchJSON(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Cross Device User',
+        username,
+        password
+      })
+    });
+    const user = regRes.user;
+    const tokenDeviceA = regRes.token;
+
+    // Simulate Device B logging in with same credentials
+    const loginDeviceB = await fetchJSON(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: username, password })
+    });
+    const tokenDeviceB = loginDeviceB.token;
+
+    // 2. Device A creates Playlist 1 and Playlist 2
+    const pl1 = await fetchJSON(`${API_BASE}/playlists`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenDeviceA}` },
+      body: JSON.stringify({ title: 'Device A Playlist 1', description: 'To be deleted from Device A' })
+    });
+    const pl2 = await fetchJSON(`${API_BASE}/playlists`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenDeviceA}` },
+      body: JSON.stringify({ title: 'Device A Playlist 2', description: 'To be kept' })
+    });
+
+    const pl1Id = pl1.playlist.id;
+    const pl2Id = pl2.playlist.id;
+
+    // 3. Device B fetches playlists and receives both
+    const deviceBInitial = await fetchJSON(`${API_BASE}/playlists?userId=${user.id}`, {
+      headers: { 'Authorization': `Bearer ${tokenDeviceB}` }
+    });
+    const devBIdsInitial = deviceBInitial.playlists.map(p => p.id);
+    if (!devBIdsInitial.includes(pl1Id) || !devBIdsInitial.includes(pl2Id)) {
+      throw new Error('Device B did not receive playlists created by Device A');
+    }
+
+    // 4. Device A deletes Playlist 1
+    const delRes = await fetchJSON(`${API_BASE}/playlists/${pl1Id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${tokenDeviceA}` }
+    });
+    if (!delRes.success && !delRes.message) throw new Error('Device A delete failed');
+
+    // 5. Device B queries playlists (even simulating cached client IDs in header)
+    const deviceBAfterDel = await fetchJSON(`${API_BASE}/playlists?userId=${user.id}`, {
+      headers: {
+        'Authorization': `Bearer ${tokenDeviceB}`,
+        'x-client-playlist-ids': JSON.stringify([pl1Id, pl2Id])
+      }
+    });
+    const devBIdsAfter = deviceBAfterDel.playlists.map(p => p.id);
+    if (devBIdsAfter.includes(pl1Id)) {
+      throw new Error('Playlist deleted from Device A is still present/resurrected on Device B!');
+    }
+    if (!devBIdsAfter.includes(pl2Id)) {
+      throw new Error('Non-deleted Playlist 2 was missing on Device B');
+    }
+
+    // 6. Device A creates 3 playlists and batch deletes them
+    const batchPls = [];
+    for (let i = 1; i <= 3; i++) {
+      const bPl = await fetchJSON(`${API_BASE}/playlists`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenDeviceA}` },
+        body: JSON.stringify({ title: `Batch Multi-Device PL ${i}` })
+      });
+      batchPls.push(bPl.playlist.id);
+    }
+
+    // Device B sees them
+    const devBSeeBatch = await fetchJSON(`${API_BASE}/playlists?userId=${user.id}`, {
+      headers: { 'Authorization': `Bearer ${tokenDeviceB}` }
+    });
+    const devBSeeIds = new Set(devBSeeBatch.playlists.map(p => p.id));
+    for (const id of batchPls) {
+      if (!devBSeeIds.has(id)) throw new Error(`Device B did not see batch playlist ${id}`);
+    }
+
+    // Device A batch-deletes all 3
+    const batchDelRes = await fetchJSON(`${API_BASE}/playlists/batch`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenDeviceA}` },
+      body: JSON.stringify({ ids: batchPls })
+    });
+    if (batchDelRes.deletedCount !== 3) throw new Error('Batch deletion failed on Device A');
+
+    // Device B fetches again with cached client IDs
+    const devBFinal = await fetchJSON(`${API_BASE}/playlists?userId=${user.id}`, {
+      headers: {
+        'Authorization': `Bearer ${tokenDeviceB}`,
+        'x-client-playlist-ids': JSON.stringify([...batchPls, pl2Id])
+      }
+    });
+    const devBFinalIds = new Set(devBFinal.playlists.map(p => p.id));
+    for (const id of batchPls) {
+      if (devBFinalIds.has(id)) {
+        throw new Error(`Batch deleted playlist ${id} was still returned to Device B!`);
+      }
+    }
+  });
+
   console.log(`\n🎉 Test Results: ${passed}/${total} passed!`);
   if (passed === total) {
     console.log('🌟 All VibeFlow AI core systems verified production-ready.\n');

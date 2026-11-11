@@ -122,12 +122,29 @@ export function getLocallyCachedPlaylists(userId?: string): Playlist[] {
 export function mergeWithLocalPlaylists(serverPlaylists: Playlist[], userId?: string): Playlist[] {
   try {
     const uid = userId || getStoredUserId();
+    const isLoggedIn = Boolean(uid && uid !== 'demo-user-id');
+    const serverIds = new Set(serverPlaylists.map(p => p.id));
+
+    if (isLoggedIn) {
+      // For authenticated users, the server database is the cross-device source of truth.
+      // Playlists deleted from another device must be removed from this device's local cache.
+      const currentCreatedIds = getStoredCreatedPlaylistIds(uid).filter(id => serverIds.has(id));
+      localStorage.setItem(getCreatedIdsKey(uid), JSON.stringify(currentCreatedIds.slice(0, 100)));
+      localStorage.setItem(getCacheKey(uid), JSON.stringify(serverPlaylists.slice(0, 100)));
+
+      // If the selected playlist was deleted on another device, clear it from local storage
+      const selectedId = localStorage.getItem(LS_SELECTED_PLAYLIST_ID);
+      if (selectedId && !serverIds.has(selectedId)) {
+        localStorage.removeItem(LS_SELECTED_PLAYLIST_ID);
+      }
+      return serverPlaylists;
+    }
+
+    // Demo / guest unauthenticated session handling
     const createdIds = new Set(getStoredCreatedPlaylistIds(uid));
     const cached = getLocallyCachedPlaylists(uid);
-
     const map = new Map<string, Playlist>();
-    
-    // Server playlists take base precedence
+
     for (const pl of serverPlaylists) {
       map.set(pl.id, pl);
       if (!pl.isSharedWithMe && !pl.id.startsWith('playlist-')) {

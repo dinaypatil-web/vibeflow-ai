@@ -67,8 +67,13 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
       .filter(Boolean);
   }, [selectedPlaylist?.items, playlistSort]);
 
-  const fetchPlaylists = async (preferredPlaylistId?: string, overrideUser?: any, overrideToken?: string | null) => {
-    setLoading(true);
+  const fetchPlaylists = async (
+    preferredPlaylistId?: string, 
+    overrideUser?: any, 
+    overrideToken?: string | null,
+    silent = false
+  ) => {
+    if (!silent) setLoading(true);
     try {
       const activeUser = overrideUser !== undefined ? overrideUser : user;
       const activeToken = overrideToken !== undefined ? overrideToken : token;
@@ -110,7 +115,7 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
     } catch (err) {
       console.error('Fetch playlists error', err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -156,8 +161,39 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
       fetchPlaylists(undefined, u, t);
     };
 
+    // Cross-device sync: refresh playlists when user focuses or returns to this tab
+    const handleSyncRefresh = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchPlaylists(undefined, undefined, undefined, true);
+      }
+    };
+
+    // Cross-tab sync: update if another tab on this device modified playlists
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key && (e.key.includes('playlist') || e.key.includes('user'))) {
+        fetchPlaylists(undefined, undefined, undefined, true);
+      }
+    };
+
+    // Periodic background sync: poll server every 5 seconds while tab is active to immediately reflect deletions made on other devices
+    const pollInterval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchPlaylists(undefined, undefined, undefined, true);
+      }
+    }, 5000);
+
     window.addEventListener('vibeflow:auth_change', handleAuthChange);
-    return () => window.removeEventListener('vibeflow:auth_change', handleAuthChange);
+    window.addEventListener('focus', handleSyncRefresh);
+    window.addEventListener('storage', handleStorageChange);
+    document.addEventListener('visibilitychange', handleSyncRefresh);
+
+    return () => {
+      clearInterval(pollInterval);
+      window.removeEventListener('vibeflow:auth_change', handleAuthChange);
+      window.removeEventListener('focus', handleSyncRefresh);
+      window.removeEventListener('storage', handleStorageChange);
+      document.removeEventListener('visibilitychange', handleSyncRefresh);
+    };
   }, [user?.id, token]);
 
   // Auto-resolve real track durations for playlists that have fallback or preview tracks

@@ -235,8 +235,9 @@ export default function App() {
       const res = await fetch(`${baseUrl}/playlists?userId=${encodeURIComponent(uid)}`, { headers });
       if (res.ok) {
         const data = await res.json();
-        if (data.playlists && data.playlists.length > 0) {
-          const transformed = data.playlists.map((p: any) => ({
+        const serverList = data.playlists || [];
+        if (serverList.length > 0) {
+          const transformed = serverList.map((p: any) => ({
             ...p,
             items: (p.items || []).map((it: any) => ({
               id: it.id,
@@ -255,8 +256,15 @@ export default function App() {
             }))
           }));
           setPlaylists(transformed);
-        } else if (data.playlists && Array.isArray(data.playlists)) {
+          // Immediately prune any selected playlist IDs that were deleted on another device
+          setSelectedPlaylistIds(prev => prev.filter(id => serverList.some((p: any) => p.id === id)));
+          if (qrSharePlaylist && !serverList.some((p: any) => p.id === qrSharePlaylist.id)) {
+            setQrSharePlaylist(null);
+          }
+        } else if (Array.isArray(serverList)) {
           setPlaylists([]);
+          setSelectedPlaylistIds([]);
+          setQrSharePlaylist(null);
         }
       }
     } catch (err) {
@@ -682,6 +690,8 @@ export default function App() {
             }
           }).catch(() => {});
         }
+        // Cross-device sync: refresh playlists when app returns to foreground
+        fetchPlaylists();
       }
     });
 
@@ -692,6 +702,17 @@ export default function App() {
       }
     };
   }, []);
+
+  // Cross-device sync: poll playlists every 5s while on the playlists tab to immediately catch deletions made on other devices
+  useEffect(() => {
+    if (activeTab === 'playlists') {
+      fetchPlaylists();
+      const interval = setInterval(() => {
+        fetchPlaylists();
+      }, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [activeTab, syncUser?.id, authToken]);
 
   // Ref so AppState handler can read currentTrack without stale closure
   const currentTrackRef = useRef<MediaItem | null>(SAMPLE_TRACKS[0]);
@@ -1227,7 +1248,12 @@ export default function App() {
         ].map(item => (
           <TouchableOpacity 
             key={item.id} 
-            onPress={() => setActiveTab(item.id as any)}
+            onPress={() => {
+              setActiveTab(item.id as any);
+              if (item.id === 'playlists') {
+                fetchPlaylists();
+              }
+            }}
             style={styles.navItem}
           >
             <Text style={styles.navIcon}>{item.icon}</Text>
