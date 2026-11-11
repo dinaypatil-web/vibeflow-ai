@@ -115,6 +115,9 @@ export function mergeWithLocalPlaylists(serverPlaylists: Playlist[], userId?: st
     // Server playlists take base precedence
     for (const pl of serverPlaylists) {
       map.set(pl.id, pl);
+      if (!pl.isSharedWithMe && !pl.id.startsWith('playlist-')) {
+        createdIds.add(pl.id);
+      }
     }
 
     // Preserve any locally created playlists that have not yet arrived from server
@@ -126,6 +129,7 @@ export function mergeWithLocalPlaylists(serverPlaylists: Playlist[], userId?: st
 
     const merged = Array.from(map.values());
     localStorage.setItem(getCacheKey(uid), JSON.stringify(merged.slice(0, 100)));
+    localStorage.setItem(getCreatedIdsKey(uid), JSON.stringify(Array.from(createdIds).slice(0, 100)));
     return merged;
   } catch {
     return serverPlaylists;

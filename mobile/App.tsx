@@ -50,6 +50,7 @@ interface Playlist {
   userId?: string;
   itemCount?: number;
   items?: PlaylistItem[];
+  shareToken?: string;
   creator?: {
     id?: string;
     name: string;
@@ -117,7 +118,11 @@ export default function App() {
   const isPlayingRef = useRef(false);
   const [positionMillis, setPositionMillis] = useState(0);
   const [durationMillis, setDurationMillis] = useState(0);
+  const positionMillisRef = useRef(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const isModalOpenRef = useRef(false);
+  isModalOpenRef.current = isModalOpen;
+  const [qrSharePlaylist, setQrSharePlaylist] = useState<Playlist | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   
   const [queue, setQueue] = useState<MediaItem[]>(SAMPLE_TRACKS);
@@ -178,6 +183,8 @@ export default function App() {
             }))
           }));
           setPlaylists(transformed);
+        } else if (data.playlists && Array.isArray(data.playlists)) {
+          setPlaylists([]);
         }
       }
     } catch (err) {
@@ -206,6 +213,27 @@ export default function App() {
       setSyncUser(data.user);
       setAuthToken(data.token);
       if (data.user.syncCode) setMySyncCode(data.user.syncCode);
+      if (data.playlists && Array.isArray(data.playlists)) {
+        const transformed = data.playlists.map((p: any) => ({
+          ...p,
+          items: (p.items || []).map((it: any) => ({
+            id: it.id,
+            mediaItemId: it.mediaItemId || it.mediaItem?.id,
+            mediaItem: it.mediaItem || {
+              id: it.mediaItemId || `track-${Math.random()}`,
+              title: it.title || 'Unknown Track',
+              artist: it.artist || 'Unknown Artist',
+              thumbnail: p.coverArt || SAMPLE_TRACKS[0].thumbnail,
+              duration: it.duration || 210,
+              genre: 'Electronic',
+              mood: 'Chill',
+              streamUrl: it.streamUrl || 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
+              isOfflinePermitted: true
+            }
+          }))
+        }));
+        setPlaylists(transformed);
+      }
       setSyncSuccess(`Logged in as ${data.user.name}! Syncing all your cloud playlists...`);
       await fetchPlaylists(apiBaseUrl, data.user.id, data.token);
       setTimeout(() => {
@@ -509,15 +537,21 @@ export default function App() {
                   shouldPlay: false,       // paused — user taps ▶ to resume
                   positionMillis: positionMs,
                   staysActiveInBackground: true,
-                  progressUpdateIntervalMillis: 500,
+                  progressUpdateIntervalMillis: 1000, // 1s interval reduces CPU load & phone heating
                   // Use default ExoPlayer backend — robust HTTPS streaming in background
                 },
                 (status: any) => {
                   if (status.isLoaded) {
-                    setPositionMillis(status.positionMillis);
-                    setDurationMillis(status.durationMillis || 0);
-                    setIsPlaying(status.isPlaying);
-                    isPlayingRef.current = status.isPlaying;
+                    positionMillisRef.current = status.positionMillis;
+                    // Only trigger React state render if Now Playing modal is visible
+                    if (isModalOpenRef.current) {
+                      setPositionMillis(status.positionMillis);
+                      setDurationMillis(status.durationMillis || 0);
+                    }
+                    if (isPlayingRef.current !== status.isPlaying) {
+                      setIsPlaying(status.isPlaying);
+                      isPlayingRef.current = status.isPlaying;
+                    }
                     if (status.didJustFinish) {
                       clearPlaybackState();
                       playNextTrack();
@@ -632,28 +666,21 @@ export default function App() {
         { 
           shouldPlay: true, 
           staysActiveInBackground: true,
-          progressUpdateIntervalMillis: 500,
+          progressUpdateIntervalMillis: 1000, // 1s interval prevents CPU churn and battery heating
           // ExoPlayer (default in expo-av) reliably handles streaming chunks, headers, and background audio
         },
         (status: any) => {
           if (status.isLoaded) {
-            setPositionMillis(status.positionMillis);
-            setDurationMillis(status.durationMillis || 0);
-            setIsPlaying(status.isPlaying);
-            isPlayingRef.current = status.isPlaying;
-
-            // ── Throttled position persistence (every 5 seconds) ────────────
-            const now = Date.now();
-            if (
-              status.isPlaying &&
-              track?.id &&
-              now - lastPersistedTimeRef.current >= 5000
-            ) {
-              lastPersistedTimeRef.current = now;
-              lastPersistedPositionRef.current = status.positionMillis;
-              savePlaybackState(track.id, status.positionMillis);
+            positionMillisRef.current = status.positionMillis;
+            // Only re-render root component timer when modal is currently open
+            if (isModalOpenRef.current) {
+              setPositionMillis(status.positionMillis);
+              setDurationMillis(status.durationMillis || 0);
             }
-            // ───────────────────────────────────────────────────────────────
+            if (isPlayingRef.current !== status.isPlaying) {
+              setIsPlaying(status.isPlaying);
+              isPlayingRef.current = status.isPlaying;
+            }
 
             // Record listening history once track plays for >= 5 seconds
             if (status.positionMillis >= 5000 && track?.id && historyRecordedTrackIdRef.current !== track.id) {
@@ -754,11 +781,19 @@ export default function App() {
       await soundRef.current.pauseAsync();
       setIsPlaying(false);
       isPlayingRef.current = false;
+      if (currentTrackRef.current) {
+        savePlaybackState(currentTrackRef.current.id, positionMillisRef.current);
+      }
     } else {
       await soundRef.current.playAsync();
       setIsPlaying(true);
       isPlayingRef.current = true;
     }
+  };
+
+  const openNowPlaying = () => {
+    setPositionMillis(positionMillisRef.current);
+    setIsModalOpen(true);
   };
 
   const formatTime = (millis: number) => {
@@ -912,12 +947,20 @@ export default function App() {
                     {pl.items?.length || pl.itemCount || 0} tracks • By {pl.creator?.name || (syncUser?.name ? syncUser.name : 'You')}
                   </Text>
                 </View>
-                <TouchableOpacity 
-                  style={styles.playlistPlayBtn}
-                  onPress={() => playPlaylist(pl)}
-                >
-                  <Text style={styles.playlistPlayText}>▶ Play All</Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+                  <TouchableOpacity 
+                    style={styles.playlistPlayBtn}
+                    onPress={() => playPlaylist(pl)}
+                  >
+                    <Text style={styles.playlistPlayText}>▶ Play All</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.playlistPlayBtn, { backgroundColor: '#1e2438', borderWidth: 1, borderColor: 'rgba(56,189,248,0.25)', paddingVertical: 4, paddingHorizontal: 8 }]}
+                    onPress={() => setQrSharePlaylist(pl)}
+                  >
+                    <Text style={[styles.playlistPlayText, { color: '#38bdf8', fontSize: 11 }]}>📱 Share QR</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             ))}
 
@@ -1004,7 +1047,7 @@ export default function App() {
       {currentTrack && (
         <TouchableOpacity 
           style={styles.miniPlayer}
-          onPress={() => setIsModalOpen(true)}
+          onPress={openNowPlaying}
           activeOpacity={0.9}
         >
           <Image source={{ uri: currentTrack.thumbnail }} style={styles.miniThumb} />
@@ -1475,6 +1518,42 @@ export default function App() {
                 )}
               </ScrollView>
             )}
+          </View>
+        </View>
+      </Modal>
+      {/* Playlist Share QR Code Modal */}
+      <Modal visible={!!qrSharePlaylist} animationType="fade" transparent>
+        <View style={styles.downloadModalBackdrop}>
+          <View style={[styles.syncModalCard, { alignItems: 'center', padding: 24 }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={styles.downloadModalTitle}>Share Playlist via QR</Text>
+              <TouchableOpacity onPress={() => setQrSharePlaylist(null)} style={{ padding: 6 }}>
+                <Text style={{ color: '#94a3b8', fontSize: 18, fontWeight: 'bold' }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={{ color: '#e2e8f0', fontSize: 15, fontWeight: 'bold', marginBottom: 4, textAlign: 'center' }}>
+              {qrSharePlaylist?.title}
+            </Text>
+            <Text style={{ color: '#94a3b8', fontSize: 12, textAlign: 'center', marginBottom: 16 }}>
+              Scan this QR code with any device camera or scanner to instantly open and save this playlist.
+            </Text>
+            {qrSharePlaylist && (
+              <View style={{ backgroundColor: '#ffffff', padding: 14, borderRadius: 20, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 10, elevation: 8 }}>
+                <Image
+                  source={{ uri: `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`${apiBaseUrl.replace('/api', '')}/?shareToken=${qrSharePlaylist.shareToken || qrSharePlaylist.id}`)}&margin=4` }}
+                  style={{ width: 180, height: 180, borderRadius: 12 }}
+                />
+              </View>
+            )}
+            <Text style={{ color: '#38bdf8', fontSize: 11, marginTop: 14, textAlign: 'center' }}>
+              Attributed Creator: {qrSharePlaylist?.creator?.name || 'You'}
+            </Text>
+            <TouchableOpacity 
+              style={[styles.linkSyncBtn, { marginTop: 18, width: '100%' }]}
+              onPress={() => setQrSharePlaylist(null)}
+            >
+              <Text style={styles.linkSyncBtnText}>Done</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>

@@ -583,6 +583,19 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       if (!res.ok) throw new Error(data.error || 'Login failed');
       get().setUser(data.user, data.token);
 
+      // Pre-seed user's cloud playlists on this device immediately upon login
+      if (data.playlists && Array.isArray(data.playlists)) {
+        try {
+          const userCacheKey = `vibeflow_cached_playlists_${data.user.id}`;
+          const userKey = `vibeflow_created_playlist_ids_${data.user.id}`;
+          const createdIds = data.playlists
+            .filter((p: any) => !p.id.startsWith('playlist-') && !p.isSharedWithMe)
+            .map((p: any) => p.id);
+          localStorage.setItem(userCacheKey, JSON.stringify(data.playlists.slice(0, 100)));
+          localStorage.setItem(userKey, JSON.stringify(createdIds.slice(0, 100)));
+        } catch {}
+      }
+
       // Save user to local directory for offline & local resilience
       try {
         const localUsersRaw = localStorage.getItem(LS_LOCAL_USERS) || '[]';

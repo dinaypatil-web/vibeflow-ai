@@ -10,7 +10,8 @@ import {
   ShieldCheck, 
   Search, 
   Sparkles,
-  AlertCircle
+  AlertCircle,
+  QrCode
 } from 'lucide-react';
 import { Playlist, UserSummary } from '../types';
 import { api } from '../services/api';
@@ -179,6 +180,24 @@ export const SharePlaylistModal: React.FC<SharePlaylistModalProps> = ({
             <span>{feedback.message}</span>
           </div>
         )}
+
+        {/* QR Code Share Section */}
+        <div className="p-4 rounded-2xl bg-surface-850 border border-white/5 flex flex-col items-center text-center space-y-3">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-brand-300 uppercase tracking-wide">
+            <QrCode className="w-4 h-4 text-brand-400" />
+            <span>Scan QR Code to Open Playlist</span>
+          </div>
+          <div className="p-3 bg-white rounded-2xl shadow-xl shadow-black/40 ring-4 ring-brand-500/20">
+            <img
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(shareUrl)}&margin=4`}
+              alt="Playlist Share QR Code"
+              className="w-40 h-40 rounded-xl object-contain"
+            />
+          </div>
+          <p className="text-[11px] text-slate-400 max-w-xs">
+            Scan this QR code with any mobile device to immediately open & add <span className="text-white font-medium">"{playlist.title}"</span> to your library.
+          </p>
+        </div>
 
         {/* Share Link Section */}
         <div className="space-y-2">

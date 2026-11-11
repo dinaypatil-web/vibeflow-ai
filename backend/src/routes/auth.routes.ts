@@ -208,7 +208,8 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ user, token });
+    const playlists = db.getPlaylistsByUserId(user.id);
+    res.json({ user, token, playlists });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Internal server error' });
   }
