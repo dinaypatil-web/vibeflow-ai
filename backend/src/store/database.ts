@@ -1388,6 +1388,46 @@ class MemoryDatabase {
     return true;
   }
 
+  public deleteMultiplePlaylists(ids: string[], userId: string): { deletedIds: string[]; failedIds: string[] } {
+    const deletedIds: string[] = [];
+    const failedIds: string[] = [];
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return { deletedIds, failedIds };
+    }
+
+    const idSet = new Set(ids);
+    let changed = false;
+
+    for (const id of idSet) {
+      const pl = this.findPlaylistById(id);
+      if (!pl) {
+        failedIds.push(id);
+        continue;
+      }
+      if (this.isUserOwner(pl, userId)) {
+        const idx = this.data.playlists.findIndex(p => p.id === id);
+        if (idx !== -1) {
+          this.data.playlists.splice(idx, 1);
+          deletedIds.push(id);
+          changed = true;
+        }
+      } else if (this.isUserShared(pl, userId)) {
+        this.leaveSharedPlaylist(id, userId);
+        deletedIds.push(id);
+        changed = true;
+      } else {
+        failedIds.push(id);
+      }
+    }
+
+    if (changed) {
+      this.saveToDisk();
+      this.syncToCloud().catch(() => {});
+    }
+
+    return { deletedIds, failedIds };
+  }
+
   public deleteUser(userId: string): boolean {
     const user = this.findUserById(userId) || this.findUserByIdentifier(userId);
     if (!user) return false;

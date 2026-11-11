@@ -89,6 +89,21 @@ export function removeLocalCreatedPlaylist(id: string, userId?: string) {
   } catch {}
 }
 
+export function removeMultipleLocalCreatedPlaylists(ids: string[], userId?: string) {
+  try {
+    const idSet = new Set(ids);
+    const uid = userId || getStoredUserId();
+    const currentIds = getStoredCreatedPlaylistIds(uid).filter(x => !idSet.has(x));
+    localStorage.setItem(getCreatedIdsKey(uid), JSON.stringify(currentIds));
+    const cached = getLocallyCachedPlaylists(uid).filter(p => !idSet.has(p.id));
+    localStorage.setItem(getCacheKey(uid), JSON.stringify(cached));
+    const selected = localStorage.getItem(LS_SELECTED_PLAYLIST_ID);
+    if (selected && idSet.has(selected)) {
+      localStorage.removeItem(LS_SELECTED_PLAYLIST_ID);
+    }
+  } catch {}
+}
+
 export function getLocallyCachedPlaylists(userId?: string): Playlist[] {
   try {
     const uid = userId || getStoredUserId();
@@ -347,6 +362,29 @@ export const api = {
       method: 'DELETE',
       headers: t ? { 'Authorization': `Bearer ${t}` } : {}
     });
+  },
+
+  deleteMultiplePlaylists: async (
+    ids: string[],
+    token?: string | null,
+    userId?: string
+  ): Promise<{ success: boolean; deletedCount: number; deletedIds: string[]; failedIds: string[] }> => {
+    if (!ids || ids.length === 0) {
+      return { success: true, deletedCount: 0, deletedIds: [], failedIds: [] };
+    }
+    const uid = userId || getStoredUserId();
+    removeMultipleLocalCreatedPlaylists(ids, uid);
+    const t = token !== undefined ? token : getStoredToken();
+    const res = await fetch(`${API_BASE}/playlists/batch`, {
+      method: 'DELETE',
+      headers: authHeaders(t),
+      body: JSON.stringify({ ids })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to delete selected playlists');
+    }
+    return await res.json();
   },
 
   addItemToPlaylist: async (playlistId: string, mediaItemId: string, token?: string | null) => {

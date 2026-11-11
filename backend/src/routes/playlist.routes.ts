@@ -478,6 +478,43 @@ router.put('/:id', (req: Request, res: Response) => {
   res.json({ playlist: updated });
 });
 
+// Batch delete playlists (owner deletes; recipient leaves)
+const handleBatchDelete = (req: Request, res: Response) => {
+  const userId = resolveUserId(req);
+  const rawIds = req.body?.ids || req.body?.playlistIds || req.query?.ids;
+  let ids: string[] = [];
+
+  if (Array.isArray(rawIds)) {
+    ids = rawIds.map(String).filter(Boolean);
+  } else if (typeof rawIds === 'string') {
+    try {
+      const parsed = JSON.parse(rawIds);
+      if (Array.isArray(parsed)) {
+        ids = parsed.map(String).filter(Boolean);
+      } else {
+        ids = [rawIds.trim()].filter(Boolean);
+      }
+    } catch {
+      ids = rawIds.split(',').map((s) => s.trim()).filter(Boolean);
+    }
+  }
+
+  if (ids.length === 0) {
+    return res.status(400).json({ error: 'List of playlist IDs is required' });
+  }
+
+  const result = db.deleteMultiplePlaylists(ids, userId);
+  return res.json({
+    success: true,
+    deletedCount: result.deletedIds.length,
+    deletedIds: result.deletedIds,
+    failedIds: result.failedIds,
+  });
+};
+
+router.delete('/batch', handleBatchDelete);
+router.post('/batch-delete', handleBatchDelete);
+
 // Delete playlist (owner deletes; recipient leaves)
 router.delete('/:id', (req: Request, res: Response) => {
   const userId = resolveUserId(req);

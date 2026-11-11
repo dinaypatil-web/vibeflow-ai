@@ -50,6 +50,9 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [playlistSort, setPlaylistSort] = useState<string>('default');
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isDeletingBatch, setIsDeletingBatch] = useState(false);
 
   const { playTrack, setNowPlayingOpen, user, logout, token } = usePlayerStore();
 
@@ -226,6 +229,56 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
       } catch {}
       setSelectedPlaylist(null);
       fetchPlaylists();
+    }
+  };
+
+  const handleToggleSelectPlaylist = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllPlaylists = () => {
+    if (selectedIds.size === playlists.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(playlists.map(p => p.id)));
+    }
+  };
+
+  const handleDeleteSelectedPlaylists = async () => {
+    if (selectedIds.size === 0) return;
+    const count = selectedIds.size;
+    const confirmed = confirm(
+      `Delete ${count} selected playlist${count > 1 ? 's' : ''}?\n\n` +
+      `Playlists you created will be deleted, and shared playlists will be removed from your library. This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setIsDeletingBatch(true);
+    try {
+      const idsToDelete = Array.from(selectedIds);
+      await api.deleteMultiplePlaylists(idsToDelete, token, user?.id);
+
+      if (selectedPlaylist && selectedIds.has(selectedPlaylist.id)) {
+        setSelectedPlaylist(null);
+        try {
+          localStorage.removeItem('vibeflow_selected_playlist_id');
+        } catch {}
+      }
+      setSelectedIds(new Set());
+      setIsSelectMode(false);
+      await fetchPlaylists();
+    } catch (err: any) {
+      alert(`Failed to delete playlists: ${err.message || 'Unknown error'}`);
+    } finally {
+      setIsDeletingBatch(false);
     }
   };
 
@@ -473,14 +526,60 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Your Playlists ({playlists.length})</h3>
-            <button 
-              onClick={() => setIsCustomModalOpen(true)}
-              className="text-xs text-brand-400 hover:text-brand-300 font-medium flex items-center gap-1"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>New</span>
-            </button>
+            <div className="flex items-center gap-2">
+              {playlists.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextMode = !isSelectMode;
+                    setIsSelectMode(nextMode);
+                    if (!nextMode) setSelectedIds(new Set());
+                  }}
+                  className={`text-xs font-semibold px-2.5 py-1 rounded-lg transition-all ${
+                    isSelectMode
+                      ? 'bg-brand-500/20 text-brand-300 border border-brand-500/30'
+                      : 'text-slate-400 hover:text-white hover:bg-surface-800'
+                  }`}
+                >
+                  {isSelectMode ? 'Cancel' : 'Select'}
+                </button>
+              )}
+              <button 
+                onClick={() => setIsCustomModalOpen(true)}
+                className="text-xs text-brand-400 hover:text-brand-300 font-medium flex items-center gap-1"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>New</span>
+              </button>
+            </div>
           </div>
+
+          {/* Batch Selection Action Bar */}
+          {isSelectMode && playlists.length > 0 && (
+            <div className="p-2.5 rounded-xl bg-surface-800 border border-brand-500/30 flex items-center justify-between gap-2 shadow-sm animate-in fade-in duration-150">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSelectAllPlaylists}
+                  className="px-2.5 py-1 rounded-lg bg-surface-750 hover:bg-surface-700 text-[11px] font-medium text-slate-200 border border-white/10 transition-colors"
+                >
+                  {selectedIds.size === playlists.length ? 'Deselect All' : 'Select All'}
+                </button>
+                <span className="text-[11px] font-semibold text-brand-300">
+                  {selectedIds.size} selected
+                </span>
+              </div>
+              <button
+                type="button"
+                disabled={selectedIds.size === 0 || isDeletingBatch}
+                onClick={handleDeleteSelectedPlaylists}
+                className="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-40 disabled:hover:bg-rose-600 text-white text-[11px] font-bold flex items-center gap-1.5 transition-all shadow-sm shadow-rose-600/30 cursor-pointer disabled:cursor-not-allowed"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>{isDeletingBatch ? 'Deleting...' : `Delete (${selectedIds.size})`}</span>
+              </button>
+            </div>
+          )}
 
           <div className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
             {playlists.length === 0 ? (
@@ -502,16 +601,42 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
               playlists.map(pl => {
                 const isSelected = selectedPlaylist?.id === pl.id;
                 const isCustom = !pl.id.startsWith('playlist-') && !pl.isSharedWithMe;
+                const isChecked = selectedIds.has(pl.id);
+
                 return (
                   <div
                     key={pl.id}
-                    onClick={() => handleSelectPlaylist(pl)}
+                    onClick={() => {
+                      if (isSelectMode) {
+                        handleToggleSelectPlaylist(pl.id);
+                      } else {
+                        handleSelectPlaylist(pl);
+                      }
+                    }}
                     className={`p-3 rounded-2xl cursor-pointer transition-all duration-200 border flex items-center gap-3.5 ${
-                      isSelected
+                      isSelectMode && isChecked
+                        ? 'bg-brand-500/15 border-brand-500/50 shadow-md shadow-brand-500/10'
+                        : isSelected && !isSelectMode
                         ? 'bg-surface-800 border-brand-500/40 shadow-md shadow-brand-500/10 ring-1 ring-brand-500/20'
                         : 'bg-surface-850 hover:bg-surface-800 border-white/5'
                     }`}
                   >
+                    {isSelectMode && (
+                      <div 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleSelectPlaylist(pl.id);
+                        }}
+                        className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
+                          isChecked
+                            ? 'bg-brand-500 border-brand-400 text-white shadow-sm'
+                            : 'border-white/20 bg-surface-900/60 hover:border-white/40'
+                        }`}
+                      >
+                        {isChecked && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                      </div>
+                    )}
+
                     <img
                       src={pl.coverArt || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=600&q=80'}
                       alt={pl.title}

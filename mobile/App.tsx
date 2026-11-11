@@ -11,7 +11,8 @@ import {
   Modal, 
   StatusBar,
   ActivityIndicator,
-  AppState
+  AppState,
+  Alert
 } from 'react-native';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -151,6 +152,77 @@ export default function App() {
   const syncUserRef = useRef(syncUser);
   syncUserRef.current = syncUser;
   const historyRecordedTrackIdRef = useRef<string | null>(null);
+
+  // Multi-select playlists & bulk deletion
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedPlaylistIds, setSelectedPlaylistIds] = useState<string[]>([]);
+  const [isDeletingBatch, setIsDeletingBatch] = useState(false);
+
+  const toggleSelectPlaylist = (id: string) => {
+    setSelectedPlaylistIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllPlaylists = () => {
+    if (selectedPlaylistIds.length === playlists.length) {
+      setSelectedPlaylistIds([]);
+    } else {
+      setSelectedPlaylistIds(playlists.map(p => p.id));
+    }
+  };
+
+  const handleDeleteSelectedPlaylists = async () => {
+    if (selectedPlaylistIds.length === 0) return;
+
+    setIsDeletingBatch(true);
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      if (syncUser?.id) headers['x-user-id'] = syncUser.id;
+
+      const res = await fetch(`${apiBaseUrl}/playlists/batch`, {
+        method: 'DELETE',
+        headers,
+        body: JSON.stringify({ ids: selectedPlaylistIds })
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to delete selected playlists');
+      }
+      const data = await res.json();
+      const deletedSet = new Set(data.deletedIds || selectedPlaylistIds);
+      setPlaylists(prev => prev.filter(p => !deletedSet.has(p.id)));
+      setSelectedPlaylistIds([]);
+      setIsSelectMode(false);
+      fetchPlaylists();
+    } catch (err: any) {
+      console.warn('Batch delete error:', err);
+      Alert.alert('Delete Failed', err.message || 'Could not delete playlists');
+    } finally {
+      setIsDeletingBatch(false);
+    }
+  };
+
+  const confirmDeleteSelected = () => {
+    const count = selectedPlaylistIds.length;
+    if (count === 0) return;
+    if (typeof window !== 'undefined' && (window as any).confirm) {
+      const ok = (window as any).confirm(`Delete ${count} selected playlist${count > 1 ? 's' : ''}? This cannot be undone.`);
+      if (ok) {
+        handleDeleteSelectedPlaylists();
+        return;
+      }
+    }
+    Alert.alert(
+      'Delete Playlists',
+      `Delete ${count} selected playlist${count > 1 ? 's' : ''}? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: handleDeleteSelectedPlaylists }
+      ]
+    );
+  };
 
   const fetchPlaylists = async (baseUrl = apiBaseUrl, uid = syncUser?.id || 'demo-user-id', token = authToken) => {
     try {
@@ -924,6 +996,27 @@ export default function App() {
                   {syncUser ? `Account: ${syncUser.name} • Cross-Device Active` : 'Playlists synced across all your devices'}
                 </Text>
               </View>
+              {playlists.length > 0 && (
+                <TouchableOpacity
+                  style={[
+                    styles.syncSmallBtn,
+                    {
+                      backgroundColor: isSelectMode ? 'rgba(99,102,241,0.2)' : '#181d30',
+                      borderColor: isSelectMode ? '#6366f1' : 'rgba(255,255,255,0.08)',
+                      marginRight: 6
+                    }
+                  ]}
+                  onPress={() => {
+                    const next = !isSelectMode;
+                    setIsSelectMode(next);
+                    if (!next) setSelectedPlaylistIds([]);
+                  }}
+                >
+                  <Text style={[styles.syncSmallBtnText, isSelectMode && { color: '#818cf8', fontWeight: 'bold' }]}>
+                    {isSelectMode ? 'Cancel' : 'Select'}
+                  </Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity 
                 style={styles.syncSmallBtn} 
                 onPress={() => {
@@ -937,32 +1030,94 @@ export default function App() {
               </TouchableOpacity>
             </View>
 
-            {playlists.map((pl: Playlist) => (
-              <View key={pl.id} style={styles.playlistCard}>
-                <Image source={{ uri: pl.coverArt || SAMPLE_TRACKS[0].thumbnail }} style={styles.playlistThumb} />
-                <View style={styles.playlistMeta}>
-                  <Text style={styles.playlistTitle} numberOfLines={1}>{pl.title}</Text>
-                  <Text style={styles.playlistDesc} numberOfLines={1}>{pl.description || 'Personal music mix'}</Text>
-                  <Text style={styles.playlistCount}>
-                    {pl.items?.length || pl.itemCount || 0} tracks • By {pl.creator?.name || (syncUser?.name ? syncUser.name : 'You')}
+            {/* Batch Selection Action Bar */}
+            {isSelectMode && playlists.length > 0 && (
+              <View style={styles.batchActionBar}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <TouchableOpacity
+                    style={styles.batchSelectAllBtn}
+                    onPress={handleSelectAllPlaylists}
+                  >
+                    <Text style={styles.batchSelectAllText}>
+                      {selectedPlaylistIds.length === playlists.length ? 'Deselect All' : 'Select All'}
+                    </Text>
+                  </TouchableOpacity>
+                  <Text style={styles.batchCountText}>
+                    {selectedPlaylistIds.length} selected
                   </Text>
                 </View>
-                <View style={{ flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
-                  <TouchableOpacity 
-                    style={styles.playlistPlayBtn}
-                    onPress={() => playPlaylist(pl)}
-                  >
-                    <Text style={styles.playlistPlayText}>▶ Play All</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[styles.playlistPlayBtn, { backgroundColor: '#1e2438', borderWidth: 1, borderColor: 'rgba(56,189,248,0.25)', paddingVertical: 4, paddingHorizontal: 8 }]}
-                    onPress={() => setQrSharePlaylist(pl)}
-                  >
-                    <Text style={[styles.playlistPlayText, { color: '#38bdf8', fontSize: 11 }]}>📱 Share QR</Text>
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.batchDeleteBtn,
+                    (selectedPlaylistIds.length === 0 || isDeletingBatch) && { opacity: 0.5 }
+                  ]}
+                  disabled={selectedPlaylistIds.length === 0 || isDeletingBatch}
+                  onPress={confirmDeleteSelected}
+                >
+                  <Text style={styles.batchDeleteText}>
+                    {isDeletingBatch ? 'Deleting...' : `🗑️ Delete (${selectedPlaylistIds.length})`}
+                  </Text>
+                </TouchableOpacity>
               </View>
-            ))}
+            )}
+
+            {playlists.map((pl: Playlist) => {
+              const isChecked = selectedPlaylistIds.includes(pl.id);
+              return (
+                <TouchableOpacity
+                  key={pl.id}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    if (isSelectMode) {
+                      toggleSelectPlaylist(pl.id);
+                    }
+                  }}
+                  style={[
+                    styles.playlistCard,
+                    isSelectMode && isChecked && {
+                      borderColor: '#6366f1',
+                      backgroundColor: 'rgba(99,102,241,0.14)'
+                    }
+                  ]}
+                >
+                  {isSelectMode && (
+                    <TouchableOpacity
+                      onPress={() => toggleSelectPlaylist(pl.id)}
+                      style={[
+                        styles.playlistCheckbox,
+                        isChecked && styles.playlistCheckboxChecked
+                      ]}
+                    >
+                      {isChecked && <Text style={styles.playlistCheckboxCheck}>✓</Text>}
+                    </TouchableOpacity>
+                  )}
+                  <Image source={{ uri: pl.coverArt || SAMPLE_TRACKS[0].thumbnail }} style={styles.playlistThumb} />
+                  <View style={styles.playlistMeta}>
+                    <Text style={styles.playlistTitle} numberOfLines={1}>{pl.title}</Text>
+                    <Text style={styles.playlistDesc} numberOfLines={1}>{pl.description || 'Personal music mix'}</Text>
+                    <Text style={styles.playlistCount}>
+                      {pl.items?.length || pl.itemCount || 0} tracks • By {pl.creator?.name || (syncUser?.name ? syncUser.name : 'You')}
+                    </Text>
+                  </View>
+                  {!isSelectMode && (
+                    <View style={{ flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+                      <TouchableOpacity 
+                        style={styles.playlistPlayBtn}
+                        onPress={() => playPlaylist(pl)}
+                      >
+                        <Text style={styles.playlistPlayText}>▶ Play All</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        style={[styles.playlistPlayBtn, { backgroundColor: '#1e2438', borderWidth: 1, borderColor: 'rgba(56,189,248,0.25)', paddingVertical: 4, paddingHorizontal: 8 }]}
+                        onPress={() => setQrSharePlaylist(pl)}
+                      >
+                        <Text style={[styles.playlistPlayText, { color: '#38bdf8', fontSize: 11 }]}>📱 Share QR</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
 
             {playlists.length === 0 && (
               <View style={styles.emptyPlaylistCard}>
@@ -2210,6 +2365,68 @@ const styles = StyleSheet.create({
   syncSmallBtnText: {
     color: '#a78bfa',
     fontSize: 11,
+    fontWeight: 'bold',
+  },
+  batchActionBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#181d30',
+    padding: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.35)',
+    marginBottom: 8,
+  },
+  batchSelectAllBtn: {
+    backgroundColor: '#232b45',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  batchSelectAllText: {
+    color: '#e2e8f0',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  batchCountText: {
+    color: '#a5b4fc',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  batchDeleteBtn: {
+    backgroundColor: '#e11d48',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  batchDeleteText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  playlistCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 4,
+  },
+  playlistCheckboxChecked: {
+    backgroundColor: '#6366f1',
+    borderColor: '#818cf8',
+  },
+  playlistCheckboxCheck: {
+    color: '#ffffff',
+    fontSize: 12,
     fontWeight: 'bold',
   },
   playlistCard: {

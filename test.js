@@ -1075,6 +1075,121 @@ async function runTests() {
     }
   });
 
+  // 36. Multiple Playlist Batch Selection & Deletion
+  await test('Multiple Playlist Batch Selection & Deletion (API, POST/DELETE & Isolation)', async () => {
+    // 1. Register a dedicated test user
+    const userRes = await fetchJSON(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Batch Tester',
+        username: `batch_user_${Date.now()}`,
+        password: 'BatchPassword2026!'
+      })
+    });
+    const batchUser = userRes.user;
+    const batchToken = userRes.token;
+
+    // 2. Create 4 playlists for this user
+    const plIds = [];
+    for (let i = 1; i <= 4; i++) {
+      const created = await fetchJSON(`${API_BASE}/playlists`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${batchToken}`
+        },
+        body: JSON.stringify({
+          title: `Batch Test Playlist ${i}`,
+          description: `Description for playlist ${i}`
+        })
+      });
+      plIds.push(created.playlist.id);
+    }
+
+    if (plIds.length !== 4) throw new Error('Failed to create 4 test playlists');
+
+    // 3. Select 2 playlists to batch delete via DELETE /api/playlists/batch
+    const idsToDelete = [plIds[0], plIds[2]];
+    const delRes = await fetchJSON(`${API_BASE}/playlists/batch`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${batchToken}`
+      },
+      body: JSON.stringify({ ids: idsToDelete })
+    });
+
+    if (!delRes.success || delRes.deletedCount !== 2) {
+      throw new Error(`Batch delete failed: deletedCount expected 2, got ${delRes.deletedCount}`);
+    }
+
+    // 4. Verify user playlists: plIds[0] and plIds[2] should be gone, plIds[1] and plIds[3] remain
+    const remaining = await fetchJSON(`${API_BASE}/playlists?userId=${batchUser.id}`, {
+      headers: { 'Authorization': `Bearer ${batchToken}` }
+    });
+    const remainingIds = new Set(remaining.playlists.map(p => p.id));
+    if (remainingIds.has(plIds[0]) || remainingIds.has(plIds[2])) {
+      throw new Error('Deleted playlists still appear in user playlist listing');
+    }
+    if (!remainingIds.has(plIds[1]) || !remainingIds.has(plIds[3])) {
+      throw new Error('Non-deleted playlists were incorrectly removed');
+    }
+
+    // 5. Delete the remaining 2 via POST /api/playlists/batch-delete
+    const batchPostRes = await fetchJSON(`${API_BASE}/playlists/batch-delete`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${batchToken}`
+      },
+      body: JSON.stringify({ ids: [plIds[1], plIds[3]] })
+    });
+    if (!batchPostRes.success || batchPostRes.deletedCount !== 2) {
+      throw new Error('POST /api/playlists/batch-delete failed');
+    }
+
+    const finalRemaining = await fetchJSON(`${API_BASE}/playlists?userId=${batchUser.id}`, {
+      headers: { 'Authorization': `Bearer ${batchToken}` }
+    });
+    const finalRemainingTestIds = finalRemaining.playlists.filter(p => plIds.includes(p.id));
+    if (finalRemainingTestIds.length !== 0) {
+      throw new Error(`Expected all 4 batch-created playlists to be deleted, but found ${finalRemainingTestIds.length} remaining`);
+    }
+
+    // 6. Test security isolation: user cannot batch-delete another user's playlists
+    const otherUserRes = await fetchJSON(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Protected User',
+        username: `protected_${Date.now()}`,
+        password: 'ProtectedPass2026!'
+      })
+    });
+    const protectedPl = await fetchJSON(`${API_BASE}/playlists`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${otherUserRes.token}`
+      },
+      body: JSON.stringify({ title: 'Untouchable Playlist' })
+    });
+
+    // Attacker tries to batch delete protected user's playlist
+    const unauthorizedAttempt = await fetchJSON(`${API_BASE}/playlists/batch`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${batchToken}`
+      },
+      body: JSON.stringify({ ids: [protectedPl.playlist.id] })
+    });
+    if (unauthorizedAttempt.deletedCount !== 0 || unauthorizedAttempt.deletedIds.length !== 0) {
+      throw new Error('Unauthorized user was able to batch delete another user playlist!');
+    }
+  });
+
   console.log(`\n🎉 Test Results: ${passed}/${total} passed!`);
   if (passed === total) {
     console.log('🌟 All VibeFlow AI core systems verified production-ready.\n');

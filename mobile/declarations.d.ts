@@ -13,6 +13,9 @@ declare module 'react-native' {
   export const Modal: any;
   export const StatusBar: any;
   export const ActivityIndicator: any;
+  export const Alert: {
+    alert: (title: string, message?: string, buttons?: Array<{ text: string; onPress?: () => void; style?: 'default' | 'cancel' | 'destructive' }>) => void;
+  };
   export const AppState: {
     currentState: string;
     addEventListener: (type: 'change' | 'memoryWarning', listener: (state: string) => void) => { remove: () => void };
