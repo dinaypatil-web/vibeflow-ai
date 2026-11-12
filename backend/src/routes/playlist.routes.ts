@@ -205,13 +205,13 @@ router.post('/sync/link', (req: Request, res: Response) => {
     });
   }
 
-  // Case B: Linking client / guest playlists to authenticated user account
-  const userId = resolveUserId(req);
-  if (!userId || userId === 'demo-user-id') {
-    return res.status(401).json({ error: 'Authentication required to link playlists' });
-  }
+  // Case B: Linking client / guest playlists to user account
+  const authUserId = resolveUserId(req);
+  const targetUserId = (authUserId && authUserId !== 'demo-user-id') 
+    ? authUserId 
+    : (req.body.userId || authUserId || 'demo-user-id');
   const { clientPlaylistIds, clientPlaylists } = req.body;
-  const result = db.linkPlaylistsToUser(userId, clientPlaylistIds, clientPlaylists);
+  const result = db.linkPlaylistsToUser(targetUserId, clientPlaylistIds, clientPlaylists);
   return res.json({
     success: true,
     linkedCount: result.linkedCount,
@@ -991,31 +991,54 @@ router.delete('/:id/items/:mediaItemId', (req: Request, res: Response) => {
   res.json({ success: true, playlist });
 });
 
-// Export playlist
-router.get('/:id/export', (req: Request, res: Response) => {
-  const format = (req.query.format as string) || 'json';
-  const playlist = db.findPlaylistById(req.params.id);
-  if (!playlist) {
-    return res.status(404).json({ error: 'Playlist not found' });
+// Export playlist (supports GET and POST with cloud sync fallback)
+const handleExportPlaylist = async (req: Request, res: Response) => {
+  const format = (req.query.format as string) || (req.body?.format as string) || 'json';
+
+  if (process.env.VERCEL) {
+    try { await db.syncFromCloud(); } catch {}
   }
 
-  const items = playlist.items?.map(i => i.mediaItem) || [];
+  let playlist = db.findPlaylistById(req.params.id);
+  if (!playlist) {
+    playlist = db.findPlaylistByShareToken(req.params.id);
+  }
+
+  // If provided in request body (e.g. from client sync), use it
+  if (!playlist && req.body && req.body.playlist) {
+    playlist = req.body.playlist;
+  }
+
+  if (!playlist) {
+    return res.status(404).json({ 
+      error: 'Playlist not found',
+      message: 'If this playlist was created locally on your device, it can be exported directly to M3U/JSON via the VibeFlow app interface.'
+    });
+  }
+
+  const items = playlist.items?.map(i => i.mediaItem || (i as any)) || [];
 
   if (format === 'm3u') {
     let m3u = '#EXTM3U\n';
     m3u += `#PLAYLIST:${playlist.title}\n`;
     for (const item of items) {
-      m3u += `#EXTINF:${item.duration},${item.artist} - ${item.title}\n`;
-      m3u += `${item.streamUrl || item.embedUrl || item.title}\n`;
+      const dur = Math.round(item.duration || 0);
+      const artist = item.artist || 'Unknown Artist';
+      const title = item.title || 'Unknown Track';
+      m3u += `#EXTINF:${dur},${artist} - ${title}\n`;
+      m3u += `${item.streamUrl || item.embedUrl || (item.provider === 'youtube' && item.providerId ? `https://www.youtube.com/watch?v=${item.providerId}` : title)}\n`;
     }
-    res.setHeader('Content-Type', 'audio/x-mpegurl');
-    res.setHeader('Content-Disposition', `attachment; filename="${playlist.title.replace(/\s+/g, '_')}.m3u"`);
+    res.setHeader('Content-Type', 'audio/x-mpegurl; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${playlist.title.replace(/[^\w\s-]/gi, '_')}.m3u"`);
     return res.send(m3u);
   }
 
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Content-Disposition', `attachment; filename="${playlist.title.replace(/\s+/g, '_')}.json"`);
-  res.json({ playlist, items });
-});
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${playlist.title.replace(/[^\w\s-]/gi, '_')}.json"`);
+  return res.json({ playlist, items });
+};
+
+router.get('/:id/export', handleExportPlaylist);
+router.post('/:id/export', handleExportPlaylist);
 
 export default router;

@@ -179,18 +179,17 @@ export function mergeWithLocalPlaylists(
     }
 
     // If there were un-synced playlists created on this device, push them to the server so other devices get them
-    if (unSyncedToPush.length > 0 && uid !== 'demo-user-id') {
+    if (unSyncedToPush.length > 0) {
       const token = getStoredToken();
-      if (token) {
-        fetch(`${API_BASE}/playlists/sync/link`, {
-          method: 'POST',
-          headers: authHeaders(token),
-          body: JSON.stringify({
-            clientPlaylistIds: unSyncedToPush.map(p => p.id),
-            clientPlaylists: unSyncedToPush
-          })
-        }).catch(() => {});
-      }
+      fetch(`${API_BASE}/playlists/sync/link`, {
+        method: 'POST',
+        headers: token ? authHeaders(token) : { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientPlaylistIds: unSyncedToPush.map(p => p.id),
+          clientPlaylists: unSyncedToPush,
+          userId: uid
+        })
+      }).catch(() => {});
     }
 
     return merged;

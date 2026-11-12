@@ -468,8 +468,61 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
 
   const handleExport = (format: 'json' | 'm3u') => {
     if (!selectedPlaylist) return;
-    const url = `${API_BASE}/playlists/${selectedPlaylist.id}/export?format=${format}`;
-    window.open(url, '_blank');
+
+    try {
+      const sanitizedTitle = (selectedPlaylist.title || 'Playlist').replace(/[^\w\s-]/gi, '_').trim() || 'Playlist';
+      const items = (selectedPlaylist.items || []).map(i => i.mediaItem || (i as any));
+
+      if (format === 'm3u') {
+        let m3u = '#EXTM3U\n';
+        m3u += `#PLAYLIST:${selectedPlaylist.title}\n`;
+        for (const item of items) {
+          const trackDuration = Math.round(item.duration || 0);
+          const trackArtist = item.artist || 'Unknown Artist';
+          const trackTitle = item.title || 'Unknown Track';
+          m3u += `#EXTINF:${trackDuration},${trackArtist} - ${trackTitle}\n`;
+          const trackUrl = item.streamUrl || item.embedUrl || (item.provider === 'youtube' && item.providerId ? `https://www.youtube.com/watch?v=${item.providerId}` : item.title);
+          m3u += `${trackUrl}\n`;
+        }
+
+        const blob = new Blob([m3u], { type: 'audio/x-mpegurl;charset=utf-8' });
+        const downloadUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = `${sanitizedTitle}.m3u`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+      } else {
+        const exportData = {
+          playlist: {
+            id: selectedPlaylist.id,
+            title: selectedPlaylist.title,
+            description: selectedPlaylist.description,
+            trackCount: items.length,
+            createdAt: selectedPlaylist.createdAt,
+            updatedAt: selectedPlaylist.updatedAt,
+            creator: selectedPlaylist.creator
+          },
+          items
+        };
+
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json;charset=utf-8' });
+        const downloadUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = `${sanitizedTitle}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+      }
+    } catch (err) {
+      console.warn('Client-side export failed, falling back to server export:', err);
+      const url = `${API_BASE}/playlists/${selectedPlaylist.id}/export?format=${format}`;
+      window.open(url, '_blank');
+    }
   };
 
   const formatDuration = (secs: number) => {
