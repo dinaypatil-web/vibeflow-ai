@@ -165,6 +165,53 @@ export default function App() {
   const [isAddingTracksBatch, setIsAddingTracksBatch] = useState(false);
   const [newMobilePlaylistTitle, setNewMobilePlaylistTitle] = useState('');
 
+  // In-app QR Code Scanning for Shared Playlists
+  const [isScanQrModalVisible, setIsScanQrModalVisible] = useState(false);
+  const [scannedQrInput, setScannedQrInput] = useState('');
+  const [isScanningQr, setIsScanningQr] = useState(false);
+  const [scanQrError, setScanQrError] = useState<string | null>(null);
+  const [scannedPlaylistSuccess, setScannedPlaylistSuccess] = useState<Playlist | null>(null);
+
+  const handleScanSharedPlaylist = async (customPayload?: string) => {
+    const raw = (customPayload || scannedQrInput).trim();
+    if (!raw) {
+      setScanQrError('Please enter or scan a QR code payload / share link');
+      return;
+    }
+
+    setIsScanningQr(true);
+    setScanQrError(null);
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
+      const res = await fetch(`${apiBaseUrl}/playlists/share/scan`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ qrData: raw })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to process QR code');
+      }
+
+      if (data.playlist) {
+        setScannedPlaylistSuccess(data.playlist);
+        setPlaylists(prev => {
+          if (prev.some(p => p.id === data.playlist.id)) {
+            return prev.map(p => p.id === data.playlist.id ? data.playlist : p);
+          }
+          return [data.playlist, ...prev];
+        });
+        fetchPlaylists();
+      }
+    } catch (err: any) {
+      setScanQrError(err.message || 'Error processing QR code');
+    } finally {
+      setIsScanningQr(false);
+    }
+  };
+
   const toggleSelectTrack = (trackId: string) => {
     setSelectedTrackIds(prev => 
       prev.includes(trackId) ? prev.filter(x => x !== trackId) : [...prev, trackId]
@@ -1192,6 +1239,20 @@ export default function App() {
                 </TouchableOpacity>
               )}
               <TouchableOpacity 
+                style={[styles.syncSmallBtn, { backgroundColor: '#1e2438', borderColor: 'rgba(56,189,248,0.35)', marginRight: 6 }]} 
+                onPress={() => {
+                  setScanQrError(null);
+                  setScannedPlaylistSuccess(null);
+                  setScannedQrInput('');
+                  setIsScanQrModalVisible(true);
+                }}
+              >
+                <Text style={[styles.syncSmallBtnText, { color: '#38bdf8', fontWeight: 'bold' }]}>
+                  📷 Scan QR
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
                 style={styles.syncSmallBtn} 
                 onPress={() => {
                   fetchMySyncCode();
@@ -1300,7 +1361,18 @@ export default function App() {
                 <Text style={styles.emptyDesc}>
                   Sign in with your username or email to automatically load all playlists created on your other devices!
                 </Text>
-                <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <TouchableOpacity 
+                    style={[styles.linkSyncBtn, { backgroundColor: '#1e2438', borderWidth: 1, borderColor: '#38bdf8' }]}
+                    onPress={() => {
+                      setScanQrError(null);
+                      setScannedPlaylistSuccess(null);
+                      setScannedQrInput('');
+                      setIsScanQrModalVisible(true);
+                    }}
+                  >
+                    <Text style={[styles.linkSyncBtnText, { color: '#38bdf8' }]}>📷 Scan Shared QR</Text>
+                  </TouchableOpacity>
                   <TouchableOpacity 
                     style={styles.linkSyncBtn}
                     onPress={() => {
@@ -1955,6 +2027,149 @@ export default function App() {
                 </TouchableOpacity>
               </View>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* In-App Shared Playlist QR Code Scanner Modal */}
+      <Modal visible={isScanQrModalVisible} animationType="slide" transparent>
+        <View style={styles.downloadModalBackdrop}>
+          <View style={[styles.syncModalCard, { maxHeight: '85%' }]}>
+            <View style={styles.downloadModalHeader}>
+              <View>
+                <Text style={styles.downloadModalTitle}>Scan Shared QR Code</Text>
+                <Text style={{ color: '#94a3b8', fontSize: 12, marginTop: 2 }}>
+                  Add a shared playlist directly into your library
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setIsScanQrModalVisible(false)}
+                style={{ padding: 6 }}
+              >
+                <Text style={styles.closeText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {scannedPlaylistSuccess ? (
+              <View style={{ alignItems: 'center', paddingVertical: 14 }}>
+                <Text style={{ fontSize: 44, marginBottom: 8 }}>🎉</Text>
+                <Text style={{ color: '#10b981', fontSize: 13, fontWeight: 'bold' }}>Playlist Added to Library!</Text>
+                <Text style={{ color: '#ffffff', fontSize: 18, fontWeight: 'bold', marginTop: 4, textAlign: 'center' }}>
+                  {scannedPlaylistSuccess.title}
+                </Text>
+                <Text style={{ color: '#94a3b8', fontSize: 12, textAlign: 'center', marginTop: 2 }}>
+                  {scannedPlaylistSuccess.items?.length || scannedPlaylistSuccess.itemCount || 0} tracks • By {scannedPlaylistSuccess.creator?.name || 'VibeFlow User'}
+                </Text>
+
+                <TouchableOpacity
+                  style={[styles.authPrimaryBtn, { width: '100%', marginTop: 20 }]}
+                  onPress={() => {
+                    playPlaylist(scannedPlaylistSuccess);
+                    setIsScanQrModalVisible(false);
+                  }}
+                >
+                  <Text style={styles.authPrimaryBtnText}>▶ Play Playlist Now</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.syncSubmitBtn, { width: '100%', marginTop: 8 }]}
+                  onPress={() => setIsScanQrModalVisible(false)}
+                >
+                  <Text style={styles.syncSubmitBtnText}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <ScrollView style={{ marginTop: 10 }}>
+                {/* Viewfinder Mockup Frame with Neon Target Corners */}
+                <View style={{
+                  height: 160,
+                  backgroundColor: '#0a0d14',
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: 'rgba(56, 189, 248, 0.3)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: 14,
+                  position: 'relative'
+                }}>
+                  <View style={{
+                    width: 110,
+                    height: 110,
+                    borderWidth: 2,
+                    borderColor: '#38bdf8',
+                    borderRadius: 12,
+                    borderStyle: 'dashed',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <Text style={{ fontSize: 28 }}>📷</Text>
+                    <Text style={{ color: '#38bdf8', fontSize: 11, fontWeight: 'bold', marginTop: 4 }}>
+                      Scan QR Code
+                    </Text>
+                  </View>
+                  <Text style={{ color: '#94a3b8', fontSize: 10, marginTop: 8 }}>
+                    Align QR code within the frame or paste link below
+                  </Text>
+                </View>
+
+                {scanQrError && (
+                  <View style={[styles.syncInfoBox, { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.3)', marginBottom: 12 }]}>
+                    <Text style={{ color: '#fca5a5', fontSize: 12, textAlign: 'center' }}>⚠️ {scanQrError}</Text>
+                  </View>
+                )}
+
+                {/* Input for QR Code Payload or Share Link */}
+                <Text style={styles.inputLabel}>Enter or Paste QR Code / Share Link:</Text>
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 4, marginBottom: 14 }}>
+                  <TextInput
+                    style={[styles.authTextInput, { flex: 1, marginBottom: 0 }]}
+                    placeholder="e.g. st-workout-energy or share link..."
+                    placeholderTextColor="#64748b"
+                    value={scannedQrInput}
+                    onChangeText={setScannedQrInput}
+                  />
+                  <TouchableOpacity
+                    disabled={isScanningQr || !scannedQrInput.trim()}
+                    onPress={() => handleScanSharedPlaylist()}
+                    style={[styles.authPrimaryBtn, { paddingHorizontal: 16, marginBottom: 0, opacity: (!scannedQrInput.trim() || isScanningQr) ? 0.5 : 1 }]}
+                  >
+                    <Text style={styles.authPrimaryBtnText}>
+                      {isScanningQr ? 'Scanning...' : 'Add'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Quick 1-Click Available Shared Playlists */}
+                <View style={{ borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)', paddingTop: 12, marginBottom: 10 }}>
+                  <Text style={[styles.inputLabel, { marginBottom: 6 }]}>Or Test With Available Shared QR Codes:</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    {[
+                      { label: 'Morning Motivation', token: 'st-morning-motivation' },
+                      { label: 'Instrumentals Flow', token: 'st-instrumentals' },
+                      { label: 'Workout Energy', token: 'st-workout-energy' },
+                      { label: 'Retro Favorites', token: 'st-retro-favorites' }
+                    ].map(sample => (
+                      <TouchableOpacity
+                        key={sample.token}
+                        disabled={isScanningQr}
+                        onPress={() => handleScanSharedPlaylist(sample.token)}
+                        style={{
+                          backgroundColor: '#181d30',
+                          paddingVertical: 6,
+                          paddingHorizontal: 10,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: 'rgba(255,255,255,0.06)'
+                        }}
+                      >
+                        <Text style={{ color: '#e2e8f0', fontSize: 11, fontWeight: '600' }}>{sample.label}</Text>
+                        <Text style={{ color: '#64748b', fontSize: 9 }}>{sample.token}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              </ScrollView>
+            )}
           </View>
         </View>
       </Modal>

@@ -644,6 +644,18 @@ export const api = {
     return data;
   },
 
+  scanSharedQrCode: async (qrData: string, token?: string | null): Promise<{ success: boolean; playlist: Playlist; message: string; shareToken: string }> => {
+    const t = token !== undefined ? token : getStoredToken();
+    const res = await fetch(`${API_BASE}/playlists/share/scan`, {
+      method: 'POST',
+      headers: authHeaders(t),
+      body: JSON.stringify({ qrData })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to process QR code');
+    return data;
+  },
+
   searchUsers: async (query: string = '', token?: string | null): Promise<UserSummary[]> => {
     try {
       const t = token !== undefined ? token : getStoredToken();

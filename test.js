@@ -1467,6 +1467,100 @@ async function runTests() {
     }
   });
 
+  // 34. In-App Shared QR Code Scanning & Direct Addition (Web & Mobile)
+  await test('In-App Shared QR Code Scanning & Direct Addition (Web & Mobile)', async () => {
+    // 1. User A creates a playlist to share
+    const userA = `creator_${Date.now()}`;
+    const regA = await fetchJSON(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Creator A', username: userA, password: 'Password123!' })
+    });
+    const tokenA = regA.token;
+
+    const plRes = await fetchJSON(`${API_BASE}/playlists`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenA}` },
+      body: JSON.stringify({
+        title: 'Atmospheric Vibes Mix',
+        description: 'Testing in-app QR scanning'
+      })
+    });
+    const playlistId = plRes.playlist.id;
+    const shareToken = plRes.playlist.shareToken || `st-${playlistId}`;
+
+    // 2. User B (recipient) registers
+    const userB = `scanner_${Date.now()}`;
+    const regB = await fetchJSON(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Scanner B', username: userB, password: 'Password123!' })
+    });
+    const tokenB = regB.token;
+
+    // Test A: Scan full QR URL (e.g. as encoded in mobile/web generated QR codes)
+    const qrFullUrl = `http://localhost:5173/?shareToken=${shareToken}`;
+    const scanRes1 = await fetchJSON(`${API_BASE}/playlists/share/scan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenB}` },
+      body: JSON.stringify({ qrData: qrFullUrl })
+    });
+    if (!scanRes1.success || !scanRes1.playlist) {
+      throw new Error('Failed to scan full QR URL');
+    }
+    if (scanRes1.playlist.id !== playlistId) {
+      throw new Error(`Playlist ID mismatch from QR scan: expected ${playlistId}, got ${scanRes1.playlist.id}`);
+    }
+
+    // Test B: Scan raw share token (e.g. st-workout-energy)
+    const scanRes2 = await fetchJSON(`${API_BASE}/playlists/share/scan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenB}` },
+      body: JSON.stringify({ qrData: 'st-workout-energy' })
+    });
+    if (!scanRes2.success || !scanRes2.playlist) {
+      throw new Error('Failed to scan raw token QR');
+    }
+    if (!scanRes2.playlist.title.includes('Workout Energy')) {
+      throw new Error(`Expected Workout Energy, got ${scanRes2.playlist.title}`);
+    }
+
+    // Test C: Scan deep link format
+    const deepLink = `vibeflow://playlist/share/${shareToken}`;
+    const scanRes3 = await fetchJSON(`${API_BASE}/playlists/share/scan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenB}` },
+      body: JSON.stringify({ qrData: deepLink })
+    });
+    if (!scanRes3.success) {
+      throw new Error('Failed to scan deep link QR');
+    }
+
+    // Test D: Verify User B's library now includes the scanned playlist
+    const userBPlaylists = await fetchJSON(`${API_BASE}/playlists?userId=${regB.user.id}`, {
+      headers: { 'Authorization': `Bearer ${tokenB}` }
+    });
+    const sharedIds = userBPlaylists.playlists.map(p => p.id);
+    if (!sharedIds.includes(playlistId)) {
+      throw new Error('Scanned playlist was not found in recipient user library');
+    }
+
+    // Test E: Malformed / non-existent QR code returns 404
+    let errorCaught = false;
+    try {
+      await fetchJSON(`${API_BASE}/playlists/share/scan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ qrData: 'st-nonexistent-invalid-qr' })
+      });
+    } catch (err) {
+      errorCaught = true;
+    }
+    if (!errorCaught) {
+      throw new Error('Expected 404 for invalid QR code');
+    }
+  });
+
   console.log(`\n🎉 Test Results: ${passed}/${total} passed!`);
   if (passed === total) {
     console.log('🌟 All VibeFlow AI core systems verified production-ready.\n');

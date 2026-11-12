@@ -22,7 +22,8 @@ import {
   ArrowDown,
   Shuffle,
   ArrowUpDown,
-  Check
+  Check,
+  QrCode
 } from 'lucide-react';
 import { Playlist, PlaylistItem, MediaItem } from '../types';
 import { api, API_BASE } from '../services/api';
@@ -32,6 +33,7 @@ import { CreatePlaylistModal } from '../components/CreatePlaylistModal';
 import { SharePlaylistModal } from '../components/SharePlaylistModal';
 import { AddLinkToPlaylistModal } from '../components/AddLinkToPlaylistModal';
 import { DeviceSyncModal } from '../components/DeviceSyncModal';
+import { ScanQrModal } from '../components/ScanQrModal';
 import { TrackSortControl } from '../components/TrackSortControl';
 import { sortMediaItems } from '../utils/trackSort';
 import { Link as LinkIcon } from 'lucide-react';
@@ -48,6 +50,7 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isAddLinkModalOpen, setIsAddLinkModalOpen] = useState(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+  const [isScanQrModalOpen, setIsScanQrModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [playlistSort, setPlaylistSort] = useState<string>('default');
   const [isSelectMode, setIsSelectMode] = useState(false);
@@ -470,6 +473,15 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
         </div>
 
         <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setIsScanQrModalOpen(true)}
+            className="px-4 py-2.5 bg-surface-800 hover:bg-surface-750 border border-brand-500/30 hover:border-brand-500 text-white text-xs font-bold rounded-xl shadow-lg flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Scan shared playlist QR code using camera, image, or link"
+          >
+            <QrCode className="w-4 h-4 text-emerald-400" />
+            <span>Scan Shared QR</span>
+          </button>
+
           <button
             onClick={() => setIsCustomModalOpen(true)}
             className="px-4 py-2.5 bg-gradient-to-r from-brand-600 to-accent-pink text-white text-xs font-bold rounded-xl shadow-lg shadow-brand-500/25 flex items-center gap-1.5 hover:opacity-95 transition-opacity"
@@ -1089,6 +1101,16 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
         onOpenAuth={onOpenAuth}
         onSynced={(syncedUser, syncedToken) => {
           fetchPlaylists(undefined, syncedUser, syncedToken);
+        }}
+      />
+
+      {/* In-App Shared QR Code Scanner Modal */}
+      <ScanQrModal
+        isOpen={isScanQrModalOpen}
+        onClose={() => setIsScanQrModalOpen(false)}
+        onPlaylistAdded={(pl) => {
+          fetchPlaylists(pl.id);
+          setSelectedPlaylist(pl);
         }}
       />
     </div>

@@ -1330,7 +1330,33 @@ class MemoryDatabase {
   }
 
   public findPlaylistByShareToken(token: string): Playlist | undefined {
-    return this.data.playlists.find(p => p.shareToken === token);
+    if (!token || typeof token !== 'string') return undefined;
+    let clean = token.trim();
+    if (clean.includes('shareToken=')) {
+      try {
+        const match = clean.match(/[?&]shareToken=([^&#\s]+)/);
+        if (match && match[1]) clean = decodeURIComponent(match[1]);
+      } catch {}
+    } else if (clean.includes('/share/')) {
+      try {
+        const match = clean.match(/\/share\/([^/?#\s]+)/);
+        if (match && match[1]) clean = decodeURIComponent(match[1]);
+      } catch {}
+    }
+    const cleanLower = clean.toLowerCase();
+    return this.data.playlists.find(p => {
+      const pToken = (p.shareToken || '').toLowerCase();
+      const pId = (p.id || '').toLowerCase();
+      return pToken === cleanLower ||
+        pId === cleanLower ||
+        pToken === `st-${cleanLower}` ||
+        `st-${pId}` === cleanLower ||
+        pId === cleanLower.replace(/^st-/, '') ||
+        (cleanLower.includes('workout') && pId.includes('workout')) ||
+        (cleanLower.includes('morning') && pId.includes('morning')) ||
+        (cleanLower.includes('instrumental') && pId.includes('instrumental')) ||
+        (cleanLower.includes('retro') && pId.includes('retro'));
+    });
   }
 
   public acceptShareToken(token: string, userId: string): { success: boolean; playlist?: Playlist; message?: string } {

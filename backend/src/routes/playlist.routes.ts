@@ -310,6 +310,33 @@ router.post('/share/:token/accept', (req: Request, res: Response) => {
   res.json(result);
 });
 
+// Scan & accept shared playlist via QR code payload, URL, or code
+router.post('/share/scan', (req: Request, res: Response) => {
+  const userId = resolveUserId(req);
+  const { qrData, shareToken, code } = req.body;
+  const rawInput = (qrData || shareToken || code || '').trim();
+  if (!rawInput) {
+    return res.status(400).json({ error: 'QR code data or share link is required' });
+  }
+
+  const playlist = db.findPlaylistByShareToken(rawInput);
+  if (!playlist) {
+    return res.status(404).json({ error: 'No shared playlist found for this QR code. The link may be invalid or expired.' });
+  }
+
+  const result = db.acceptShareToken(playlist.shareToken || playlist.id, userId);
+  if (!result.success) {
+    return res.status(400).json({ error: result.message });
+  }
+
+  res.json({
+    success: true,
+    message: result.message || `Successfully added "${playlist.title}" to your library!`,
+    playlist: result.playlist || playlist,
+    shareToken: playlist.shareToken || playlist.id
+  });
+});
+
 // Get or generate cross-device sync code for the current user
 router.get('/sync/code', (req: Request, res: Response) => {
   const userId = resolveUserId(req);
