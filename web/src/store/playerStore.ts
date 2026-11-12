@@ -97,6 +97,7 @@ interface PlayerState {
   repeatMode: RepeatMode;
   isShuffle: boolean;
   isNowPlayingOpen: boolean;
+  isVideoTabActive: boolean;
   activeTab: TabType;
   sleepTimerMinutes: number | null;
   sleepTimerRemainingSeconds: number | null;
@@ -146,6 +147,7 @@ interface PlayerState {
   addToQueue: (track: MediaItem) => void;
   removeFromQueue: (index: number) => void;
   setNowPlayingOpen: (open: boolean) => void;
+  setVideoTabActive: (active: boolean) => void;
   setActiveTab: (tab: TabType) => void;
   setSleepTimer: (minutes: number | null) => void;
   tickSleepTimer: () => void;
@@ -176,6 +178,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   repeatMode: 'all',
   isShuffle: false,
   isNowPlayingOpen: false,
+  isVideoTabActive: false,
   activeTab: 'home',
   sleepTimerMinutes: null,
   sleepTimerRemainingSeconds: null,
@@ -445,7 +448,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     });
   },
 
-  setNowPlayingOpen: (open) => set({ isNowPlayingOpen: open }),
+  setNowPlayingOpen: (open) => set({ isNowPlayingOpen: open, ...(open ? {} : { isVideoTabActive: false }) }),
+  setVideoTabActive: (isVideoTabActive) => set({ isVideoTabActive }),
   setActiveTab: (tab) => set({ activeTab: tab }),
 
   setSleepTimer: (minutes) => {

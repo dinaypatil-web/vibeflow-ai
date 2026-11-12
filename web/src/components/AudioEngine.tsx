@@ -20,6 +20,7 @@ export const AudioEngine: React.FC = () => {
   const {
     currentTrack,
     isPlaying,
+    isVideoTabActive,
     volume,
     isMuted,
     playbackSpeed,
@@ -211,7 +212,7 @@ export const AudioEngine: React.FC = () => {
 
     const handleVisibilityChange = () => {
       const state = usePlayerStore.getState();
-      if (!state.isPlaying || !state.currentTrack) return;
+      if (!state.isPlaying || !state.currentTrack || state.isVideoTabActive) return;
 
       if (document.hidden) {
         // Screen locked or tab minimized:
@@ -254,7 +255,7 @@ export const AudioEngine: React.FC = () => {
     // Periodic watchdog to maintain audio decode thread in background tabs
     const backgroundWatchdog = setInterval(() => {
       const state = usePlayerStore.getState();
-      if (!state.isPlaying || !state.currentTrack) return;
+      if (!state.isPlaying || !state.currentTrack || state.isVideoTabActive) return;
       if (globalAudioContext && globalAudioContext.state === 'suspended') {
         globalAudioContext.resume().catch(() => {});
       }
@@ -305,7 +306,7 @@ export const AudioEngine: React.FC = () => {
           ytPlayerRef.current.loadVideoById(currentTrack.providerId);
           ytPlayerRef.current.setVolume(isMuted ? 0 : volume * 100);
           ytPlayerRef.current.setPlaybackRate(playbackSpeed);
-          if (isPlaying) {
+          if (isPlaying && !isVideoTabActive) {
             ytPlayerRef.current.playVideo();
           } else {
             ytPlayerRef.current.pauseVideo();
@@ -321,7 +322,7 @@ export const AudioEngine: React.FC = () => {
             width: '320',
             height: '240',
             playerVars: {
-              autoplay: isPlaying ? 1 : 0,
+              autoplay: isPlaying && !isVideoTabActive ? 1 : 0,
               controls: 0,
               disablekb: 1,
               fs: 0,
@@ -334,7 +335,7 @@ export const AudioEngine: React.FC = () => {
                 setIsYtReady(true);
                 event.target.setVolume(isMuted ? 0 : volume * 100);
                 event.target.setPlaybackRate(playbackSpeed);
-                if (isPlaying) {
+                if (isPlaying && !usePlayerStore.getState().isVideoTabActive) {
                   event.target.playVideo();
                 }
               },
@@ -400,6 +401,19 @@ export const AudioEngine: React.FC = () => {
     if (!currentTrack) return;
     activeTrackIdRef.current = currentTrack.id;
 
+    if (isVideoTabActive) {
+      // While Video tab is active in Now Playing modal, strictly pause background audio
+      if (ytPlayerRef.current) {
+        try {
+          ytPlayerRef.current.pauseVideo();
+        } catch (e) {}
+      }
+      if (audioRef.current && !audioRef.current.paused) {
+        audioRef.current.pause();
+      }
+      return;
+    }
+
     const isYtEmbedFallback = currentTrack.provider === 'youtube' && ytEmbedFailedRef.current;
 
     if (currentTrack.provider === 'youtube' && !isYtEmbedFallback) {
@@ -412,6 +426,16 @@ export const AudioEngine: React.FC = () => {
 
       if (ytPlayerRef.current && isYtReady) {
         try {
+          // When returning from video tab to background audio playback:
+          // Ensure the player is at the latest currentTime
+          const curTime = usePlayerStore.getState().currentTime;
+          if (typeof curTime === 'number' && curTime >= 0) {
+            const playerTime = typeof ytPlayerRef.current.getCurrentTime === 'function' ? ytPlayerRef.current.getCurrentTime() : 0;
+            if (Math.abs(curTime - (playerTime || 0)) > 1) {
+              ytPlayerRef.current.seekTo(curTime, true);
+            }
+          }
+
           if (isPlaying) {
             ytPlayerRef.current.playVideo();
           } else {
@@ -450,6 +474,11 @@ export const AudioEngine: React.FC = () => {
       }
 
       if (streamUrlToUse || isYtEmbedFallback) {
+        const curTime = usePlayerStore.getState().currentTime;
+        if (typeof curTime === 'number' && curTime >= 0 && Math.abs(curTime - (audio.currentTime || 0)) > 1) {
+          audio.currentTime = curTime;
+        }
+
         if (isPlaying) {
           if (globalAudioContext && globalAudioContext.state === 'suspended') {
             globalAudioContext.resume().catch(() => {});
@@ -462,7 +491,7 @@ export const AudioEngine: React.FC = () => {
         }
       }
     }
-  }, [isPlaying, isYtReady, currentTrack?.id]);
+  }, [isPlaying, isYtReady, currentTrack?.id, isVideoTabActive]);
 
   // 9. Automatic Universal Full-Track Stream Bridge (Spotify, Deezer, iTunes, 30s previews)
   // Resolves 30-second clips to full-length audio masters and guards against async race conditions
@@ -562,7 +591,7 @@ export const AudioEngine: React.FC = () => {
 
   // 12. Time ticker for YouTube player
   useEffect(() => {
-    if (!isPlaying || currentTrack?.provider !== 'youtube' || !isYtReady) return;
+    if (!isPlaying || currentTrack?.provider !== 'youtube' || !isYtReady || isVideoTabActive) return;
     if (ytEmbedFailedRef.current) return;
 
     const interval = setInterval(() => {
@@ -587,7 +616,7 @@ export const AudioEngine: React.FC = () => {
     }, 250);
 
     return () => clearInterval(interval);
-  }, [isPlaying, currentTrack?.provider, currentTrack?.id, isYtReady, setCurrentTime, setDuration]);
+  }, [isPlaying, currentTrack?.provider, currentTrack?.id, isYtReady, isVideoTabActive, setCurrentTime, setDuration]);
 
   // Helper to record history telemetry
   const recordHistoryTelemetry = (completionRate = 0.5) => {
@@ -687,6 +716,7 @@ export const AudioEngine: React.FC = () => {
 
   const handleAudioPause = () => {
     const state = usePlayerStore.getState();
+    if (state.isVideoTabActive) return;
     const isYt = state.currentTrack?.provider === 'youtube' && !ytEmbedFailedRef.current;
     // Only attempt auto-resume if NOT playing YouTube, and audio element has a valid stream src loaded
     if (!isYt && state.isPlaying && (document.hidden || !document.hasFocus())) {

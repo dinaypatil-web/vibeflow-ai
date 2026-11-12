@@ -48,10 +48,15 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
     isShuffle,
     favorites,
     isNowPlayingOpen,
+    isVideoTabActive,
     queue,
     sleepTimerMinutes,
     sleepTimerRemainingSeconds,
+    seekRequestedTime,
     togglePlay,
+    setPlaying,
+    setCurrentTime,
+    setDuration,
     nextTrack,
     previousTrack,
     seekTo,
@@ -62,6 +67,7 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
     toggleShuffle,
     toggleFavorite,
     setNowPlayingOpen,
+    setVideoTabActive,
     setSleepTimer,
     playTrack,
     spotifyAccount,
@@ -70,6 +76,8 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
   } = usePlayerStore();
 
   const [activeTab, setActiveTab] = useState<'visualizer' | 'video' | 'spotify' | 'lyrics' | 'queue'>('visualizer');
+  const [videoStartSeconds, setVideoStartSeconds] = useState<number>(0);
+  const videoIframeRef = useRef<HTMLIFrameElement | null>(null);
   const [showSleepModal, setShowSleepModal] = useState(false);
   const [similarTracks, setSimilarTracks] = useState<any[]>([]);
   const [similarReason, setSimilarReason] = useState<string>('');
@@ -140,6 +148,147 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
     return () => cancelAnimationFrame(animId);
   }, [isNowPlayingOpen, activeTab, isPlaying]);
 
+  // Switch tab with seamless Audio <-> Video sync
+  const handleSwitchTab = (tab: 'visualizer' | 'video' | 'spotify' | 'lyrics' | 'queue') => {
+    if (tab === 'video') {
+      // Audio is playing at currentTime; start video from this exact position
+      const startPos = Math.max(0, Math.floor(usePlayerStore.getState().currentTime));
+      setVideoStartSeconds(startPos);
+      setVideoTabActive(true);
+      setActiveTab('video');
+    } else {
+      if (activeTab === 'video') {
+        // Exiting video tab: turn off video tab mode and resume background audio engine at current position
+        setVideoTabActive(false);
+        const lastTime = usePlayerStore.getState().currentTime;
+        seekTo(lastTime);
+      }
+      setActiveTab(tab);
+    }
+  };
+
+  const handleClose = () => {
+    if (activeTab === 'video') {
+      setVideoTabActive(false);
+      const lastTime = usePlayerStore.getState().currentTime;
+      seekTo(lastTime);
+    }
+    setNowPlayingOpen(false);
+  };
+
+  // Video playback command handler (toggle play/pause)
+  const handleTogglePlay = () => {
+    if (activeTab === 'video' && videoIframeRef.current?.contentWindow) {
+      const willPlay = !isPlaying;
+      setPlaying(willPlay);
+      try {
+        videoIframeRef.current.contentWindow.postMessage(
+          JSON.stringify({
+            event: 'command',
+            func: willPlay ? 'playVideo' : 'pauseVideo',
+            args: []
+          }),
+          '*'
+        );
+      } catch {}
+    } else {
+      togglePlay();
+    }
+  };
+
+  // Reset tab to visualizer on fresh modal open, release video on close/unmount
+  useEffect(() => {
+    if (isNowPlayingOpen) {
+      setActiveTab('visualizer');
+      setVideoTabActive(false);
+    } else {
+      if (usePlayerStore.getState().isVideoTabActive) {
+        setVideoTabActive(false);
+      }
+    }
+  }, [isNowPlayingOpen, setVideoTabActive]);
+
+  useEffect(() => {
+    return () => {
+      if (usePlayerStore.getState().isVideoTabActive) {
+        usePlayerStore.getState().setVideoTabActive(false);
+      }
+    };
+  }, []);
+
+  // When track changes while on video tab
+  useEffect(() => {
+    if (!currentTrack) return;
+    if (activeTab === 'video') {
+      if (currentTrack.provider === 'youtube') {
+        setVideoStartSeconds(0);
+      } else {
+        setVideoTabActive(false);
+        setActiveTab('visualizer');
+      }
+    }
+  }, [currentTrack?.id, activeTab, setVideoTabActive]);
+
+  // Video IFrame communication & continuous time synchronization
+  useEffect(() => {
+    if (activeTab !== 'video' || !isNowPlayingOpen) return;
+
+    const handshake = setInterval(() => {
+      if (videoIframeRef.current?.contentWindow) {
+        try {
+          videoIframeRef.current.contentWindow.postMessage(JSON.stringify({ event: 'listening' }), '*');
+        } catch {}
+      }
+    }, 1000);
+
+    const handleMessage = (e: MessageEvent) => {
+      try {
+        const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+        if (data && data.event === 'infoDelivery' && data.info) {
+          if (typeof data.info.currentTime === 'number') {
+            setCurrentTime(data.info.currentTime);
+          }
+          if (typeof data.info.duration === 'number' && data.info.duration > 0) {
+            setDuration(data.info.duration);
+          }
+          if (typeof data.info.playerState === 'number') {
+            // 1 = PLAYING, 2 = PAUSED, 0 = ENDED
+            if (data.info.playerState === 1 && !usePlayerStore.getState().isPlaying) {
+              setPlaying(true);
+            } else if (data.info.playerState === 2 && usePlayerStore.getState().isPlaying) {
+              setPlaying(false);
+            } else if (data.info.playerState === 0) {
+              nextTrack();
+            }
+          }
+        }
+      } catch {}
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => {
+      clearInterval(handshake);
+      window.removeEventListener('message', handleMessage);
+    };
+  }, [activeTab, isNowPlayingOpen, setCurrentTime, setDuration, setPlaying, nextTrack]);
+
+  // Forward seek commands to video iframe
+  useEffect(() => {
+    if (activeTab !== 'video' || seekRequestedTime === null) return;
+    if (videoIframeRef.current?.contentWindow) {
+      try {
+        videoIframeRef.current.contentWindow.postMessage(
+          JSON.stringify({
+            event: 'command',
+            func: 'seekTo',
+            args: [seekRequestedTime, true]
+          }),
+          '*'
+        );
+      } catch {}
+    }
+  }, [seekRequestedTime, activeTab]);
+
   if (!isNowPlayingOpen || !currentTrack) return null;
 
   const isFav = favorites.includes(currentTrack.id);
@@ -161,7 +310,10 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 bg-surface-950/80 backdrop-blur-3xl animate-in fade-in duration-300">
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 bg-surface-950/80 backdrop-blur-3xl animate-in fade-in duration-300"
+    >
       <div className="relative w-full max-w-4xl max-h-[92vh] bg-surface-900/90 border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col">
         {/* Top Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
@@ -176,7 +328,7 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
             {/* Tab switchers */}
             <div className="flex items-center bg-surface-800 rounded-xl p-1 border border-white/5 text-xs">
               <button
-                onClick={() => setActiveTab('visualizer')}
+                onClick={() => handleSwitchTab('visualizer')}
                 className={`px-3 py-1 rounded-lg font-medium transition-all ${
                   activeTab === 'visualizer' ? 'bg-brand-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
                 }`}
@@ -185,7 +337,7 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
               </button>
               {currentTrack.provider === 'youtube' && (
                 <button
-                  onClick={() => setActiveTab('video')}
+                  onClick={() => handleSwitchTab('video')}
                   className={`px-3 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
                     activeTab === 'video' ? 'bg-red-600 text-white shadow-xs font-semibold' : 'text-slate-400 hover:text-white'
                   }`}
@@ -196,7 +348,7 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
               )}
               {currentTrack.provider === 'spotify' && (
                 <button
-                  onClick={() => setActiveTab('spotify')}
+                  onClick={() => handleSwitchTab('spotify')}
                   className={`px-3 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
                     activeTab === 'spotify' ? 'bg-[#1DB954] text-black shadow-xs font-semibold' : 'text-slate-400 hover:text-white'
                   }`}
@@ -206,7 +358,7 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
                 </button>
               )}
               <button
-                onClick={() => setActiveTab('lyrics')}
+                onClick={() => handleSwitchTab('lyrics')}
                 className={`px-3 py-1 rounded-lg font-medium transition-all ${
                   activeTab === 'lyrics' ? 'bg-brand-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
                 }`}
@@ -214,7 +366,7 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
                 Lyrics & Insights
               </button>
               <button
-                onClick={() => setActiveTab('queue')}
+                onClick={() => handleSwitchTab('queue')}
                 className={`px-3 py-1 rounded-lg font-medium transition-all ${
                   activeTab === 'queue' ? 'bg-brand-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
                 }`}
@@ -262,7 +414,7 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
 
             {/* Close */}
             <button
-              onClick={() => setNowPlayingOpen(false)}
+              onClick={handleClose}
               className="p-2 rounded-xl bg-surface-800 hover:bg-surface-750 text-slate-400 hover:text-white transition-colors border border-white/5"
             >
               <X className="w-5 h-5" />
@@ -277,7 +429,8 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
             {activeTab === 'video' && currentTrack.provider === 'youtube' ? (
               <div className="w-full max-w-md sm:max-w-lg aspect-video rounded-2xl overflow-hidden shadow-2xl border border-white/10 mb-6 bg-black flex items-center justify-center">
                 <iframe
-                  src={`https://www.youtube.com/embed/${currentTrack.providerId}?autoplay=1&controls=1&rel=0&modestbranding=1`}
+                  ref={videoIframeRef}
+                  src={`https://www.youtube.com/embed/${currentTrack.providerId}?autoplay=1&start=${videoStartSeconds}&enablejsapi=1&controls=1&rel=0&modestbranding=1`}
                   title={currentTrack.title}
                   className="w-full h-full border-0"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -475,7 +628,21 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                  seekTo(ratio * duration);
+                  const targetTime = ratio * duration;
+                  seekTo(targetTime);
+                  setCurrentTime(targetTime);
+                  if (activeTab === 'video' && videoIframeRef.current?.contentWindow) {
+                    try {
+                      videoIframeRef.current.contentWindow.postMessage(
+                        JSON.stringify({
+                          event: 'command',
+                          func: 'seekTo',
+                          args: [targetTime, true]
+                        }),
+                        '*'
+                      );
+                    } catch {}
+                  }
                 }}
               >
                 <div
@@ -515,7 +682,7 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
 
               {/* Play / Pause Giant Button */}
               <button
-                onClick={togglePlay}
+                onClick={handleTogglePlay}
                 className="w-14 h-14 rounded-full bg-gradient-to-tr from-brand-600 via-brand-500 to-accent-cyan text-white flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl shadow-brand-500/35"
                 title={isPlaying ? 'Pause' : 'Play'}
               >
