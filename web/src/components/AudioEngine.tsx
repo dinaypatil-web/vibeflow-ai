@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { usePlayerStore } from '../store/playerStore';
-import { api } from '../services/api';
+import { api, API_BASE } from '../services/api';
 
 // Global audio analyser export for visualizers
 export let globalAudioAnalyser: AnalyserNode | null = null;
@@ -15,6 +15,7 @@ export const AudioEngine: React.FC = () => {
   const ytEmbedFailedRef = useRef(false);
   const wakeLockRef = useRef<any>(null);
   const historyRecordedTrackIdRef = useRef<string | null>(null);
+  const activeTrackIdRef = useRef<string | null>(null);
 
   const {
     currentTrack,
@@ -231,11 +232,11 @@ export const AudioEngine: React.FC = () => {
               audioRef.current.play().catch(() => {});
             } catch {}
           }
-        }
-
-        // For JioSaavn and other audio streams: ensure HTML5 audio element does not get paused by the browser
-        if (audioRef.current && audioRef.current.paused) {
-          audioRef.current.play().catch(() => {});
+        } else {
+          // For non-YouTube audio tracks: ensure HTML5 audio element does not get paused by the browser
+          if (audioRef.current && audioRef.current.paused && audioRef.current.src) {
+            audioRef.current.play().catch(() => {});
+          }
         }
 
         // Keep Web Audio API Context active in background
@@ -253,11 +254,13 @@ export const AudioEngine: React.FC = () => {
     // Periodic watchdog to maintain audio decode thread in background tabs
     const backgroundWatchdog = setInterval(() => {
       const state = usePlayerStore.getState();
-      if (!state.isPlaying) return;
+      if (!state.isPlaying || !state.currentTrack) return;
       if (globalAudioContext && globalAudioContext.state === 'suspended') {
         globalAudioContext.resume().catch(() => {});
       }
-      if (document.hidden && audioRef.current && audioRef.current.paused) {
+      // CRITICAL: NEVER play audioRef if current track is YouTube video iframe! Prevents dual audio streams playing simultaneously
+      const isYtActive = state.currentTrack.provider === 'youtube' && !ytEmbedFailedRef.current;
+      if (!isYtActive && document.hidden && audioRef.current && audioRef.current.paused && audioRef.current.src) {
         audioRef.current.play().catch(() => {});
       }
     }, 1000);
@@ -290,8 +293,12 @@ export const AudioEngine: React.FC = () => {
     if (!isYtApiLoaded || !currentTrack) return;
 
     if (currentTrack.provider === 'youtube') {
-      // Pause HTML5 audio when switching to YouTube video track
-      if (audioRef.current) audioRef.current.pause();
+      // Strictly stop and clear HTML5 audio so it cannot play along with YouTube
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.removeAttribute('src');
+        audioRef.current.load();
+      }
 
       if (ytPlayerRef.current && isYtReady) {
         try {
@@ -378,21 +385,31 @@ export const AudioEngine: React.FC = () => {
         }
       }
     } else {
-      if (ytPlayerRef.current && isYtReady) {
+      // Switching to a non-YouTube audio track: strictly stop YouTube video so it NEVER plays along!
+      if (ytPlayerRef.current) {
         try {
           ytPlayerRef.current.pauseVideo();
+          ytPlayerRef.current.stopVideo();
         } catch (e) {}
       }
     }
   }, [currentTrack?.id, isYtApiLoaded]);
 
-  // 8. Handle Play / Pause State synchronization
+  // 8. Handle Play / Pause State synchronization & Audio/YT mutual exclusivity
   useEffect(() => {
     if (!currentTrack) return;
+    activeTrackIdRef.current = currentTrack.id;
 
     const isYtEmbedFallback = currentTrack.provider === 'youtube' && ytEmbedFailedRef.current;
 
     if (currentTrack.provider === 'youtube' && !isYtEmbedFallback) {
+      // YouTube track active: ensure HTML5 audio element is stopped and silent
+      if (audioRef.current && (!audioRef.current.paused || audioRef.current.src)) {
+        audioRef.current.pause();
+        audioRef.current.removeAttribute('src');
+        audioRef.current.load();
+      }
+
       if (ytPlayerRef.current && isYtReady) {
         try {
           if (isPlaying) {
@@ -405,6 +422,14 @@ export const AudioEngine: React.FC = () => {
         }
       }
     } else {
+      // Non-YouTube audio track active: strictly pause and stop YouTube video
+      if (ytPlayerRef.current) {
+        try {
+          ytPlayerRef.current.pauseVideo();
+          ytPlayerRef.current.stopVideo();
+        } catch (e) {}
+      }
+
       const audio = audioRef.current;
       if (!audio) return;
 
@@ -412,7 +437,7 @@ export const AudioEngine: React.FC = () => {
 
       if (!isYtEmbedFallback && streamUrlToUse) {
         try {
-          const currentSrc = decodeURIComponent(audio.src);
+          const currentSrc = decodeURIComponent(audio.src || '');
           const targetSrc = decodeURIComponent(streamUrlToUse);
           if (currentSrc !== targetSrc) {
             audio.src = streamUrlToUse;
@@ -439,36 +464,67 @@ export const AudioEngine: React.FC = () => {
     }
   }, [isPlaying, isYtReady, currentTrack?.id]);
 
-  // 9. Automatic Spotify Full-Track Stream Bridge
+  // 9. Automatic Universal Full-Track Stream Bridge (Spotify, Deezer, iTunes, 30s previews)
+  // Resolves 30-second clips to full-length audio masters and guards against async race conditions
   useEffect(() => {
-    if (!currentTrack || currentTrack.provider !== 'spotify') return;
+    if (!currentTrack) return;
+    const isYtActive = currentTrack.provider === 'youtube' && !ytEmbedFailedRef.current;
+    if (isYtActive) return;
+
     const isPreview = (
-      currentTrack.duration <= 35 ||
+      (currentTrack.duration && currentTrack.duration <= 45) ||
       currentTrack.streamUrl?.includes('preview') ||
+      currentTrack.streamUrl?.includes('audio-ssl.itunes.apple.com') ||
+      currentTrack.streamUrl?.includes('dzcdn.net') ||
+      currentTrack.streamUrl?.includes('mzstatic.com') ||
       currentTrack.streamUrl?.includes('p.scdn.co') ||
-      currentTrack.streamUrl?.includes('open.spotify.com')
+      currentTrack.streamUrl?.includes('open.spotify.com') ||
+      currentTrack.streamUrl?.includes('mpthreetest.mp3') ||
+      currentTrack.provider === 'spotify' ||
+      currentTrack.provider === 'deezer' ||
+      (currentTrack.provider as string) === 'itunes' ||
+      currentTrack.id.startsWith('itunes-') ||
+      currentTrack.id.startsWith('deezer-') ||
+      (currentTrack.tags && (currentTrack.tags.includes('preview') || currentTrack.tags.includes('30s_preview') || currentTrack.tags.includes('deezer_preview'))) ||
+      (currentTrack.capabilities && currentTrack.capabilities.includes('preview_only'))
     );
+
     if (isPreview) {
-      fetch(`/api/media/resolve-stream?title=${encodeURIComponent(currentTrack.title)}&artist=${encodeURIComponent(currentTrack.artist)}`)
+      const trackId = currentTrack.id;
+      const fetchUrl = `${API_BASE}/media/resolve-stream?title=${encodeURIComponent(currentTrack.title)}&artist=${encodeURIComponent(currentTrack.artist)}&id=${encodeURIComponent(currentTrack.id)}`;
+
+      fetch(fetchUrl)
         .then(r => r.json())
         .then(data => {
-          if (data?.streamUrl && data.streamUrl !== currentTrack.streamUrl && data.streamUrl.startsWith('http')) {
-            console.log('[AudioEngine] Bridged Spotify track to full-length audio stream:', data.streamUrl);
-            currentTrack.streamUrl = data.streamUrl;
-            if (data.duration && data.duration > 35) {
-              currentTrack.duration = data.duration;
+          // Guard against stale responses if user switched tracks while resolving
+          if (activeTrackIdRef.current !== trackId) return;
+          const latestState = usePlayerStore.getState();
+          if (latestState.currentTrack?.id !== trackId) return;
+
+          if (data?.streamUrl && data.streamUrl.startsWith('http')) {
+            console.log('[AudioEngine] Bridged preview track to full-length audio stream:', data.streamUrl);
+            const t = latestState.currentTrack;
+            t.streamUrl = data.streamUrl;
+            if (data.duration && data.duration > 40) {
+              t.duration = data.duration;
               setDuration(data.duration);
             }
-            if (audioRef.current) {
+            if (t.capabilities) {
+              t.capabilities = t.capabilities.filter(c => c !== 'preview_only');
+              if (!t.capabilities.includes('stream_direct')) {
+                t.capabilities.push('stream_direct');
+              }
+            }
+            if (audioRef.current && (latestState.currentTrack?.provider !== 'youtube' || ytEmbedFailedRef.current)) {
               audioRef.current.src = data.streamUrl;
               audioRef.current.load();
-              if (isPlaying) {
+              if (latestState.isPlaying) {
                 audioRef.current.play().catch(e => console.warn('Stream play warning:', e));
               }
             }
           }
         })
-        .catch(err => console.warn('Spotify stream resolution failed:', err));
+        .catch(err => console.warn('Stream resolution failed:', err));
     }
   }, [currentTrack?.id]);
 
@@ -598,15 +654,13 @@ export const AudioEngine: React.FC = () => {
     const nextData = state.getNextTrack();
     if (nextData && nextData.track) {
       const next = nextData.track;
+      activeTrackIdRef.current = next.id;
 
-      // CRITICAL: Synchronously load and trigger play on audio element
-      // while still inside the user-authorized 'ended' event context.
-      // This bypasses browser background autoplay restrictions on locked/minimized devices!
-      const audio = audioRef.current;
-      if (audio) {
-        const streamUrl = next.streamUrl;
-        if (streamUrl) {
-          audio.src = streamUrl;
+      // If next track is a non-YouTube audio track, prime audio element within event context
+      if (next.provider !== 'youtube') {
+        const audio = audioRef.current;
+        if (audio && next.streamUrl) {
+          audio.src = next.streamUrl;
           audio.currentTime = 0;
           if (globalAudioContext && globalAudioContext.state === 'suspended') {
             globalAudioContext.resume().catch(() => {});
@@ -614,6 +668,13 @@ export const AudioEngine: React.FC = () => {
           audio.play().catch(e => {
             console.warn('[AudioEngine] Seamless background track play caught:', e);
           });
+        }
+      } else {
+        // Next track is YouTube: ensure HTML5 audio is cleared so it does not overlap
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current.removeAttribute('src');
+          audioRef.current.load();
         }
       }
 
@@ -626,9 +687,10 @@ export const AudioEngine: React.FC = () => {
 
   const handleAudioPause = () => {
     const state = usePlayerStore.getState();
-    // If the browser paused the audio because the screen locked or tab minimized, but the user is playing:
-    if (state.isPlaying && (document.hidden || !document.hasFocus())) {
-      if (audioRef.current) {
+    const isYt = state.currentTrack?.provider === 'youtube' && !ytEmbedFailedRef.current;
+    // Only attempt auto-resume if NOT playing YouTube, and audio element has a valid stream src loaded
+    if (!isYt && state.isPlaying && (document.hidden || !document.hasFocus())) {
+      if (audioRef.current && audioRef.current.src && audioRef.current.paused) {
         audioRef.current.play().catch(() => {});
       }
     }

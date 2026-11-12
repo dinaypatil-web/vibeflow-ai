@@ -14,6 +14,7 @@ import {
 import { MediaItem } from '../types';
 import { usePlayerStore } from '../store/playerStore';
 import { offlineStorage } from '../services/offlineStorage';
+import { API_BASE } from '../services/api';
 
 interface DownloadModalProps {
   track: MediaItem | null;
@@ -131,7 +132,7 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({
       if (isPreview) {
         setDownloadProgress(25);
         try {
-          const res = await fetch(`/api/media/resolve-stream?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist)}&quality=${selectedQuality}`);
+          const res = await fetch(`${API_BASE}/media/resolve-stream?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist)}&quality=${selectedQuality}`);
           if (res.ok) {
             const data = await res.json();
             if (data?.streamUrl) {
@@ -147,7 +148,7 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({
       setDownloadProgress(45);
 
       // Backend proxy download endpoint with full query parameters to guarantee complete audio stream
-      const downloadEndpoint = `/api/media/download/${encodeURIComponent(track.id)}?quality=${selectedQuality}&title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist)}&provider=${encodeURIComponent(track.provider || '')}${streamUrl ? `&streamUrl=${encodeURIComponent(streamUrl)}` : ''}`;
+      const downloadEndpoint = `${API_BASE}/media/download/${encodeURIComponent(track.id)}?quality=${selectedQuality}&title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist)}&provider=${encodeURIComponent(track.provider || '')}${streamUrl ? `&streamUrl=${encodeURIComponent(streamUrl)}` : ''}`;
 
       const fetchTarget = (streamUrl && (streamUrl.startsWith('blob:') || streamUrl.startsWith('data:')))
         ? streamUrl

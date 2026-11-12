@@ -1561,6 +1561,35 @@ async function runTests() {
     }
   });
 
+  // 35. Universal Full-Length Stream Resolution (Eliminating 30s Truncations)
+  await test('Universal Full-Length Stream Resolution for Preview Tracks (Spotify, Deezer, iTunes)', async () => {
+    // Test A: Resolve by track title and artist
+    const resA = await fetchJSON(`${API_BASE}/media/resolve-stream?title=${encodeURIComponent('Kesariya')}&artist=${encodeURIComponent('Arijit Singh')}`);
+    if (!resA.streamUrl || !resA.streamUrl.startsWith('http')) {
+      throw new Error('Failed to resolve full-length stream URL for title & artist');
+    }
+    if (resA.streamUrl.includes('audio-ssl.itunes.apple.com') || resA.streamUrl.includes('dzcdn.net') || resA.streamUrl.includes('p.scdn.co')) {
+      throw new Error('Resolved stream is still a 30s preview clip!');
+    }
+    if (!resA.duration || resA.duration <= 45) {
+      throw new Error(`Expected full duration > 45s, got ${resA.duration}`);
+    }
+
+    // Test B: Resolve by ID lookup
+    // Find or seed a preview track in catalog
+    const catalog = await fetchJSON(`${API_BASE}/media/items`);
+    const anyItem = catalog.items?.[0];
+    if (anyItem) {
+      const resB = await fetchJSON(`${API_BASE}/media/resolve-stream?id=${encodeURIComponent(anyItem.id)}`);
+      if (!resB.streamUrl || !resB.streamUrl.startsWith('http')) {
+        throw new Error('Failed to resolve stream via ID lookup');
+      }
+      if (!resB.duration || resB.duration <= 40) {
+        throw new Error(`Expected full duration > 40s via ID lookup, got ${resB.duration}`);
+      }
+    }
+  });
+
   console.log(`\n🎉 Test Results: ${passed}/${total} passed!`);
   if (passed === total) {
     console.log('🌟 All VibeFlow AI core systems verified production-ready.\n');

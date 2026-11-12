@@ -326,12 +326,22 @@ router.post('/local/import', (req: Request, res: Response) => {
   res.status(201).json({ item: localItem, classification });
 });
 
-// Resolve full audio stream for any track (e.g. Spotify tracks without audio cutoffs)
+// Resolve full audio stream for any track (Spotify, Deezer, iTunes, 30s preview tracks)
 router.get('/resolve-stream', async (req: Request, res: Response) => {
   try {
-    const title = (req.query.title as string) || '';
-    const artist = (req.query.artist as string) || '';
+    const id = (req.query.id as string) || '';
+    let title = (req.query.title as string) || '';
+    let artist = (req.query.artist as string) || '';
     const quality = (req.query.quality as string) || '320';
+
+    if (id) {
+      const item = db.findMediaItemById(id);
+      if (item) {
+        if (!title) title = item.title;
+        if (!artist) artist = item.artist || '';
+      }
+    }
+
     if (!title) return res.status(400).json({ error: 'Title is required' });
     const result = await providerRegistry.resolveFullAudio(title, artist, quality);
     res.json(result);

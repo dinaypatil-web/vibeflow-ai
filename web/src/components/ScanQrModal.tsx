@@ -532,3 +532,4 @@ export const ScanQrModal: React.FC<ScanQrModalProps> = ({
     </div>
   );
 };
+

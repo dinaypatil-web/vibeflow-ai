@@ -27,6 +27,10 @@ interface MediaItem {
   mood: string;
   streamUrl?: string;
   isOfflinePermitted: boolean;
+  provider?: string;
+  providerId?: string;
+  capabilities?: string[];
+  tags?: string[];
 }
 
 interface OfflineTrackItem {
@@ -653,6 +657,7 @@ export default function App() {
   };
 
   const soundRef = useRef<Audio.Sound | null>(null);
+  const playbackRequestIdRef = useRef<number>(0);
 
   // ── Playback Persistence ──────────────────────────────────────────────────
   const PLAYBACK_STATE_KEY = '@vibeflow:playback_state';
@@ -773,6 +778,14 @@ export default function App() {
                   }
                 }
               );
+              // Guard against race if user already tapped play or selected a track
+              if (playbackRequestIdRef.current > 0) {
+                try {
+                  await sound.stopAsync();
+                  await sound.unloadAsync();
+                } catch {}
+                return;
+              }
               soundRef.current = sound;
               const idx = queueRef.current.findIndex(t => t.id === track.id);
               const safeIdx = idx >= 0 ? idx : 0;
@@ -852,10 +865,16 @@ export default function App() {
   const currentTrackRef = useRef<MediaItem | null>(SAMPLE_TRACKS[0]);
 
   const playTrack = async (track: MediaItem, newQueue?: MediaItem[], startIndex?: number) => {
+    const reqId = ++playbackRequestIdRef.current;
     try {
+      // Immediately stop and unload any existing sound instance
       if (soundRef.current) {
-        await soundRef.current.unloadAsync();
+        const oldSound = soundRef.current;
         soundRef.current = null;
+        try {
+          await oldSound.stopAsync();
+          await oldSound.unloadAsync();
+        } catch {}
       }
 
       const activeQueue = newQueue || queueRef.current;
@@ -873,7 +892,46 @@ export default function App() {
       // Reset position persistence tracking for new track
       lastPersistedPositionRef.current = -1;
       lastPersistedTimeRef.current = 0;
-      if (!track.streamUrl) return;
+
+      // Full-length stream resolution for preview tracks on mobile (Spotify, Deezer, iTunes, duration <= 45)
+      let effectiveStreamUrl = track.streamUrl;
+      const isPreview = !effectiveStreamUrl ||
+        (track.duration && track.duration <= 45) ||
+        effectiveStreamUrl.includes('preview') ||
+        effectiveStreamUrl.includes('audio-ssl.itunes.apple.com') ||
+        effectiveStreamUrl.includes('dzcdn.net') ||
+        effectiveStreamUrl.includes('mzstatic.com') ||
+        effectiveStreamUrl.includes('p.scdn.co') ||
+        effectiveStreamUrl.includes('open.spotify.com') ||
+        effectiveStreamUrl.includes('mpthreetest.mp3') ||
+        track.provider === 'spotify' ||
+        track.provider === 'deezer' ||
+        (track.provider as string) === 'itunes' ||
+        track.id.startsWith('itunes-') ||
+        track.id.startsWith('deezer-') ||
+        (track.capabilities && track.capabilities.includes('preview_only'));
+
+      if (isPreview) {
+        try {
+          const res = await fetch(`${apiBaseUrl}/media/resolve-stream?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist)}&id=${encodeURIComponent(track.id)}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (playbackRequestIdRef.current !== reqId) return; // Stale request check
+            if (data?.streamUrl && data.streamUrl.startsWith('http')) {
+              effectiveStreamUrl = data.streamUrl;
+              track.streamUrl = data.streamUrl;
+              if (data.duration && data.duration > 40) {
+                track.duration = data.duration;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[Mobile] Failed to resolve full track stream:', e);
+        }
+      }
+
+      if (playbackRequestIdRef.current !== reqId) return;
+      if (!effectiveStreamUrl) return;
 
       // Re-apply background audio mode before starting playback
       try {
@@ -889,7 +947,7 @@ export default function App() {
       } catch {}
 
       const { sound } = await Audio.Sound.createAsync(
-        buildAudioSource(track.streamUrl),
+        buildAudioSource(effectiveStreamUrl),
         { 
           shouldPlay: true, 
           staysActiveInBackground: true,
@@ -949,6 +1007,23 @@ export default function App() {
           }
         }
       );
+
+      // CRITICAL: Check if another track was requested while loading this one!
+      if (playbackRequestIdRef.current !== reqId) {
+        try {
+          await sound.stopAsync();
+          await sound.unloadAsync();
+        } catch {}
+        return;
+      }
+
+      // If another sound was assigned in between, ensure it is unloaded
+      if (soundRef.current) {
+        try {
+          await soundRef.current.stopAsync();
+          await soundRef.current.unloadAsync();
+        } catch {}
+      }
 
       soundRef.current = sound;
       setIsPlaying(true);
