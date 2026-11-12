@@ -22,8 +22,13 @@ import { TrackCard } from '../components/TrackCard';
 import { usePlayerStore } from '../store/playerStore';
 import { TrackSortControl } from '../components/TrackSortControl';
 import { sortMediaItems } from '../utils/trackSort';
+import { BatchTrackActionBar } from '../components/BatchTrackActionBar';
 
-export const LibraryView: React.FC = () => {
+interface LibraryViewProps {
+  onAddToPlaylist?: (trackOrTracks: MediaItem | MediaItem[]) => void;
+}
+
+export const LibraryView: React.FC<LibraryViewProps> = ({ onAddToPlaylist }) => {
   const [subTab, setSubTab] = useState<'favorites' | 'local' | 'downloads' | 'history'>('favorites');
   const [favorites, setFavorites] = useState<MediaItem[]>([]);
   const [history, setHistory] = useState<any[]>([]);
@@ -32,6 +37,29 @@ export const LibraryView: React.FC = () => {
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
   const [favSort, setFavSort] = useState<string>('default');
   const [localSort, setLocalSort] = useState<string>('default');
+  const [selectedTracks, setSelectedTracks] = useState<MediaItem[]>([]);
+  const [isSelectMode, setIsSelectMode] = useState(false);
+
+  const toggleSelectTrack = (track: MediaItem) => {
+    setSelectedTracks(prev => {
+      const exists = prev.some(t => t.id === track.id);
+      if (exists) {
+        const next = prev.filter(t => t.id !== track.id);
+        if (next.length === 0) setIsSelectMode(false);
+        return next;
+      } else {
+        return [...prev, track];
+      }
+    });
+  };
+
+  const handleSelectAll = (allTracksList: MediaItem[]) => {
+    if (selectedTracks.length === allTracksList.length) {
+      setSelectedTracks([]);
+    } else {
+      setSelectedTracks([...allTracksList]);
+    }
+  };
 
   const { 
     user, 
@@ -169,6 +197,23 @@ export const LibraryView: React.FC = () => {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <h3 className="text-lg font-bold text-white">Your Favorited Tracks</h3>
             <div className="flex flex-wrap items-center gap-2">
+              {favorites.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !isSelectMode;
+                    setIsSelectMode(next);
+                    if (!next) setSelectedTracks([]);
+                  }}
+                  className={`px-3 py-2 text-xs rounded-xl border transition-colors cursor-pointer ${
+                    isSelectMode 
+                      ? 'bg-brand-500/20 text-brand-300 border-brand-500/40 font-bold' 
+                      : 'bg-surface-800 text-slate-300 border-white/5 hover:bg-surface-750'
+                  }`}
+                >
+                  {isSelectMode ? 'Cancel Selection' : 'Select Multiple'}
+                </button>
+              )}
               <TrackSortControl currentSort={favSort} onSortChange={setFavSort} />
               {favorites.length > 0 && (
                 <button
@@ -188,7 +233,15 @@ export const LibraryView: React.FC = () => {
           {favorites.length > 0 ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {sortedFavorites.map(track => (
-                <TrackCard key={track.id} track={track} queueContext={sortedFavorites} />
+                <TrackCard 
+                  key={track.id} 
+                  track={track} 
+                  queueContext={sortedFavorites}
+                  onAddToPlaylist={onAddToPlaylist}
+                  isSelected={selectedTracks.some(st => st.id === track.id)}
+                  onToggleSelect={toggleSelectTrack}
+                  isSelectMode={isSelectMode || selectedTracks.length > 0}
+                />
               ))}
             </div>
           ) : (
@@ -245,14 +298,41 @@ export const LibraryView: React.FC = () => {
           <div className="space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <h3 className="text-base font-bold text-white">Device Imported Tracks ({localItems.length})</h3>
-              {localItems.length > 0 && (
-                <TrackSortControl currentSort={localSort} onSortChange={setLocalSort} />
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                {localItems.length > 0 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !isSelectMode;
+                        setIsSelectMode(next);
+                        if (!next) setSelectedTracks([]);
+                      }}
+                      className={`px-3 py-2 text-xs rounded-xl border transition-colors cursor-pointer ${
+                        isSelectMode 
+                          ? 'bg-brand-500/20 text-brand-300 border-brand-500/40 font-bold' 
+                          : 'bg-surface-800 text-slate-300 border-white/5 hover:bg-surface-750'
+                      }`}
+                    >
+                      {isSelectMode ? 'Cancel Selection' : 'Select Multiple'}
+                    </button>
+                    <TrackSortControl currentSort={localSort} onSortChange={setLocalSort} />
+                  </>
+                )}
+              </div>
             </div>
             {localItems.length > 0 ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                 {sortedLocalItems.map(track => (
-                  <TrackCard key={track.id} track={track} queueContext={sortedLocalItems} />
+                  <TrackCard 
+                    key={track.id} 
+                    track={track} 
+                    queueContext={sortedLocalItems} 
+                    onAddToPlaylist={onAddToPlaylist}
+                    isSelected={selectedTracks.some(st => st.id === track.id)}
+                    onToggleSelect={toggleSelectTrack}
+                    isSelectMode={isSelectMode || selectedTracks.length > 0}
+                  />
                 ))}
               </div>
             ) : (
@@ -492,6 +572,23 @@ export const LibraryView: React.FC = () => {
           )}
         </section>
       )}
+
+      {/* Floating Batch Track Action Bar */}
+      <BatchTrackActionBar
+        selectedTracks={selectedTracks}
+        allTracks={subTab === 'favorites' ? sortedFavorites : sortedLocalItems}
+        onSelectAll={() => handleSelectAll(subTab === 'favorites' ? sortedFavorites : sortedLocalItems)}
+        onClear={() => {
+          setSelectedTracks([]);
+          setIsSelectMode(false);
+        }}
+        onAddToPlaylist={(selected) => {
+          if (onAddToPlaylist) {
+            onAddToPlaylist(selected);
+          }
+        }}
+        itemName={subTab === 'local' ? 'files' : 'tracks'}
+      />
     </div>
   );
 };

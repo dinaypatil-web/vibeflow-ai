@@ -42,6 +42,7 @@ export const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isImportUrlModalOpen, setIsImportUrlModalOpen] = useState(false);
   const [playlistTargetTrack, setPlaylistTargetTrack] = useState<MediaItem | null>(null);
+  const [playlistTargetTracks, setPlaylistTargetTracks] = useState<MediaItem[]>([]);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   React.useEffect(() => {
@@ -64,8 +65,14 @@ export const App: React.FC = () => {
     setActiveTab('explore');
   };
 
-  const handleAddToPlaylist = (track: MediaItem) => {
-    setPlaylistTargetTrack(track);
+  const handleAddToPlaylist = (trackOrTracks: MediaItem | MediaItem[]) => {
+    if (Array.isArray(trackOrTracks)) {
+      setPlaylistTargetTracks(trackOrTracks);
+      setPlaylistTargetTrack(trackOrTracks[0] || null);
+    } else {
+      setPlaylistTargetTracks([trackOrTracks]);
+      setPlaylistTargetTrack(trackOrTracks);
+    }
   };
 
   return (
@@ -111,7 +118,7 @@ export const App: React.FC = () => {
             {activeTab === 'playlists' && (
               <PlaylistsView onOpenAuth={() => setIsAuthModalOpen(true)} />
             )}
-            {activeTab === 'library' && <LibraryView />}
+            {activeTab === 'library' && <LibraryView onAddToPlaylist={handleAddToPlaylist} />}
             {activeTab === 'ai-studio' && <AIStudioView />}
             {activeTab === 'settings' && <SettingsView />}
           </div>
@@ -194,9 +201,13 @@ export const App: React.FC = () => {
 
         {/* Add to Playlist Modal */}
         <AddToPlaylistModal
-          isOpen={!!playlistTargetTrack}
+          isOpen={playlistTargetTracks.length > 0 || !!playlistTargetTrack}
           track={playlistTargetTrack}
-          onClose={() => setPlaylistTargetTrack(null)}
+          tracks={playlistTargetTracks}
+          onClose={() => {
+            setPlaylistTargetTrack(null);
+            setPlaylistTargetTracks([]);
+          }}
         />
 
         {/* User Authentication & Cloud Sync Modal */}

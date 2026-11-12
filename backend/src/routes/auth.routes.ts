@@ -103,9 +103,17 @@ router.post('/register', async (req: Request, res: Response) => {
     };
     db.createPlaylist(welcomePlaylist);
 
-    const token = jwt.sign({ userId: newUser.id, email: newUser.email }, JWT_SECRET, { expiresIn: '7d' });
+    // Link any guest playlists created on this device prior to registration
+    const clientPlaylistIds = req.body.clientPlaylistIds;
+    const clientPlaylists = req.body.clientPlaylists;
+    if (clientPlaylistIds || clientPlaylists) {
+      db.linkPlaylistsToUser(newUser.id, clientPlaylistIds, clientPlaylists);
+    }
 
-    res.status(201).json({ user: newUser, token });
+    const token = jwt.sign({ userId: newUser.id, email: newUser.email }, JWT_SECRET, { expiresIn: '7d' });
+    const playlists = db.getPlaylistsByUserId(newUser.id);
+
+    res.status(201).json({ user: newUser, token, playlists, deletedPlaylistIds: db.getDeletedPlaylistIds() });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Internal server error' });
   }
@@ -207,9 +215,15 @@ router.post('/login', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Invalid username/email or password' });
     }
 
+    const clientPlaylistIds = req.body.clientPlaylistIds;
+    const clientPlaylists = req.body.clientPlaylists;
+    if (clientPlaylistIds || clientPlaylists) {
+      db.linkPlaylistsToUser(user.id, clientPlaylistIds, clientPlaylists);
+    }
+
     const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
     const playlists = db.getPlaylistsByUserId(user.id);
-    res.json({ user, token, playlists });
+    res.json({ user, token, playlists, deletedPlaylistIds: db.getDeletedPlaylistIds() });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Internal server error' });
   }

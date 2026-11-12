@@ -293,14 +293,15 @@ export class AIRecommendationService {
       if (preferredGenres.includes(item.genre)) score += 35;
       if (preferredMoods.includes(item.mood)) score += 30;
       if (preferredLanguages.length > 0 && item.language && preferredLanguages.includes(item.language)) score += 25;
-      if (favoriteArtists.length > 0 && favoriteArtists.some(a => 
-        item.artist.toLowerCase().includes(a.toLowerCase()) || a.toLowerCase().includes(item.artist.toLowerCase())
+      const itemArtist = (item.artist || '').toLowerCase();
+      if (favoriteArtists.length > 0 && itemArtist && favoriteArtists.some(a => 
+        a && (itemArtist.includes(a.toLowerCase()) || a.toLowerCase().includes(itemArtist))
       )) score += 45;
       if (favorites.some(f => f.id === item.id)) score += 15;
 
       // Dynamic History Affinity Boost: Prioritize artists, genres, and vibes the user actually listens to!
-      const aLower = item.artist.toLowerCase();
-      if (historyArtistsMap[aLower]) {
+      const aLower = itemArtist;
+      if (aLower && historyArtistsMap[aLower]) {
         score += Math.min(50, historyArtistsMap[aLower] * 20);
       }
       if (historyGenresMap[item.genre]) {
@@ -408,9 +409,10 @@ export class AIRecommendationService {
 
     // 5. Favorite Artists Spotlight (if specified)
     if (favoriteArtists.length > 0) {
-      const artistTracks = allItems.filter(item => 
-        favoriteArtists.some(a => item.artist.toLowerCase().includes(a.toLowerCase()) || a.toLowerCase().includes(item.artist.toLowerCase()))
-      ).slice(0, 6);
+      const artistTracks = allItems.filter(item => {
+        const itemArtist = (item.artist || '').toLowerCase();
+        return itemArtist && favoriteArtists.some(a => a && (itemArtist.includes(a.toLowerCase()) || a.toLowerCase().includes(itemArtist)));
+      }).slice(0, 6);
       if (artistTracks.length > 0) {
         feed.push({
           sectionTitle: `Artist Affinity: ${favoriteArtists.slice(0, 2).join(' & ')}`,

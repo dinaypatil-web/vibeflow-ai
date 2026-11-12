@@ -1,26 +1,37 @@
 import React, { useState, useEffect } from 'react';
-import { X, ListMusic, Plus, Check, CheckCircle2 } from 'lucide-react';
+import { X, ListMusic, Plus, Check, Music2 } from 'lucide-react';
 import { MediaItem, Playlist } from '../types';
 import { api } from '../services/api';
 import { usePlayerStore } from '../store/playerStore';
 
 interface AddToPlaylistModalProps {
   isOpen: boolean;
-  track: MediaItem | null;
+  track?: MediaItem | null;
+  tracks?: MediaItem[];
   onClose: () => void;
+  onSuccess?: () => void;
 }
 
 export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({ 
   isOpen, 
   track, 
-  onClose 
+  tracks = [],
+  onClose,
+  onSuccess
 }) => {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [loading, setLoading] = useState(false);
   const [addedIds, setAddedIds] = useState<string[]>([]);
   const [newTitle, setNewTitle] = useState('');
   const [creating, setCreating] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { user, token } = usePlayerStore();
+
+  const effectiveTracks: MediaItem[] = React.useMemo(() => {
+    if (tracks && tracks.length > 0) return tracks;
+    if (track) return [track];
+    return [];
+  }, [track, tracks]);
 
   useEffect(() => {
     if (isOpen) {
@@ -32,7 +43,7 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
   const loadPlaylists = async () => {
     setLoading(true);
     try {
-      const data = await api.getPlaylists();
+      const data = await api.getPlaylists(user?.id, token);
       setPlaylists(data);
     } catch (err) {
       console.error(err);
@@ -41,23 +52,34 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
     }
   };
 
-  if (!isOpen || !track) return null;
+  if (!isOpen || effectiveTracks.length === 0) return null;
+
+  const isMultiple = effectiveTracks.length > 1;
 
   const handleAdd = async (playlistId: string) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
-      await api.addItemToPlaylist(playlistId, track.id);
+      if (isMultiple) {
+        await api.addItemsToPlaylist(playlistId, effectiveTracks, token);
+      } else {
+        await api.addItemToPlaylist(playlistId, effectiveTracks[0].id, token);
+      }
       setAddedIds(prev => [...prev, playlistId]);
+      if (onSuccess) onSuccess();
       setTimeout(() => {
         onClose();
       }, 700);
     } catch (err) {
       console.error('Failed to add to playlist', err);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleCreateAndAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTitle.trim()) return;
+    if (!newTitle.trim() || creating) return;
 
     setCreating(true);
     try {
@@ -74,11 +96,18 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
           email: user.email
         } : undefined
       }, token);
-      await api.addItemToPlaylist(newPl.id, track.id);
+
+      if (isMultiple) {
+        await api.addItemsToPlaylist(newPl.id, effectiveTracks, token);
+      } else {
+        await api.addItemToPlaylist(newPl.id, effectiveTracks[0].id, token);
+      }
+
       try {
         localStorage.setItem('vibeflow_selected_playlist_id', newPl.id);
       } catch {}
       setNewTitle('');
+      if (onSuccess) onSuccess();
       onClose();
     } catch (err) {
       console.error(err);
@@ -94,7 +123,9 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
         <div className="flex items-center justify-between pb-3 border-b border-white/5">
           <div className="flex items-center gap-2">
             <ListMusic className="w-5 h-5 text-brand-400" />
-            <h3 className="text-base font-bold text-white">Add to Playlist</h3>
+            <h3 className="text-base font-bold text-white">
+              {isMultiple ? `Add ${effectiveTracks.length} Tracks to Playlist` : 'Add to Playlist'}
+            </h3>
           </div>
           <button 
             onClick={onClose}
@@ -104,30 +135,57 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
           </button>
         </div>
 
-        {/* Selected Track Pill */}
+        {/* Selected Track(s) Pill */}
         <div className="flex items-center gap-3 p-2.5 rounded-2xl bg-surface-850 border border-white/5">
-          <img src={track.thumbnail} alt="" className="w-10 h-10 rounded-xl object-cover" />
+          {isMultiple ? (
+            <div className="flex -space-x-2 shrink-0">
+              {effectiveTracks.slice(0, 3).map((t, idx) => (
+                <img 
+                  key={t.id || idx} 
+                  src={t.thumbnail} 
+                  alt="" 
+                  className="w-9 h-9 rounded-xl object-cover ring-2 ring-surface-900" 
+                />
+              ))}
+            </div>
+          ) : (
+            <img src={effectiveTracks[0].thumbnail} alt="" className="w-10 h-10 rounded-xl object-cover shrink-0" />
+          )}
           <div className="min-w-0 flex-1">
-            <h4 className="text-xs font-bold text-white truncate">{track.title}</h4>
-            <p className="text-[11px] text-slate-400 truncate">{track.artist}</p>
+            {isMultiple ? (
+              <>
+                <h4 className="text-xs font-bold text-white truncate">
+                  {effectiveTracks.length} tracks selected
+                </h4>
+                <p className="text-[11px] text-brand-300 truncate">
+                  "{effectiveTracks[0].title}" and {effectiveTracks.length - 1} more
+                </p>
+              </>
+            ) : (
+              <>
+                <h4 className="text-xs font-bold text-white truncate">{effectiveTracks[0].title}</h4>
+                <p className="text-[11px] text-slate-400 truncate">{effectiveTracks[0].artist}</p>
+              </>
+            )}
           </div>
         </div>
 
         {/* Playlists List */}
         <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
           <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-            Select Playlist
+            Select Destination Playlist
           </span>
           {playlists.map(pl => {
             const isAdded = addedIds.includes(pl.id);
             return (
               <button
                 key={pl.id}
+                disabled={isSubmitting}
                 onClick={() => handleAdd(pl.id)}
                 className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-all ${
                   isAdded 
                     ? 'bg-emerald-950/60 border border-emerald-500/40 text-emerald-300' 
-                    : 'bg-surface-850 hover:bg-surface-800 text-slate-200 border border-white/5'
+                    : 'bg-surface-850 hover:bg-surface-800 text-slate-200 border border-white/5 disabled:opacity-50'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
@@ -137,7 +195,9 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
                 {isAdded ? (
                   <Check className="w-4 h-4 text-emerald-400 shrink-0" />
                 ) : (
-                  <span className="text-[10px] text-slate-400 shrink-0">{pl.items?.length || pl.itemCount} tracks</span>
+                  <span className="text-[10px] text-slate-400 shrink-0">
+                    {pl.items?.length || pl.itemCount || 0} tracks
+                  </span>
                 )}
               </button>
             );
@@ -162,7 +222,7 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
               disabled={creating || !newTitle.trim()}
               className="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-all"
             >
-              {creating ? '...' : 'Create & Add'}
+              {creating ? '...' : (isMultiple ? `Create & Add ${effectiveTracks.length}` : 'Create & Add')}
             </button>
           </div>
         </form>

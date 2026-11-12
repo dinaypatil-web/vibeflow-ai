@@ -1304,6 +1304,169 @@ async function runTests() {
     }
   });
 
+  // 19. Cross-Device Playlist Persistence Across Login/Signup (No Wipe-Off)
+  await test('Cross-Device Playlist Persistence & Sync Across Devices on Sign In', async () => {
+    // A user creates a playlist on Device 1 before signing in (guest/demo session)
+    const guestPlRes = await fetchJSON(`${API_BASE}/playlists`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: 'Device 1 Guest Playlist',
+        description: 'Created before login on Device 1'
+      })
+    });
+    const guestPl = guestPlRes.playlist;
+    if (!guestPl || !guestPl.id) throw new Error('Guest playlist creation failed');
+
+    // User registers account on Device 1, passing clientPlaylistIds / clientPlaylists
+    const syncUser = `syncuser_${Date.now()}`;
+    const syncPass = 'SyncSecret123!';
+    const regRes = await fetchJSON(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Sync Tester',
+        username: syncUser,
+        password: syncPass,
+        clientPlaylistIds: [guestPl.id],
+        clientPlaylists: [guestPl]
+      })
+    });
+    if (!regRes.user || !regRes.token) throw new Error('Registration failed');
+    const tokenDev1 = regRes.token;
+
+    // Verify Device 1 receives the guest playlist now linked to their user account
+    const dev1Pls = await fetchJSON(`${API_BASE}/playlists?userId=${regRes.user.id}`, {
+      headers: { 'Authorization': `Bearer ${tokenDev1}` }
+    });
+    const dev1PlIds = dev1Pls.playlists.map(p => p.id);
+    if (!dev1PlIds.includes(guestPl.id)) {
+      throw new Error('Guest playlist was not linked to user account on registration');
+    }
+
+    // Now user logs in on Device 2 with the same credentials
+    const loginDev2 = await fetchJSON(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        identifier: syncUser,
+        password: syncPass
+      })
+    });
+    if (!loginDev2.token) throw new Error('Device 2 login failed');
+    const tokenDev2 = loginDev2.token;
+
+    // Verify Device 2 gets Device 1's playlist immediately upon login without wiping
+    const dev2Pls = await fetchJSON(`${API_BASE}/playlists?userId=${regRes.user.id}`, {
+      headers: { 'Authorization': `Bearer ${tokenDev2}` }
+    });
+    const dev2PlIds = dev2Pls.playlists.map(p => p.id);
+    if (!dev2PlIds.includes(guestPl.id)) {
+      throw new Error('Playlist created on Device 1 was wiped off or missing when signing in on Device 2!');
+    }
+
+    // Device 2 creates a second playlist
+    const dev2NewPlRes = await fetchJSON(`${API_BASE}/playlists`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenDev2}` },
+      body: JSON.stringify({
+        title: 'Device 2 Created Playlist',
+        description: 'Created on secondary device'
+      })
+    });
+    const dev2NewPlId = dev2NewPlRes.playlist.id;
+
+    // Device 1 syncs and receives Device 2's playlist as well
+    const dev1Sync = await fetchJSON(`${API_BASE}/playlists?userId=${regRes.user.id}`, {
+      headers: { 'Authorization': `Bearer ${tokenDev1}` }
+    });
+    const dev1SyncIds = dev1Sync.playlists.map(p => p.id);
+    if (!dev1SyncIds.includes(guestPl.id) || !dev1SyncIds.includes(dev2NewPlId)) {
+      throw new Error('Device 1 did not retain its own playlist and receive Device 2 playlist during sync');
+    }
+
+    // Device 2 explicitly deletes Device 1's guest playlist
+    await fetchJSON(`${API_BASE}/playlists/${guestPl.id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${tokenDev2}` }
+    });
+
+    // Device 1 fetches playlists and receives deletedPlaylistIds (tombstones)
+    const dev1AfterDelete = await fetchJSON(`${API_BASE}/playlists?userId=${regRes.user.id}`, {
+      headers: { 'Authorization': `Bearer ${tokenDev1}` }
+    });
+    const dev1RemainingIds = dev1AfterDelete.playlists.map(p => p.id);
+    if (dev1RemainingIds.includes(guestPl.id)) {
+      throw new Error('Deleted playlist was not removed from Device 1');
+    }
+    if (!dev1AfterDelete.deletedPlaylistIds || !dev1AfterDelete.deletedPlaylistIds.includes(guestPl.id)) {
+      throw new Error('Tombstone for deleted playlist missing in API response');
+    }
+    if (!dev1RemainingIds.includes(dev2NewPlId)) {
+      throw new Error('Non-deleted Device 2 playlist was erroneously removed');
+    }
+  });
+
+  // 20. Multi-Track / Batch Addition to Playlist
+  await test('Multi-Track / Batch Addition to Playlist', async () => {
+    // Create a target playlist
+    const plRes = await fetchJSON(`${API_BASE}/playlists`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: 'Batch Tracks Destination Playlist',
+        description: 'Testing multi-track additions'
+      })
+    });
+    const targetPlId = plRes.playlist.id;
+
+    // Search for tracks to add
+    const searchRes = await fetchJSON(`${API_BASE}/media/search?q=synthwave`);
+    const sampleItems = searchRes.items.slice(0, 4);
+    if (sampleItems.length < 2) throw new Error('Need at least 2 sample items to test batch addition');
+
+    const itemIds = sampleItems.map(i => i.id);
+
+    // Test 1: Batch addition via POST /:id/items with mediaItemIds
+    const batchAddRes1 = await fetchJSON(`${API_BASE}/playlists/${targetPlId}/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mediaItemIds: itemIds.slice(0, 2)
+      })
+    });
+    if (batchAddRes1.addedCount !== 2) {
+      throw new Error(`Expected addedCount 2, got ${batchAddRes1.addedCount}`);
+    }
+    if (!batchAddRes1.playlist || batchAddRes1.playlist.items.length !== 2) {
+      throw new Error('Playlist items length is not 2 after first batch');
+    }
+
+    // Test 2: Batch addition via POST /:id/items/batch with full items array
+    const batchAddRes2 = await fetchJSON(`${API_BASE}/playlists/${targetPlId}/items/batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: itemIds.slice(2, 4).map(id => ({ mediaItemId: id }))
+      })
+    });
+    if (batchAddRes2.addedCount !== 2) {
+      throw new Error(`Expected addedCount 2 from /items/batch, got ${batchAddRes2.addedCount}`);
+    }
+
+    // Verify full playlist has all 4 items
+    const finalPlRes = await fetchJSON(`${API_BASE}/playlists/${targetPlId}`);
+    if (finalPlRes.playlist.items.length !== 4) {
+      throw new Error(`Expected 4 playlist items, got ${finalPlRes.playlist.items.length}`);
+    }
+
+    // Verify ordering is 0, 1, 2, 3
+    const orders = finalPlRes.playlist.items.map(item => item.orderIndex);
+    if (JSON.stringify(orders) !== JSON.stringify([0, 1, 2, 3])) {
+      throw new Error(`Incorrect item order indexes: ${JSON.stringify(orders)}`);
+    }
+  });
+
   console.log(`\n🎉 Test Results: ${passed}/${total} passed!`);
   if (passed === total) {
     console.log('🌟 All VibeFlow AI core systems verified production-ready.\n');

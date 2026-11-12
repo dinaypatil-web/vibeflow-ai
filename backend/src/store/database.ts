@@ -21,6 +21,7 @@ export interface DatabaseSchema {
   history: { id: string; userId: string; mediaItemId: string; playedSeconds: number; completionRate: number; listenedAt: string; mediaItem?: MediaItem }[];
   downloadJobs: DownloadJob[];
   userFeedback: { id: string; userId: string; targetId: string; feedbackType: string; payload?: any; createdAt: string }[];
+  deletedPlaylistIds?: string[];
 }
 
 const DATA_DIR = path.join(__dirname, '../../data');
@@ -424,7 +425,8 @@ class MemoryDatabase {
       favorites: [],
       history: [],
       downloadJobs: [],
-      userFeedback: []
+      userFeedback: [],
+      deletedPlaylistIds: []
     };
     this.loadFromDisk();
     this.seedDefaultPlaylists();
@@ -526,7 +528,8 @@ class MemoryDatabase {
           passwords: parsed.passwords || {},
           playlists: parsed.playlists || [],
           favorites: parsed.favorites || [],
-          history: parsed.history || []
+          history: parsed.history || [],
+          deletedPlaylistIds: parsed.deletedPlaylistIds || []
         };
         // Ensure all media items have releaseDate and valid durations
         if (this.data.mediaItems && Array.isArray(this.data.mediaItems)) {
@@ -1138,6 +1141,7 @@ class MemoryDatabase {
                  this.findUserByIdentifier(userId) || 
                  this.findUserBySyncCode(userId);
     const clientSet = new Set<string>((clientPlaylistIds || []).filter(Boolean));
+    const deletedSet = new Set<string>(this.data.deletedPlaylistIds || []);
 
     const isLoggedIn = Boolean(user && user.id !== 'demo-user-id');
 
@@ -1145,7 +1149,7 @@ class MemoryDatabase {
     if (isLoggedIn && clientSet.size > 0 && user) {
       let modified = false;
       for (const p of this.data.playlists) {
-        if (clientSet.has(p.id)) {
+        if (clientSet.has(p.id) && !deletedSet.has(p.id)) {
           if (p.userId !== user.id || !p.creator?.email) {
             p.userId = user.id;
             p.creator = {
@@ -1166,6 +1170,9 @@ class MemoryDatabase {
 
     return this.data.playlists
       .filter(p => {
+        // Exclude any explicitly deleted playlist
+        if (deletedSet.has(p.id)) return false;
+
         // When a real user is logged in across any device:
         // App shows playlists created by, client-created by, or shared to the user
         if (isLoggedIn && user) {
@@ -1380,11 +1387,21 @@ class MemoryDatabase {
     return playlist;
   }
 
+  public getDeletedPlaylistIds(): string[] {
+    return this.data.deletedPlaylistIds || [];
+  }
+
   public deletePlaylist(id: string): boolean {
+    if (!this.data.deletedPlaylistIds) this.data.deletedPlaylistIds = [];
+    if (!this.data.deletedPlaylistIds.includes(id)) {
+      this.data.deletedPlaylistIds.push(id);
+    }
     const index = this.data.playlists.findIndex(p => p.id === id);
-    if (index === -1) return false;
-    this.data.playlists.splice(index, 1);
+    if (index !== -1) {
+      this.data.playlists.splice(index, 1);
+    }
     this.saveToDisk();
+    this.syncToCloud().catch(() => {});
     return true;
   }
 
@@ -1395,22 +1412,31 @@ class MemoryDatabase {
       return { deletedIds, failedIds };
     }
 
+    if (!this.data.deletedPlaylistIds) this.data.deletedPlaylistIds = [];
     const idSet = new Set(ids);
     let changed = false;
 
     for (const id of idSet) {
       const pl = this.findPlaylistById(id);
       if (!pl) {
-        failedIds.push(id);
+        // Record as deleted so another device doesn't revive a phantom playlist
+        if (!this.data.deletedPlaylistIds.includes(id)) {
+          this.data.deletedPlaylistIds.push(id);
+          changed = true;
+        }
+        deletedIds.push(id);
         continue;
       }
       if (this.isUserOwner(pl, userId)) {
         const idx = this.data.playlists.findIndex(p => p.id === id);
         if (idx !== -1) {
           this.data.playlists.splice(idx, 1);
-          deletedIds.push(id);
-          changed = true;
         }
+        if (!this.data.deletedPlaylistIds.includes(id)) {
+          this.data.deletedPlaylistIds.push(id);
+        }
+        deletedIds.push(id);
+        changed = true;
       } else if (this.isUserShared(pl, userId)) {
         this.leaveSharedPlaylist(id, userId);
         deletedIds.push(id);
@@ -1426,6 +1452,128 @@ class MemoryDatabase {
     }
 
     return { deletedIds, failedIds };
+  }
+
+  public linkPlaylistsToUser(userId: string, clientPlaylistIds?: string[], clientPlaylists?: Playlist[]): { linkedCount: number; playlists: Playlist[] } {
+    const user = this.findUserById(userId) || this.findUserByIdentifier(userId);
+    if (!user) return { linkedCount: 0, playlists: [] };
+
+    const deletedSet = new Set<string>(this.data.deletedPlaylistIds || []);
+    const clientSet = new Set<string>((clientPlaylistIds || []).filter(Boolean));
+    let modified = false;
+
+    // 1. Link any existing playlists in database matching clientPlaylistIds
+    for (const p of this.data.playlists) {
+      if (clientSet.has(p.id) && !deletedSet.has(p.id)) {
+        if (p.userId !== user.id || p.creator?.id !== user.id || !p.creator?.email) {
+          p.userId = user.id;
+          p.creator = {
+            id: user.id,
+            name: user.name,
+            username: user.username || user.name,
+            avatar: user.avatar,
+            email: user.email
+          };
+          p.updatedAt = new Date().toISOString();
+          modified = true;
+        }
+      }
+    }
+
+    // 2. If client provided full playlist objects (e.g. offline/guest created), add them if missing
+    if (Array.isArray(clientPlaylists)) {
+      for (const pl of clientPlaylists) {
+        if (!pl || !pl.id || deletedSet.has(pl.id)) continue;
+        const existing = this.findPlaylistById(pl.id);
+        if (!existing) {
+          const newPl: Playlist = {
+            ...pl,
+            userId: user.id,
+            creator: {
+              id: user.id,
+              name: user.name,
+              username: user.username || user.name,
+              avatar: user.avatar,
+              email: user.email
+            },
+            updatedAt: new Date().toISOString()
+          };
+          this.data.playlists.push(newPl);
+          modified = true;
+        } else if (existing.userId !== user.id) {
+          existing.userId = user.id;
+          existing.creator = {
+            id: user.id,
+            name: user.name,
+            username: user.username || user.name,
+            avatar: user.avatar,
+            email: user.email
+          };
+          modified = true;
+        }
+      }
+    }
+
+    if (modified) {
+      this.saveToDisk();
+      this.syncToCloud().catch(() => {});
+    }
+
+    return {
+      linkedCount: this.getPlaylistsByUserId(user.id).length,
+      playlists: this.getPlaylistsByUserId(user.id)
+    };
+  }
+
+  public async addItemsToPlaylist(
+    playlistId: string, 
+    itemsOrIds: (string | MediaItem)[]
+  ): Promise<{ success: boolean; playlist?: Playlist; addedItems: PlaylistItem[]; error?: string }> {
+    const playlist = this.findPlaylistById(playlistId);
+    if (!playlist) {
+      return { success: false, addedItems: [], error: 'Playlist not found' };
+    }
+
+    if (!playlist.items) playlist.items = [];
+    const addedItems: PlaylistItem[] = [];
+
+    for (const itemOrId of itemsOrIds) {
+      let targetItemId: string;
+      let mediaItem: MediaItem | undefined;
+
+      if (typeof itemOrId === 'string') {
+        targetItemId = itemOrId;
+        mediaItem = this.findMediaItemById(targetItemId);
+      } else if (itemOrId && typeof itemOrId === 'object') {
+        targetItemId = itemOrId.id;
+        mediaItem = this.findMediaItemById(targetItemId);
+        if (!mediaItem) {
+          mediaItem = this.addMediaItem(itemOrId);
+        }
+      } else {
+        continue;
+      }
+
+      if (!mediaItem) continue;
+
+      const newItem: PlaylistItem = {
+        id: `item-${Date.now()}-${Math.floor(Math.random() * 10000)}-${playlist.items.length}`,
+        playlistId: playlist.id,
+        mediaItemId: targetItemId,
+        orderIndex: playlist.items.length,
+        addedAt: new Date().toISOString(),
+        mediaItem
+      };
+
+      playlist.items.push(newItem);
+      addedItems.push(newItem);
+    }
+
+    playlist.itemCount = playlist.items.length;
+    playlist.updatedAt = new Date().toISOString();
+    this.saveToDisk();
+
+    return { success: true, playlist, addedItems };
   }
 
   public deleteUser(userId: string): boolean {

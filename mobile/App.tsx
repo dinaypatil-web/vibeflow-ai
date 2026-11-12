@@ -158,6 +158,88 @@ export default function App() {
   const [selectedPlaylistIds, setSelectedPlaylistIds] = useState<string[]>([]);
   const [isDeletingBatch, setIsDeletingBatch] = useState(false);
 
+  // Multi-select tracks & bulk add to playlist
+  const [isTrackSelectMode, setIsTrackSelectMode] = useState(false);
+  const [selectedTrackIds, setSelectedTrackIds] = useState<string[]>([]);
+  const [isAddToPlaylistModalVisible, setIsAddToPlaylistModalVisible] = useState(false);
+  const [isAddingTracksBatch, setIsAddingTracksBatch] = useState(false);
+  const [newMobilePlaylistTitle, setNewMobilePlaylistTitle] = useState('');
+
+  const toggleSelectTrack = (trackId: string) => {
+    setSelectedTrackIds(prev => 
+      prev.includes(trackId) ? prev.filter(x => x !== trackId) : [...prev, trackId]
+    );
+  };
+
+  const handleBatchAddToPlaylist = async (playlistId: string) => {
+    if (selectedTrackIds.length === 0) return;
+    setIsAddingTracksBatch(true);
+    try {
+      const selectedMedia = SAMPLE_TRACKS.filter(t => selectedTrackIds.includes(t.id));
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      if (syncUser?.id) headers['x-user-id'] = syncUser.id;
+
+      const res = await fetch(`${apiBaseUrl}/playlists/${playlistId}/items`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          mediaItemIds: selectedTrackIds,
+          items: selectedMedia
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to add tracks to playlist');
+      }
+      const count = selectedTrackIds.length;
+      setSelectedTrackIds([]);
+      setIsTrackSelectMode(false);
+      setIsAddToPlaylistModalVisible(false);
+      fetchPlaylists();
+      Alert.alert('Success', `Added ${count} track${count > 1 ? 's' : ''} to playlist!`);
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Could not add tracks to playlist');
+    } finally {
+      setIsAddingTracksBatch(false);
+    }
+  };
+
+  const handleCreateAndAddBatchTracks = async () => {
+    const title = newMobilePlaylistTitle.trim();
+    if (!title) return;
+    setIsAddingTracksBatch(true);
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      if (syncUser?.id) headers['x-user-id'] = syncUser.id;
+
+      const createRes = await fetch(`${apiBaseUrl}/playlists`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          title,
+          description: 'Created on mobile',
+          userId: syncUser?.id || 'demo-user-id'
+        })
+      });
+      if (!createRes.ok) {
+        const err = await createRes.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to create playlist');
+      }
+      const createData = await createRes.json();
+      const newPlId = createData.playlist?.id;
+      if (newPlId) {
+        await handleBatchAddToPlaylist(newPlId);
+      }
+      setNewMobilePlaylistTitle('');
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Failed to create and add');
+    } finally {
+      setIsAddingTracksBatch(false);
+    }
+  };
+
   const toggleSelectPlaylist = (id: string) => {
     setSelectedPlaylistIds(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
@@ -236,8 +318,11 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         const serverList = data.playlists || [];
+        const deletedIds = new Set<string>(data.deletedPlaylistIds || []);
         if (serverList.length > 0) {
-          const transformed = serverList.map((p: any) => ({
+          const transformed = serverList
+            .filter((p: any) => !deletedIds.has(p.id))
+            .map((p: any) => ({
             ...p,
             items: (p.items || []).map((it: any) => ({
               id: it.id,
@@ -283,10 +368,11 @@ export default function App() {
     setSyncError(null);
     setSyncSuccess(null);
     try {
+      const clientPlaylistIds = playlists.filter(p => !p.id.startsWith('mobile-pl-')).map(p => p.id);
       const res = await fetch(`${apiBaseUrl}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier: ident, password: pass })
+        body: JSON.stringify({ identifier: ident, password: pass, clientPlaylistIds })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Invalid credentials');
@@ -345,10 +431,11 @@ export default function App() {
     setSyncError(null);
     setSyncSuccess(null);
     try {
+      const clientPlaylistIds = playlists.filter(p => !p.id.startsWith('mobile-pl-')).map(p => p.id);
       const res = await fetch(`${apiBaseUrl}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name || username, email, username, password })
+        body: JSON.stringify({ name: name || username, email, username, password, clientPlaylistIds })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Registration failed');
@@ -954,37 +1041,103 @@ export default function App() {
               ))}
             </ScrollView>
 
-            {/* Recommended Tracks */}
-            <Text style={styles.sectionTitle}>Recommended for You</Text>
-            {SAMPLE_TRACKS.map(track => (
-              <TouchableOpacity 
-                key={track.id} 
-                style={styles.trackCard}
-                onPress={() => playTrack(track)}
+            {/* Recommended Tracks Header with Multi-Select Toggle */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={styles.sectionTitle}>Recommended for You</Text>
+              <TouchableOpacity
+                style={[
+                  styles.syncSmallBtn,
+                  isTrackSelectMode && { backgroundColor: 'rgba(99,102,241,0.2)', borderColor: '#6366f1' }
+                ]}
+                onPress={() => {
+                  const next = !isTrackSelectMode;
+                  setIsTrackSelectMode(next);
+                  if (!next) setSelectedTrackIds([]);
+                }}
               >
-                <Image source={{ uri: track.thumbnail }} style={styles.trackThumb} />
-                <View style={styles.trackMeta}>
-                  <Text style={styles.trackTitle} numberOfLines={1}>{track.title}</Text>
-                  <Text style={styles.trackArtist}>{track.artist}</Text>
-                  <View style={styles.tagRow}>
-                    <Text style={styles.genreTag}>{track.genre}</Text>
-                    <Text style={styles.moodTag}>{track.mood}</Text>
-                  </View>
+                <Text style={[styles.syncSmallBtnText, isTrackSelectMode && { color: '#818cf8', fontWeight: 'bold' }]}>
+                  {isTrackSelectMode ? 'Cancel' : 'Select Multiple'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Batch Action Bar for Tracks */}
+            {isTrackSelectMode && selectedTrackIds.length > 0 && (
+              <View style={[styles.batchActionBar, { marginBottom: 14 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={styles.batchCountText}>
+                    {selectedTrackIds.length} track{selectedTrackIds.length > 1 ? 's' : ''} selected
+                  </Text>
                 </View>
                 <TouchableOpacity
-                  style={styles.cardDownloadBtn}
+                  style={[styles.batchDeleteBtn, { backgroundColor: '#4f46e5', borderColor: '#6366f1' }]}
+                  onPress={() => setIsAddToPlaylistModalVisible(true)}
+                >
+                  <Text style={[styles.batchDeleteText, { color: '#fff' }]}>
+                    ➕ Add to Playlist ({selectedTrackIds.length})
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {SAMPLE_TRACKS.map(track => {
+              const isChecked = selectedTrackIds.includes(track.id);
+              return (
+                <TouchableOpacity 
+                  key={track.id} 
+                  style={[
+                    styles.trackCard,
+                    isTrackSelectMode && isChecked && {
+                      borderColor: '#6366f1',
+                      backgroundColor: 'rgba(99,102,241,0.14)'
+                    }
+                  ]}
                   onPress={() => {
-                    setDownloadTargetTrack(track);
-                    setSelectedQuality('320');
-                    setIsCopyrightAgreed(false);
-                    setDownloadSuccess(false);
-                    setIsDownloadModalVisible(true);
+                    if (isTrackSelectMode) {
+                      toggleSelectTrack(track.id);
+                    } else {
+                      playTrack(track);
+                    }
                   }}
                 >
-                  <Text style={styles.cardDownloadIcon}>📥</Text>
+                  {isTrackSelectMode && (
+                    <TouchableOpacity
+                      onPress={() => toggleSelectTrack(track.id)}
+                      style={[
+                        styles.playlistCheckbox,
+                        isChecked && styles.playlistCheckboxChecked,
+                        { marginRight: 8 }
+                      ]}
+                    >
+                      {isChecked && <Text style={styles.playlistCheckboxCheck}>✓</Text>}
+                    </TouchableOpacity>
+                  )}
+                  <Image source={{ uri: track.thumbnail }} style={styles.trackThumb} />
+                  <View style={styles.trackMeta}>
+                    <Text style={styles.trackTitle} numberOfLines={1}>{track.title}</Text>
+                    <Text style={styles.trackArtist}>{track.artist}</Text>
+                    <View style={styles.tagRow}>
+                      <Text style={styles.genreTag}>{track.genre}</Text>
+                      <Text style={styles.moodTag}>{track.mood}</Text>
+                    </View>
+                  </View>
+                  {!isTrackSelectMode && (
+                    <TouchableOpacity
+                      style={styles.cardDownloadBtn}
+                      onPress={() => {
+                        setDownloadTargetTrack(track);
+                        setSelectedQuality('320');
+                        setIsCopyrightAgreed(false);
+                        setDownloadSuccess(false);
+                        setIsDownloadModalVisible(true);
+                      }}
+                    >
+                      <Text style={styles.cardDownloadIcon}>📥</Text>
+                    </TouchableOpacity>
+                  )}
                 </TouchableOpacity>
-              </TouchableOpacity>
-            ))}
+              );
+            })}
           </View>
         )}
 
@@ -1735,6 +1888,73 @@ export default function App() {
             >
               <Text style={styles.linkSyncBtnText}>Done</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Add Selected Tracks to Playlist Modal */}
+      <Modal visible={isAddToPlaylistModalVisible} animationType="slide" transparent>
+        <View style={styles.downloadModalBackdrop}>
+          <View style={[styles.syncModalCard, { maxHeight: '80%' }]}>
+            <View style={styles.downloadModalHeader}>
+              <View>
+                <Text style={styles.downloadModalTitle}>Add Tracks to Playlist</Text>
+                <Text style={{ color: '#94a3b8', fontSize: 12, marginTop: 2 }}>
+                  {selectedTrackIds.length} tracks selected
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setIsAddToPlaylistModalVisible(false)}
+                style={{ padding: 6 }}
+              >
+                <Text style={styles.closeText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 220, marginVertical: 12 }}>
+              <Text style={[styles.inputLabel, { marginBottom: 6 }]}>Choose Destination Playlist:</Text>
+              {playlists.map(pl => (
+                <TouchableOpacity
+                  key={pl.id}
+                  disabled={isAddingTracksBatch}
+                  onPress={() => handleBatchAddToPlaylist(pl.id)}
+                  style={[styles.playlistCard, { marginBottom: 8, padding: 10 }]}
+                >
+                  <Image source={{ uri: pl.coverArt || SAMPLE_TRACKS[0].thumbnail }} style={[styles.playlistThumb, { width: 40, height: 40 }]} />
+                  <View style={styles.playlistMeta}>
+                    <Text style={styles.playlistTitle} numberOfLines={1}>{pl.title}</Text>
+                    <Text style={styles.playlistCount}>{pl.items?.length || pl.itemCount || 0} tracks</Text>
+                  </View>
+                  <Text style={{ color: '#818cf8', fontWeight: 'bold', fontSize: 13 }}>➕ Add</Text>
+                </TouchableOpacity>
+              ))}
+              {playlists.length === 0 && (
+                <Text style={{ color: '#94a3b8', fontSize: 12, textAlign: 'center', marginVertical: 8 }}>
+                  No existing playlists found. Create one below!
+                </Text>
+              )}
+            </ScrollView>
+
+            {/* Quick create new playlist */}
+            <View style={{ borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)', paddingTop: 12 }}>
+              <Text style={styles.inputLabel}>Or Create New Playlist:</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                <TextInput
+                  style={[styles.authTextInput, { flex: 1, marginBottom: 0 }]}
+                  placeholder="New playlist name..."
+                  placeholderTextColor="#64748b"
+                  value={newMobilePlaylistTitle}
+                  onChangeText={setNewMobilePlaylistTitle}
+                />
+                <TouchableOpacity
+                  disabled={isAddingTracksBatch || !newMobilePlaylistTitle.trim()}
+                  onPress={handleCreateAndAddBatchTracks}
+                  style={[styles.authPrimaryBtn, { paddingHorizontal: 14, marginBottom: 0, opacity: !newMobilePlaylistTitle.trim() ? 0.5 : 1 }]}
+                >
+                  <Text style={styles.authPrimaryBtnText}>Create & Add</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
         </View>
       </Modal>

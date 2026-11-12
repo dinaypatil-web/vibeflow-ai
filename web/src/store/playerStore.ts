@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { MediaItem, User, UserPreferences, SourceAccount, AppTheme, OfflineTrack } from '../types';
-import { api } from '../services/api';
+import { api, API_BASE } from '../services/api';
 import { offlineStorage } from '../services/offlineStorage';
 
 export type TabType = 'home' | 'search' | 'explore' | 'playlists' | 'library' | 'ai-studio' | 'settings';
@@ -574,10 +574,29 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const cleanId = (identifier || '').trim();
     const cleanPass = (password || '').trim();
     try {
-      const res = await fetch('/api/auth/login', {
+      // Gather local playlist IDs & objects from guest/demo session to migrate on login
+      let guestIds: string[] = [];
+      let guestPlaylists: any[] = [];
+      try {
+        const demoIds: string[] = JSON.parse(localStorage.getItem('vibeflow_created_playlist_ids_demo-user-id') || '[]');
+        const legacyIds: string[] = JSON.parse(localStorage.getItem('vibeflow_my_created_playlist_ids') || '[]');
+        guestIds = Array.from(new Set([...demoIds, ...legacyIds]));
+        const demoCached: any[] = JSON.parse(localStorage.getItem('vibeflow_cached_playlists_demo-user-id') || '[]');
+        const legacyCached: any[] = JSON.parse(localStorage.getItem('vibeflow_cached_playlists') || '[]');
+        guestPlaylists = [...demoCached, ...legacyCached].filter((p: any) => p && p.id && !p.id.startsWith('playlist-'));
+      } catch {}
+
+      const res = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier: cleanId, email: cleanId, username: cleanId, password: cleanPass })
+        body: JSON.stringify({
+          identifier: cleanId,
+          email: cleanId,
+          username: cleanId,
+          password: cleanPass,
+          clientPlaylistIds: guestIds,
+          clientPlaylists: guestPlaylists
+        })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Login failed');
@@ -588,11 +607,28 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         try {
           const userCacheKey = `vibeflow_cached_playlists_${data.user.id}`;
           const userKey = `vibeflow_created_playlist_ids_${data.user.id}`;
-          const createdIds = data.playlists
-            .filter((p: any) => !p.id.startsWith('playlist-') && !p.isSharedWithMe)
-            .map((p: any) => p.id);
-          localStorage.setItem(userCacheKey, JSON.stringify(data.playlists.slice(0, 100)));
-          localStorage.setItem(userKey, JSON.stringify(createdIds.slice(0, 100)));
+          const existingCached: any[] = JSON.parse(localStorage.getItem(userCacheKey) || '[]');
+          const existingIds: string[] = JSON.parse(localStorage.getItem(userKey) || '[]');
+          const deletedSet = new Set(data.deletedPlaylistIds || []);
+
+          // Merge server playlists with existing local playlists, preserving any local items not deleted
+          const map = new Map<string, any>();
+          for (const p of data.playlists) {
+            if (!deletedSet.has(p.id)) map.set(p.id, p);
+          }
+          for (const p of existingCached) {
+            if (p && p.id && !deletedSet.has(p.id) && !map.has(p.id)) {
+              map.set(p.id, p);
+            }
+          }
+          const mergedPlaylists = Array.from(map.values());
+          const mergedCreatedIds = Array.from(new Set([
+            ...data.playlists.filter((p: any) => !p.id.startsWith('playlist-') && !p.isSharedWithMe).map((p: any) => p.id),
+            ...existingIds
+          ])).filter(id => !deletedSet.has(id));
+
+          localStorage.setItem(userCacheKey, JSON.stringify(mergedPlaylists.slice(0, 100)));
+          localStorage.setItem(userKey, JSON.stringify(mergedCreatedIds.slice(0, 100)));
         } catch {}
       }
 
@@ -732,14 +768,62 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const cleanUser = (username || cleanEmail.split('@')[0] || cleanName.replace(/\s+/g, '')).trim();
 
     try {
-      const res = await fetch('/api/auth/register', {
+      // Gather local playlist IDs & objects from guest/demo session to migrate on registration
+      let guestIds: string[] = [];
+      let guestPlaylists: any[] = [];
+      try {
+        const demoIds: string[] = JSON.parse(localStorage.getItem('vibeflow_created_playlist_ids_demo-user-id') || '[]');
+        const legacyIds: string[] = JSON.parse(localStorage.getItem('vibeflow_my_created_playlist_ids') || '[]');
+        guestIds = Array.from(new Set([...demoIds, ...legacyIds]));
+        const demoCached: any[] = JSON.parse(localStorage.getItem('vibeflow_cached_playlists_demo-user-id') || '[]');
+        const legacyCached: any[] = JSON.parse(localStorage.getItem('vibeflow_cached_playlists') || '[]');
+        guestPlaylists = [...demoCached, ...legacyCached].filter((p: any) => p && p.id && !p.id.startsWith('playlist-'));
+      } catch {}
+
+      const res = await fetch(`${API_BASE}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: cleanName, email: cleanEmail, username: cleanUser, password: cleanPass })
+        body: JSON.stringify({
+          name: cleanName,
+          email: cleanEmail,
+          username: cleanUser,
+          password: cleanPass,
+          clientPlaylistIds: guestIds,
+          clientPlaylists: guestPlaylists
+        })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Registration failed');
       get().setUser(data.user, data.token);
+
+      // Pre-seed user's cloud playlists on this device immediately upon registration
+      if (data.playlists && Array.isArray(data.playlists)) {
+        try {
+          const userCacheKey = `vibeflow_cached_playlists_${data.user.id}`;
+          const userKey = `vibeflow_created_playlist_ids_${data.user.id}`;
+          const existingCached: any[] = JSON.parse(localStorage.getItem(userCacheKey) || '[]');
+          const existingIds: string[] = JSON.parse(localStorage.getItem(userKey) || '[]');
+          const deletedSet = new Set(data.deletedPlaylistIds || []);
+
+          const map = new Map<string, any>();
+          for (const p of data.playlists) {
+            if (!deletedSet.has(p.id)) map.set(p.id, p);
+          }
+          for (const p of existingCached) {
+            if (p && p.id && !deletedSet.has(p.id) && !map.has(p.id)) {
+              map.set(p.id, p);
+            }
+          }
+          const mergedPlaylists = Array.from(map.values());
+          const mergedCreatedIds = Array.from(new Set([
+            ...data.playlists.filter((p: any) => !p.id.startsWith('playlist-') && !p.isSharedWithMe).map((p: any) => p.id),
+            ...existingIds
+          ])).filter(id => !deletedSet.has(id));
+
+          localStorage.setItem(userCacheKey, JSON.stringify(mergedPlaylists.slice(0, 100)));
+          localStorage.setItem(userKey, JSON.stringify(mergedCreatedIds.slice(0, 100)));
+        } catch {}
+      }
 
       // Save to local cache as resilience safeguard
       try {
@@ -856,7 +940,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const cleanId = (identifier || '').trim();
     const cleanPass = (newPassword || '').trim();
     try {
-      const res = await fetch('/api/auth/reset-password', {
+      const res = await fetch(`${API_BASE}/auth/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifier: cleanId, newPassword: cleanPass })
@@ -982,7 +1066,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
 
-      await fetch('/api/auth/preferences', {
+      await fetch(`${API_BASE}/auth/preferences`, {
         method: 'PUT',
         headers,
         body: JSON.stringify({ preferences: newPreferences, userId: state.user.id })
@@ -995,7 +1079,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   loginDemo: async () => {
     set({ authLoading: true, authError: null });
     try {
-      const res = await fetch('/api/auth/demo', { method: 'POST' });
+      const res = await fetch(`${API_BASE}/auth/demo`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Demo login failed');
       get().setUser(data.user, data.token);

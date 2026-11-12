@@ -120,7 +120,59 @@ router.get('/', async (req: Request, res: Response) => {
   });
   await Promise.allSettled(enrichPromises);
 
-  res.json({ playlists: hydrated });
+  res.json({ playlists: hydrated, deletedPlaylistIds: db.getDeletedPlaylistIds() });
+});
+
+// Sync / link playlists or device to account across devices
+router.post('/sync/link', (req: Request, res: Response) => {
+  // Case A: Linking a second device using a 6-character sync code
+  if (req.body.syncCode) {
+    const { syncCode } = req.body;
+    if (typeof syncCode !== 'string') {
+      return res.status(400).json({ error: 'Sync code is required' });
+    }
+    const user = db.findUserBySyncCode(syncCode);
+    if (!user) {
+      return res.status(404).json({ error: 'No account found with this sync code. Please check and try again.' });
+    }
+
+    const token = jwt.sign({ userId: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
+    const playlists = db.getPlaylistsByUserId(user.id);
+    return res.json({
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        username: user.username,
+        avatar: user.avatar,
+        role: user.role,
+        syncCode: user.syncCode
+      },
+      token,
+      playlists,
+      deletedPlaylistIds: db.getDeletedPlaylistIds()
+    });
+  }
+
+  // Case B: Linking client / guest playlists to authenticated user account
+  const userId = resolveUserId(req);
+  if (!userId || userId === 'demo-user-id') {
+    return res.status(401).json({ error: 'Authentication required to link playlists' });
+  }
+  const { clientPlaylistIds, clientPlaylists } = req.body;
+  const result = db.linkPlaylistsToUser(userId, clientPlaylistIds, clientPlaylists);
+  return res.json({
+    success: true,
+    linkedCount: result.linkedCount,
+    playlists: result.playlists,
+    deletedPlaylistIds: db.getDeletedPlaylistIds()
+  });
+});
+
+// Deleted playlist tombstones for cross-device sync
+router.get('/tombstones', (req: Request, res: Response) => {
+  res.json({ deletedPlaylistIds: db.getDeletedPlaylistIds() });
 });
 
 // Create Playlist
@@ -265,34 +317,6 @@ router.get('/sync/code', (req: Request, res: Response) => {
   res.json({ syncCode });
 });
 
-// Link another device to account via 6-character sync code
-router.post('/sync/link', (req: Request, res: Response) => {
-  const { syncCode } = req.body;
-  if (!syncCode || typeof syncCode !== 'string') {
-    return res.status(400).json({ error: 'Sync code is required' });
-  }
-  const user = db.findUserBySyncCode(syncCode);
-  if (!user) {
-    return res.status(404).json({ error: 'No account found with this sync code. Please check and try again.' });
-  }
-
-  const token = jwt.sign({ userId: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
-  const playlists = db.getPlaylistsByUserId(user.id);
-  res.json({
-    success: true,
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      username: user.username,
-      avatar: user.avatar,
-      role: user.role,
-      syncCode: user.syncCode
-    },
-    token,
-    playlists
-  });
-});
 
 // Get playlist by ID
 router.get('/:id', async (req: Request, res: Response) => {
@@ -538,14 +562,70 @@ router.delete('/:id', (req: Request, res: Response) => {
   res.json({ success: true, message: 'Playlist deleted' });
 });
 
-// Add item to playlist
-router.post('/:id/items', async (req: Request, res: Response) => {
-  const { mediaItemId, item, mediaItem: reqMediaItem } = req.body;
+// Add item or multiple items to playlist (batch support)
+const handleAddItems = async (req: Request, res: Response) => {
+  const { mediaItemId, item, mediaItem: reqMediaItem, mediaItemIds, items: reqItems, mediaItems: reqMediaItems } = req.body;
   const playlist = db.findPlaylistById(req.params.id);
   if (!playlist) {
     return res.status(404).json({ error: 'Playlist not found' });
   }
 
+  if (!playlist.items) playlist.items = [];
+
+  // Determine if this is a batch request
+  const rawBatch = mediaItemIds || reqItems || reqMediaItems;
+  const isBatch = Array.isArray(rawBatch) && rawBatch.length > 0;
+
+  if (isBatch) {
+    const addedItems: PlaylistItem[] = [];
+    for (const entry of rawBatch) {
+      let targetItemId = typeof entry === 'string' ? entry : (entry?.id);
+      let mediaItem = targetItemId ? db.findMediaItemById(targetItemId) : undefined;
+      if (!mediaItem && entry && typeof entry === 'object') {
+        mediaItem = db.addMediaItem(entry);
+        targetItemId = mediaItem.id;
+      }
+
+      if (!mediaItem) continue;
+
+      const newItem: PlaylistItem = {
+        id: `item-${Date.now()}-${Math.floor(Math.random() * 10000)}-${playlist.items.length}`,
+        playlistId: playlist.id,
+        mediaItemId: targetItemId,
+        orderIndex: playlist.items.length,
+        addedAt: new Date().toISOString(),
+        mediaItem
+      };
+
+      if (!mediaItem.duration || mediaItem.duration === 240 || mediaItem.duration <= 0 || (mediaItem.duration === 30 && (mediaItem.id.startsWith('itunes-') || mediaItem.id.startsWith('deezer-')))) {
+        try {
+          const real = await fetchTrackDuration(mediaItem);
+          if (real && real > 0) {
+            mediaItem.duration = real;
+            newItem.mediaItem.duration = real;
+            db.updateMediaItemDuration(mediaItem.id, real);
+          }
+        } catch {}
+      }
+
+      playlist.items.push(newItem);
+      addedItems.push(newItem);
+    }
+
+    playlist.itemCount = playlist.items.length;
+    playlist.updatedAt = new Date().toISOString();
+    db.saveToDisk();
+
+    return res.status(201).json({
+      success: true,
+      addedCount: addedItems.length,
+      items: addedItems,
+      item: addedItems[0] || null,
+      playlist
+    });
+  }
+
+  // Single item addition fallback
   let targetItemId = mediaItemId || item?.id || reqMediaItem?.id;
   let mediaItem = targetItemId ? db.findMediaItemById(targetItemId) : undefined;
   if (!mediaItem && (item || reqMediaItem)) {
@@ -558,7 +638,6 @@ router.post('/:id/items', async (req: Request, res: Response) => {
     return res.status(404).json({ error: 'Media item not found' });
   }
 
-  if (!playlist.items) playlist.items = [];
   const newItem: PlaylistItem = {
     id: `item-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     playlistId: playlist.id,
@@ -582,10 +661,14 @@ router.post('/:id/items', async (req: Request, res: Response) => {
 
   playlist.items.push(newItem);
   playlist.itemCount = playlist.items.length;
+  playlist.updatedAt = new Date().toISOString();
   db.saveToDisk();
 
-  res.status(201).json({ item: newItem, playlist });
-});
+  res.status(201).json({ success: true, addedCount: 1, items: [newItem], item: newItem, playlist });
+};
+
+router.post('/:id/items', handleAddItems);
+router.post('/:id/items/batch', handleAddItems);
 
 // Save YouTube / Spotify / Web stream URL directly to the playlist
 router.post('/:id/import-url', async (req: Request, res: Response) => {

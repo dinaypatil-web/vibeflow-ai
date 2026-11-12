@@ -119,49 +119,71 @@ export function getLocallyCachedPlaylists(userId?: string): Playlist[] {
   }
 }
 
-export function mergeWithLocalPlaylists(serverPlaylists: Playlist[], userId?: string): Playlist[] {
+export function mergeWithLocalPlaylists(
+  serverPlaylists: Playlist[], 
+  userId?: string, 
+  serverDeletedIds: string[] = []
+): Playlist[] {
   try {
     const uid = userId || getStoredUserId();
-    const isLoggedIn = Boolean(uid && uid !== 'demo-user-id');
-    const serverIds = new Set(serverPlaylists.map(p => p.id));
+    const deletedSet = new Set(serverDeletedIds);
+    
+    // Get local created IDs and cached playlists
+    const localCreatedIds = getStoredCreatedPlaylistIds(uid);
+    const localCached = getLocallyCachedPlaylists(uid);
 
-    if (isLoggedIn) {
-      // For authenticated users, the server database is the cross-device source of truth.
-      // Playlists deleted from another device must be removed from this device's local cache.
-      const currentCreatedIds = getStoredCreatedPlaylistIds(uid).filter(id => serverIds.has(id));
-      localStorage.setItem(getCreatedIdsKey(uid), JSON.stringify(currentCreatedIds.slice(0, 100)));
-      localStorage.setItem(getCacheKey(uid), JSON.stringify(serverPlaylists.slice(0, 100)));
-
-      // If the selected playlist was deleted on another device, clear it from local storage
-      const selectedId = localStorage.getItem(LS_SELECTED_PLAYLIST_ID);
-      if (selectedId && !serverIds.has(selectedId)) {
-        localStorage.removeItem(LS_SELECTED_PLAYLIST_ID);
-      }
-      return serverPlaylists;
-    }
-
-    // Demo / guest unauthenticated session handling
-    const createdIds = new Set(getStoredCreatedPlaylistIds(uid));
-    const cached = getLocallyCachedPlaylists(uid);
+    // Map starting with server playlists that haven't been deleted
     const map = new Map<string, Playlist>();
-
     for (const pl of serverPlaylists) {
-      map.set(pl.id, pl);
-      if (!pl.isSharedWithMe && !pl.id.startsWith('playlist-')) {
-        createdIds.add(pl.id);
-      }
-    }
-
-    // Preserve any locally created playlists that have not yet arrived from server
-    for (const pl of cached) {
-      if (!map.has(pl.id) && createdIds.has(pl.id)) {
+      if (!deletedSet.has(pl.id)) {
         map.set(pl.id, pl);
       }
     }
 
+    // Preserve any locally cached playlists that:
+    // 1. Have NOT been explicitly deleted
+    // 2. Are not yet on the server (e.g. created locally before sync, or offline)
+    const unSyncedToPush: Playlist[] = [];
+    for (const pl of localCached) {
+      if (!deletedSet.has(pl.id)) {
+        if (!map.has(pl.id)) {
+          map.set(pl.id, pl);
+          unSyncedToPush.push(pl);
+        }
+      }
+    }
+
+    // Filter created IDs to exclude only explicitly deleted IDs
+    const updatedCreatedIds = Array.from(new Set([
+      ...serverPlaylists.filter(p => !p.id.startsWith('playlist-') && !p.isSharedWithMe).map(p => p.id),
+      ...localCreatedIds
+    ])).filter(id => !deletedSet.has(id));
+
     const merged = Array.from(map.values());
     localStorage.setItem(getCacheKey(uid), JSON.stringify(merged.slice(0, 100)));
-    localStorage.setItem(getCreatedIdsKey(uid), JSON.stringify(Array.from(createdIds).slice(0, 100)));
+    localStorage.setItem(getCreatedIdsKey(uid), JSON.stringify(updatedCreatedIds.slice(0, 100)));
+
+    // Prune selected playlist if it was explicitly deleted
+    const selectedId = localStorage.getItem(LS_SELECTED_PLAYLIST_ID);
+    if (selectedId && deletedSet.has(selectedId)) {
+      localStorage.removeItem(LS_SELECTED_PLAYLIST_ID);
+    }
+
+    // If there were un-synced playlists created on this device, push them to the server so other devices get them
+    if (unSyncedToPush.length > 0 && uid !== 'demo-user-id') {
+      const token = getStoredToken();
+      if (token) {
+        fetch(`${API_BASE}/playlists/sync/link`, {
+          method: 'POST',
+          headers: authHeaders(token),
+          body: JSON.stringify({
+            clientPlaylistIds: unSyncedToPush.map(p => p.id),
+            clientPlaylists: unSyncedToPush
+          })
+        }).catch(() => {});
+      }
+    }
+
     return merged;
   } catch {
     return serverPlaylists;
@@ -310,7 +332,8 @@ export const api = {
       if (!res.ok) throw new Error('Fetch playlists failed');
       const data = await res.json();
       const serverPlaylists: Playlist[] = data.playlists || [];
-      return mergeWithLocalPlaylists(serverPlaylists, uid);
+      const deletedIds: string[] = data.deletedPlaylistIds || [];
+      return mergeWithLocalPlaylists(serverPlaylists, uid, deletedIds);
     } catch (err) {
       console.warn('API getPlaylists error, returning locally cached playlists:', err);
       const uid = userId || getStoredUserId();
@@ -410,6 +433,33 @@ export const api = {
       method: 'POST',
       headers: authHeaders(t),
       body: JSON.stringify({ mediaItemId })
+    });
+    const data = await res.json();
+    if (data.playlist) {
+      saveLocalCreatedPlaylist(data.playlist);
+    }
+    return data;
+  },
+
+  // Batch add multiple tracks/files at once to a playlist
+  addItemsToPlaylist: async (playlistId: string, itemsOrIds: (string | MediaItem)[], token?: string | null) => {
+    const t = token !== undefined ? token : getStoredToken();
+    const mediaItemIds: string[] = [];
+    const items: MediaItem[] = [];
+
+    for (const item of itemsOrIds) {
+      if (typeof item === 'string') {
+        mediaItemIds.push(item);
+      } else if (item && typeof item === 'object') {
+        items.push(item);
+        if (item.id) mediaItemIds.push(item.id);
+      }
+    }
+
+    const res = await fetch(`${API_BASE}/playlists/${playlistId}/items`, {
+      method: 'POST',
+      headers: authHeaders(t),
+      body: JSON.stringify({ mediaItemIds, items })
     });
     const data = await res.json();
     if (data.playlist) {

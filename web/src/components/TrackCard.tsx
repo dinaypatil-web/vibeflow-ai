@@ -13,7 +13,8 @@ import {
   Headphones,
   Waves,
   Globe,
-  Download
+  Download,
+  Check
 } from 'lucide-react';
 import { MediaItem } from '../types';
 import { usePlayerStore } from '../store/playerStore';
@@ -23,13 +24,19 @@ interface TrackCardProps {
   queueContext?: MediaItem[];
   onFindSimilar?: (track: MediaItem) => void;
   onAddToPlaylist?: (track: MediaItem) => void;
+  isSelected?: boolean;
+  onToggleSelect?: (track: MediaItem) => void;
+  isSelectMode?: boolean;
 }
 
 export const TrackCard: React.FC<TrackCardProps> = ({ 
   track, 
   queueContext, 
   onFindSimilar, 
-  onAddToPlaylist 
+  onAddToPlaylist,
+  isSelected,
+  onToggleSelect,
+  isSelectMode
 }) => {
   const { currentTrack, isPlaying, playTrack, togglePlay, favorites, toggleFavorite, openDownloadModal } = usePlayerStore();
 
@@ -123,6 +130,25 @@ export const TrackCard: React.FC<TrackCardProps> = ({
             </span>
           )}
         </div>
+
+        {/* Selection Checkbox */}
+        {(isSelectMode || isSelected) && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSelect?.(track);
+            }}
+            className={`absolute top-2 right-2 z-10 w-6 h-6 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
+              isSelected 
+                ? 'bg-brand-500 text-white shadow-md ring-2 ring-white/80' 
+                : 'bg-black/60 hover:bg-black/80 text-white/50 hover:text-white border border-white/20'
+            }`}
+            title={isSelected ? 'Deselect track' : 'Select track to add to playlist'}
+          >
+            {isSelected && <Check className="w-4 h-4 stroke-[3]" />}
+          </button>
+        )}
 
         {/* Duration badge */}
         <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded-md bg-black/70 backdrop-blur-md text-[10px] font-mono text-slate-300">

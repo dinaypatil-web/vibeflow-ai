@@ -14,6 +14,7 @@ import { TrackSortControl } from "../components/TrackSortControl";
 import { sortMediaItems, formatCompleteDate } from "../utils/trackSort";
 import { ALBUM_SORT_OPTIONS, sortAlbums } from "../utils/albumSort";
 import { CHANNEL_SORT_OPTIONS, sortChannels } from "../utils/channelSort";
+import { BatchTrackActionBar } from "../components/BatchTrackActionBar";
 
 export type SourceFilterId = 'all' | 'youtube' | 'spotify' | 'jiosaavn' | 'deezer' | 'soundcloud' | 'local';
 
@@ -204,7 +205,14 @@ const ProviderBadge: React.FC<{ provider: MediaProvider; size?: "sm" | "xs" }> =
   return <span className={`${cls} rounded-md bg-surface-700 text-slate-300 font-bold flex items-center gap-1`}><Radio className="w-3 h-3" /><span>Open</span></span>;
 };
 
-const TrackRow: React.FC<{ track: MediaItem; queueContext?: MediaItem[]; onAddToPlaylist?: (t: MediaItem) => void }> = ({ track, queueContext, onAddToPlaylist }) => {
+const TrackRow: React.FC<{ 
+  track: MediaItem; 
+  queueContext?: MediaItem[]; 
+  onAddToPlaylist?: (t: MediaItem) => void;
+  isSelected?: boolean;
+  onToggleSelect?: (t: MediaItem) => void;
+  isSelectMode?: boolean;
+}> = ({ track, queueContext, onAddToPlaylist, isSelected, onToggleSelect, isSelectMode }) => {
   const { currentTrack, isPlaying, playTrack, togglePlay, favorites, toggleFavorite } = usePlayerStore();
   const [showDetails, setShowDetails] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
@@ -239,8 +247,25 @@ const TrackRow: React.FC<{ track: MediaItem; queueContext?: MediaItem[]; onAddTo
   }, [track]);
 
   return (
-    <div className={`rounded-xl transition-all border ${isCurrent ? "bg-brand-500/10 border-brand-500/30" : "hover:bg-surface-800/60 border-transparent hover:border-white/5"}`}>
+    <div className={`rounded-xl transition-all border ${isSelected ? "bg-brand-500/15 border-brand-500/40" : isCurrent ? "bg-brand-500/10 border-brand-500/30" : "hover:bg-surface-800/60 border-transparent hover:border-white/5"}`}>
       <div className="flex items-center gap-3 p-3 cursor-pointer group" onClick={handlePlay}>
+        {(isSelectMode || isSelected) && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSelect?.(track);
+            }}
+            className={`shrink-0 w-5 h-5 rounded-md flex items-center justify-center transition-all cursor-pointer ${
+              isSelected 
+                ? 'bg-brand-500 text-white shadow-sm ring-1 ring-white/50' 
+                : 'bg-surface-800 text-white/40 hover:text-white border border-white/20'
+            }`}
+            title={isSelected ? "Deselect" : "Select track"}
+          >
+            {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+          </button>
+        )}
         <div className="relative shrink-0 w-12 h-12 rounded-lg overflow-hidden bg-surface-850">
           <img src={track.thumbnail} alt={track.title} className="w-full h-full object-cover" loading="lazy" />
           <div className={`absolute inset-0 bg-black/50 flex items-center justify-center transition-opacity ${playing ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
@@ -1026,7 +1051,7 @@ export const sortSingers = (singers: SingerArtist[], option: string): SingerArti
 type SearchTab = "all" | "tracks" | "albums" | "artists" | "channels";
 
 interface SearchViewProps {
-  onAddToPlaylist?: (track: MediaItem) => void;
+  onAddToPlaylist?: (track: MediaItem | MediaItem[]) => void;
 }
 
 export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
@@ -1038,6 +1063,29 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
   const [selectedSource, setSelectedSource] = useState<SourceFilterId>("all");
   const [loadingSource, setLoadingSource] = useState<SourceFilterId | null>(null);
   const [tracks, setTracks] = useState<MediaItem[]>([]);
+  const [selectedTracks, setSelectedTracks] = useState<MediaItem[]>([]);
+  const [isSelectMode, setIsSelectMode] = useState(false);
+
+  const toggleSelectTrack = (track: MediaItem) => {
+    setSelectedTracks(prev => {
+      const exists = prev.some(t => t.id === track.id);
+      if (exists) {
+        const next = prev.filter(t => t.id !== track.id);
+        if (next.length === 0) setIsSelectMode(false);
+        return next;
+      } else {
+        return [...prev, track];
+      }
+    });
+  };
+
+  const handleSelectAll = (allTracksList: MediaItem[]) => {
+    if (selectedTracks.length === allTracksList.length) {
+      setSelectedTracks([]);
+    } else {
+      setSelectedTracks([...allTracksList]);
+    }
+  };
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [semanticHint, setSemanticHint] = useState<string | null>(null);
@@ -1749,14 +1797,41 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
                         <Music className="w-4 h-4 text-brand-400" />
                         Tracks & Songs ({sortedTracks.length})
                       </h3>
-                      {sortedTracks.length > 1 && (
-                        <TrackSortControl currentSort={sortOption} onSortChange={setSortOption} title="Sort Tracks By" />
-                      )}
+                      <div className="flex items-center gap-2">
+                        {sortedTracks.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = !isSelectMode;
+                              setIsSelectMode(next);
+                              if (!next) setSelectedTracks([]);
+                            }}
+                            className={`px-2.5 py-1 text-xs rounded-xl border transition-colors cursor-pointer ${
+                              isSelectMode 
+                                ? 'bg-brand-500/20 text-brand-300 border-brand-500/40 font-bold' 
+                                : 'bg-surface-800 text-slate-300 border-white/5 hover:bg-surface-750'
+                            }`}
+                          >
+                            {isSelectMode ? 'Cancel Selection' : 'Select Multiple'}
+                          </button>
+                        )}
+                        {sortedTracks.length > 1 && (
+                          <TrackSortControl currentSort={sortOption} onSortChange={setSortOption} title="Sort Tracks By" />
+                        )}
+                      </div>
                     </div>
                     {sortedTracks.length > 0 ? (
                       <div className="space-y-1">
                         {sortedTracks.map(t => (
-                          <TrackRow key={t.id} track={t} queueContext={sortedTracks} onAddToPlaylist={onAddToPlaylist} />
+                          <TrackRow 
+                            key={t.id} 
+                            track={t} 
+                            queueContext={sortedTracks} 
+                            onAddToPlaylist={onAddToPlaylist}
+                            isSelected={selectedTracks.some(st => st.id === t.id)}
+                            onToggleSelect={toggleSelectTrack}
+                            isSelectMode={isSelectMode || selectedTracks.length > 0}
+                          />
                         ))}
                       </div>
                     ) : (
@@ -1769,10 +1844,38 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
               {/* Tracks Tab */}
               {activeTab === "tracks" && (
                 sortedTracks.length > 0 ? (
-                  <div className="space-y-1">
-                    {sortedTracks.map(t => (
-                      <TrackRow key={t.id} track={t} queueContext={sortedTracks} onAddToPlaylist={onAddToPlaylist} />
-                    ))}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between pb-1">
+                      <span className="text-xs text-slate-400 font-medium">All Matching Tracks ({sortedTracks.length})</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !isSelectMode;
+                          setIsSelectMode(next);
+                          if (!next) setSelectedTracks([]);
+                        }}
+                        className={`px-2.5 py-1 text-xs rounded-xl border transition-colors cursor-pointer ${
+                          isSelectMode 
+                            ? 'bg-brand-500/20 text-brand-300 border-brand-500/40 font-bold' 
+                            : 'bg-surface-800 text-slate-300 border-white/5 hover:bg-surface-750'
+                        }`}
+                      >
+                        {isSelectMode ? 'Cancel Selection' : 'Select Multiple'}
+                      </button>
+                    </div>
+                    <div className="space-y-1">
+                      {sortedTracks.map(t => (
+                        <TrackRow 
+                          key={t.id} 
+                          track={t} 
+                          queueContext={sortedTracks} 
+                          onAddToPlaylist={onAddToPlaylist}
+                          isSelected={selectedTracks.some(st => st.id === t.id)}
+                          onToggleSelect={toggleSelectTrack}
+                          isSelectMode={isSelectMode || selectedTracks.length > 0}
+                        />
+                      ))}
+                    </div>
                   </div>
                 ) : (
                   <EmptyState icon={<Music className="w-8 h-8" />} message="No tracks found" sub="Try a different search term" />
@@ -1828,6 +1931,23 @@ export const SearchView: React.FC<SearchViewProps> = ({ onAddToPlaylist }) => {
           )}
         </div>
       )}
+
+      {/* Floating Batch Track Action Bar */}
+      <BatchTrackActionBar
+        selectedTracks={selectedTracks}
+        allTracks={sortedTracks}
+        onSelectAll={() => handleSelectAll(sortedTracks)}
+        onClear={() => {
+          setSelectedTracks([]);
+          setIsSelectMode(false);
+        }}
+        onAddToPlaylist={(selected) => {
+          if (onAddToPlaylist) {
+            onAddToPlaylist(selected);
+          }
+        }}
+        itemName="tracks"
+      />
     </div>
   );
 };

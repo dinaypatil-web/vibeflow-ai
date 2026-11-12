@@ -39,8 +39,10 @@ router.get('/search', async (req: Request, res: Response) => {
     if (searchType === 'artist' || searchType === 'singer') {
       const qLower = query.toLowerCase().trim();
       items.sort((a, b) => {
-        const aMatch = a.artist.toLowerCase().includes(qLower) ? 1 : 0;
-        const bMatch = b.artist.toLowerCase().includes(qLower) ? 1 : 0;
+        const aArt = (a.artist || '').toLowerCase();
+        const bArt = (b.artist || '').toLowerCase();
+        const aMatch = aArt.includes(qLower) ? 1 : 0;
+        const bMatch = bArt.includes(qLower) ? 1 : 0;
         return bMatch - aMatch;
       });
     } else if (searchType === 'album') {
@@ -95,10 +97,10 @@ router.get('/channel/:channelName/tracks', async (req: Request, res: Response) =
     const nameLower = channelName.toLowerCase();
 
     // 1. Gather all local matching tracks from DB
-    const dbTracks = db.getAllMediaItems().filter(item => 
-      item.artist.toLowerCase().includes(nameLower) ||
-      nameLower.includes(item.artist.toLowerCase())
-    );
+    const dbTracks = db.getAllMediaItems().filter(item => {
+      const art = (item.artist || '').toLowerCase();
+      return art && (art.includes(nameLower) || nameLower.includes(art));
+    });
 
     // 2. Fetch live tracks from the provider / unified search
     let liveTracks: MediaItem[] = [];

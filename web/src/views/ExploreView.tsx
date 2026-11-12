@@ -20,7 +20,8 @@ import {
   ArrowUpDown,
   LayoutGrid,
   ListOrdered,
-  Clock
+  Clock,
+  Check
 } from 'lucide-react';
 import { MediaItem, MediaProvider, GenreCategory, MoodCategory } from '../types';
 import { api } from '../services/api';
@@ -28,11 +29,12 @@ import { TrackCard } from '../components/TrackCard';
 import { TrackSortControl } from '../components/TrackSortControl';
 import { sortMediaItems } from '../utils/trackSort';
 import { usePlayerStore } from '../store/playerStore';
+import { BatchTrackActionBar } from '../components/BatchTrackActionBar';
 
 interface ExploreViewProps {
   initialQuery?: string;
   initialMood?: MoodCategory | null;
-  onAddToPlaylist?: (track: MediaItem) => void;
+  onAddToPlaylist?: (track: MediaItem | MediaItem[]) => void;
   onOpenImportUrl?: () => void;
 }
 
@@ -51,6 +53,29 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   const [semanticSummary, setSemanticSummary] = useState<string | null>(null);
   const [sortOption, setSortOption] = useState<string>('default');
   const [viewMode, setViewMode] = useState<'grid' | 'sequence'>('grid');
+  const [selectedTracks, setSelectedTracks] = useState<MediaItem[]>([]);
+  const [isSelectMode, setIsSelectMode] = useState(false);
+
+  const toggleSelectTrack = (track: MediaItem) => {
+    setSelectedTracks(prev => {
+      const exists = prev.some(t => t.id === track.id);
+      if (exists) {
+        const next = prev.filter(t => t.id !== track.id);
+        if (next.length === 0) setIsSelectMode(false);
+        return next;
+      } else {
+        return [...prev, track];
+      }
+    });
+  };
+
+  const handleSelectAll = (allTracksList: MediaItem[]) => {
+    if (selectedTracks.length === allTracksList.length) {
+      setSelectedTracks([]);
+    } else {
+      setSelectedTracks([...allTracksList]);
+    }
+  };
 
   const { playTrack } = usePlayerStore();
 
@@ -386,6 +411,23 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
               {/* Sort by attributes */}
               <TrackSortControl currentSort={sortOption} onSortChange={setSortOption} />
 
+              {/* Multi-select toggle */}
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !isSelectMode;
+                  setIsSelectMode(next);
+                  if (!next) setSelectedTracks([]);
+                }}
+                className={`px-3 py-1.5 text-xs rounded-xl border transition-colors cursor-pointer ${
+                  isSelectMode 
+                    ? 'bg-brand-500/20 text-brand-300 border-brand-500/40 font-bold' 
+                    : 'bg-surface-800 text-slate-300 border-white/5 hover:bg-surface-750'
+                }`}
+              >
+                {isSelectMode ? 'Cancel Selection' : 'Select Multiple'}
+              </button>
+
               {/* Layout Toggle: Grid vs Sequence List */}
               <div className="flex items-center bg-surface-800 p-1 rounded-xl border border-white/5">
                 <button
@@ -426,6 +468,9 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                   track={track} 
                   queueContext={sortedResults}
                   onAddToPlaylist={onAddToPlaylist}
+                  isSelected={selectedTracks.some(st => st.id === track.id)}
+                  onToggleSelect={toggleSelectTrack}
+                  isSelectMode={isSelectMode || selectedTracks.length > 0}
                 />
               ))}
             </div>
@@ -438,81 +483,103 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                   <Clock className="w-3.5 h-3.5" />
                 </div>
               </div>
-              {sortedResults.map((track, idx) => (
-                <div
-                  key={`${track.id}-${idx}`}
-                  onClick={() => playTrack(track, sortedResults)}
-                  className="flex items-center justify-between p-2.5 rounded-xl hover:bg-surface-800 transition-colors group cursor-pointer border border-transparent hover:border-white/5"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                    {/* Sequence number with Up/Down buttons */}
-                    <div className="flex items-center gap-1 min-w-[32px] shrink-0">
-                      <span className="w-4 text-center text-xs font-mono text-slate-500 group-hover:text-brand-400">
-                        {idx + 1}
-                      </span>
-                      <div className="flex flex-col -space-y-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              {sortedResults.map((track, idx) => {
+                const isSelected = selectedTracks.some(st => st.id === track.id);
+                return (
+                  <div
+                    key={`${track.id}-${idx}`}
+                    onClick={() => playTrack(track, sortedResults)}
+                    className={`flex items-center justify-between p-2.5 rounded-xl transition-colors group cursor-pointer border ${
+                      isSelected ? 'bg-brand-500/15 border-brand-500/40' : 'hover:bg-surface-800 border-transparent hover:border-white/5'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      {(isSelectMode || isSelected) && (
                         <button
                           type="button"
-                          disabled={idx === 0}
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleMoveExploreTrack(idx, 'up');
+                            toggleSelectTrack(track);
                           }}
-                          className="p-0.5 text-slate-400 hover:text-brand-300 disabled:opacity-20 hover:bg-surface-700 rounded transition-colors cursor-pointer"
-                          title="Move track up in sequence"
+                          className={`shrink-0 w-5 h-5 rounded-md flex items-center justify-center transition-all cursor-pointer ${
+                            isSelected 
+                              ? 'bg-brand-500 text-white shadow-sm ring-1 ring-white/50' 
+                              : 'bg-surface-800 text-white/40 hover:text-white border border-white/20'
+                          }`}
+                          title={isSelected ? "Deselect" : "Select track"}
                         >
-                          <ArrowUp className="w-3 h-3" />
+                          {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                         </button>
-                        <button
-                          type="button"
-                          disabled={idx === sortedResults.length - 1}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleMoveExploreTrack(idx, 'down');
-                          }}
-                          className="p-0.5 text-slate-400 hover:text-brand-300 disabled:opacity-20 hover:bg-surface-700 rounded transition-colors cursor-pointer"
-                          title="Move track down in sequence"
-                        >
-                          <ArrowDown className="w-3 h-3" />
-                        </button>
+                      )}
+                      {/* Sequence number with Up/Down buttons */}
+                      <div className="flex items-center gap-1 min-w-[32px] shrink-0">
+                        <span className="w-4 text-center text-xs font-mono text-slate-500 group-hover:text-brand-400">
+                          {idx + 1}
+                        </span>
+                        <div className="flex flex-col -space-y-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            disabled={idx === 0}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMoveExploreTrack(idx, 'up');
+                            }}
+                            className="p-0.5 text-slate-400 hover:text-brand-300 disabled:opacity-20 hover:bg-surface-700 rounded transition-colors cursor-pointer"
+                            title="Move track up in sequence"
+                          >
+                            <ArrowUp className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === sortedResults.length - 1}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMoveExploreTrack(idx, 'down');
+                            }}
+                            className="p-0.5 text-slate-400 hover:text-brand-300 disabled:opacity-20 hover:bg-surface-700 rounded transition-colors cursor-pointer"
+                            title="Move track down in sequence"
+                          >
+                            <ArrowDown className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                      <img src={track.thumbnail} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
+                      <div className="min-w-0">
+                        <h5 className="text-sm font-semibold text-slate-200 truncate group-hover:text-brand-300 transition-colors">
+                          {track.title}
+                        </h5>
+                        <p className="text-xs text-slate-400 truncate">{track.artist}</p>
                       </div>
                     </div>
-                    <img src={track.thumbnail} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
-                    <div className="min-w-0">
-                      <h5 className="text-sm font-semibold text-slate-200 truncate group-hover:text-brand-300 transition-colors">
-                        {track.title}
-                      </h5>
-                      <p className="text-xs text-slate-400 truncate">{track.artist}</p>
-                    </div>
-                  </div>
 
-                  <div className="flex items-center gap-4 text-xs text-slate-400">
-                    <div className="hidden sm:flex items-center gap-1.5">
-                      <span className="px-2 py-0.5 rounded-md bg-surface-750 text-slate-300 text-[11px]">
-                        {track.genre}
+                    <div className="flex items-center gap-4 text-xs text-slate-400">
+                      <div className="hidden sm:flex items-center gap-1.5">
+                        <span className="px-2 py-0.5 rounded-md bg-surface-750 text-slate-300 text-[11px]">
+                          {track.genre}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-md bg-brand-500/10 text-brand-300 text-[11px]">
+                          {track.mood}
+                        </span>
+                      </div>
+                      <span className="font-mono text-slate-400 text-xs font-medium">
+                        {formatTrackDuration(track.duration)}
                       </span>
-                      <span className="px-2 py-0.5 rounded-md bg-brand-500/10 text-brand-300 text-[11px]">
-                        {track.mood}
-                      </span>
+                      {onAddToPlaylist && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onAddToPlaylist(track);
+                          }}
+                          className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg bg-surface-750 hover:bg-brand-600 hover:text-white transition-all text-slate-400 cursor-pointer"
+                          title="Add to playlist"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
-                    <span className="font-mono text-slate-400 text-xs font-medium">
-                      {formatTrackDuration(track.duration)}
-                    </span>
-                    {onAddToPlaylist && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onAddToPlaylist(track);
-                        }}
-                        className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg bg-surface-750 hover:bg-brand-600 hover:text-white transition-all text-slate-400 cursor-pointer"
-                        title="Add to playlist"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                      </button>
-                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )
         ) : (
@@ -525,6 +592,23 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
           </div>
         )}
       </section>
+
+      {/* Floating Batch Track Action Bar */}
+      <BatchTrackActionBar
+        selectedTracks={selectedTracks}
+        allTracks={sortedResults}
+        onSelectAll={() => handleSelectAll(sortedResults)}
+        onClear={() => {
+          setSelectedTracks([]);
+          setIsSelectMode(false);
+        }}
+        onAddToPlaylist={(selected) => {
+          if (onAddToPlaylist) {
+            onAddToPlaylist(selected);
+          }
+        }}
+        itemName="tracks"
+      />
     </div>
   );
 };
