@@ -128,6 +128,53 @@ export function getLocallyCachedPlaylists(userId?: string): Playlist[] {
   }
 }
 
+export async function clearPlaylistCache(userId?: string): Promise<{ success: boolean; message: string }> {
+  try {
+    const uid = userId || getStoredUserId();
+    // 1. Remove all localStorage playlist cache keys across all users & guests
+    const keysToRemove: string[] = [];
+    if (typeof localStorage !== 'undefined') {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (
+          key.startsWith('vibeflow_cached_playlists') ||
+          key.startsWith('vibeflow_created_playlist_ids') ||
+          key === LS_CREATED_PLAYLIST_IDS ||
+          key === LS_CACHED_PLAYLISTS ||
+          key === LS_SELECTED_PLAYLIST_ID
+        )) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(k => {
+        try { localStorage.removeItem(k); } catch {}
+      });
+    }
+
+    // 2. Call backend server cache clear endpoint
+    try {
+      const t = getStoredToken();
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (t) headers['Authorization'] = `Bearer ${t}`;
+      if (uid) headers['x-user-id'] = uid;
+      await fetch(`${API_BASE}/playlists/cache/clear`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ userId: uid, resetAll: uid === 'demo-user-id' })
+      });
+    } catch {}
+
+    // 3. Dispatch update events to all active components
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('vibeflow:playlist_updated', { detail: { action: 'cache_cleared' } }));
+      window.dispatchEvent(new CustomEvent('vibeflow:cache_cleared', { detail: { userId: uid } }));
+    }
+    return { success: true, message: 'Playlist cache cleared successfully across project' };
+  } catch (err: any) {
+    return { success: false, message: err?.message || 'Failed to clear cache' };
+  }
+}
+
 export function mergeWithLocalPlaylists(
   serverPlaylists: Playlist[], 
   userId?: string, 
@@ -436,6 +483,10 @@ export const api = {
       throw new Error(err.error || 'Failed to delete selected playlists');
     }
     return await res.json();
+  },
+
+  clearPlaylistCache: async (userId?: string) => {
+    return await clearPlaylistCache(userId);
   },
 
   addItemToPlaylist: async (playlistId: string, mediaItemOrId: string | MediaItem, token?: string | null) => {

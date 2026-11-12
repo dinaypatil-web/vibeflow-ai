@@ -26,7 +26,7 @@ import {
   QrCode
 } from 'lucide-react';
 import { Playlist, PlaylistItem, MediaItem } from '../types';
-import { api, API_BASE } from '../services/api';
+import { api, API_BASE, clearPlaylistCache } from '../services/api';
 import { usePlayerStore } from '../store/playerStore';
 import { SmartPlaylistModal } from '../components/SmartPlaylistModal';
 import { CreatePlaylistModal } from '../components/CreatePlaylistModal';
@@ -347,6 +347,27 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
     }
   };
 
+  const [isClearingCache, setIsClearingCache] = useState(false);
+
+  const handleClearCache = async () => {
+    const confirmed = confirm(
+      "Clear playlist cache across the project?\n\n" +
+      "This will remove temporary/offline cached playlists and refresh your active library cleanly from the server."
+    );
+    if (!confirmed) return;
+
+    setIsClearingCache(true);
+    try {
+      await clearPlaylistCache(user?.id);
+      setSelectedPlaylist(null);
+      await fetchPlaylists();
+    } catch (err: any) {
+      console.warn("Error clearing cache:", err);
+    } finally {
+      setIsClearingCache(false);
+    }
+  };
+
   const handleRemoveTrack = async (e: React.MouseEvent, mediaItemId: string) => {
     e.stopPropagation();
     if (!selectedPlaylist) return;
@@ -616,6 +637,16 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
           >
             <Cloud className="w-3.5 h-3.5 text-brand-400" />
             <span>Sync Across Devices</span>
+          </button>
+
+          <button
+            onClick={handleClearCache}
+            disabled={isClearingCache}
+            className="px-3 py-1.5 rounded-xl bg-surface-800 hover:bg-surface-750 border border-white/10 text-xs font-semibold text-slate-300 hover:text-rose-400 transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+            title="Clear all local & server playlist cache across devices"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-slate-400 hover:text-rose-400" />
+            <span>{isClearingCache ? 'Clearing...' : 'Clear Cache'}</span>
           </button>
 
           {user ? (

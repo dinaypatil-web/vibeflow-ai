@@ -1582,6 +1582,34 @@ class MemoryDatabase {
     return this.data.deletedPlaylistIds || [];
   }
 
+  public clearPlaylistCache(userId?: string): { success: boolean; clearedCount: number; remainingCount: number } {
+    const defaultIds = new Set(['playlist-morning', 'playlist-instrumentals', 'playlist-workout', 'playlist-retro', 'mobile-pl-1']);
+    const beforeCount = this.data.playlists.length;
+
+    if (userId && userId !== 'demo-user-id') {
+      const userAliases = this.getUserAliasSet(userId);
+      this.data.playlists = this.data.playlists.filter(p => {
+        if (defaultIds.has(p.id)) return true;
+        const isOwner = userAliases.has((p.userId || '').toLowerCase()) ||
+          userAliases.has((p.creator?.id || '').toLowerCase()) ||
+          userAliases.has((p.creator?.email || '').toLowerCase());
+        return !isOwner;
+      });
+    } else {
+      // Clear all test/temporary playlists and keep clean default seeds
+      this.data.playlists = this.data.playlists.filter(p => defaultIds.has(p.id));
+    }
+
+    this.data.deletedPlaylistIds = [];
+    this.saveToDisk();
+    this.syncToCloud().catch(() => {});
+    return {
+      success: true,
+      clearedCount: beforeCount - this.data.playlists.length,
+      remainingCount: this.data.playlists.length
+    };
+  }
+
   public deletePlaylist(id: string): boolean {
     if (!this.data.deletedPlaylistIds) this.data.deletedPlaylistIds = [];
     if (!this.data.deletedPlaylistIds.includes(id)) {

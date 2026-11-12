@@ -245,6 +245,29 @@ router.get('/tombstones', (req: Request, res: Response) => {
   res.json({ deletedPlaylistIds: db.getDeletedPlaylistIds() });
 });
 
+// Clear / reset playlist cache across devices & project
+const handleClearPlaylistCache = async (req: Request, res: Response) => {
+  const userId = resolveUserId(req);
+  const resetAll = req.body?.resetAll === true || req.query?.resetAll === 'true';
+  const result = db.clearPlaylistCache(resetAll ? undefined : (userId !== 'demo-user-id' ? userId : undefined));
+
+  broadcastPlaylistEvent({
+    type: 'sync',
+    userId,
+    timestamp: Date.now()
+  });
+
+  res.json({
+    ...result,
+    message: 'Playlist cache cleared successfully across project',
+    playlists: db.getPlaylistsByUserId(userId),
+    deletedPlaylistIds: db.getDeletedPlaylistIds()
+  });
+};
+
+router.post('/cache/clear', handleClearPlaylistCache);
+router.delete('/cache', handleClearPlaylistCache);
+
 // Create Playlist
 router.post('/', (req: Request, res: Response) => {
   const { title, description, coverArt, isSmart, smartDefinition, isPrivate, isShareable, userId, creator: reqCreator, userEmail, userName } = req.body;
