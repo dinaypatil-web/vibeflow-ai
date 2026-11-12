@@ -73,6 +73,9 @@ export function saveLocalCreatedPlaylist(playlist: Playlist, userId?: string) {
     }
     localStorage.setItem(getCacheKey(uid), JSON.stringify(cached.slice(0, 100)));
     localStorage.setItem(LS_SELECTED_PLAYLIST_ID, playlist.id);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('vibeflow:playlist_updated', { detail: { playlist } }));
+    }
   } catch {}
 }
 
@@ -85,6 +88,9 @@ export function removeLocalCreatedPlaylist(id: string, userId?: string) {
     localStorage.setItem(getCacheKey(uid), JSON.stringify(cached));
     if (localStorage.getItem(LS_SELECTED_PLAYLIST_ID) === id) {
       localStorage.removeItem(LS_SELECTED_PLAYLIST_ID);
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('vibeflow:playlist_updated', { detail: { deletedId: id } }));
     }
   } catch {}
 }
@@ -100,6 +106,9 @@ export function removeMultipleLocalCreatedPlaylists(ids: string[], userId?: stri
     const selected = localStorage.getItem(LS_SELECTED_PLAYLIST_ID);
     if (selected && idSet.has(selected)) {
       localStorage.removeItem(LS_SELECTED_PLAYLIST_ID);
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('vibeflow:playlist_updated', { detail: { deletedIds: ids } }));
     }
   } catch {}
 }
@@ -583,17 +592,50 @@ export const api = {
     return data;
   },
 
-  getPlaylist: async (playlistId: string, token?: string | null): Promise<Playlist | null> => {
+  getPlaylist: async (playlistId: string, token?: string | null, shareToken?: string): Promise<Playlist | null> => {
     try {
       const t = token !== undefined ? token : getStoredToken();
-      const res = await fetch(`${API_BASE}/playlists/${playlistId}`, {
-        headers: t ? { 'Authorization': `Bearer ${t}` } : {}
+      let url = `${API_BASE}/playlists/${encodeURIComponent(playlistId)}`;
+      if (shareToken) {
+        url += `?shareToken=${encodeURIComponent(shareToken)}`;
+      }
+      const res = await fetch(url, {
+        headers: authHeaders(t)
       });
       if (!res.ok) return null;
       const data = await res.json();
       return data.playlist || null;
     } catch {
       return null;
+    }
+  },
+
+  // Real-time live Server-Sent Events subscriber for instant playlist synchronization
+  subscribeToPlaylistEvents: (onEvent: (event: any) => void): (() => void) => {
+    try {
+      if (typeof window === 'undefined' || !(window as any).EventSource) return () => {};
+      const uid = getStoredUserId();
+      const es = new EventSource(`${API_BASE}/playlists/events?userId=${encodeURIComponent(uid)}`);
+      
+      es.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          onEvent(data);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('vibeflow:playlist_updated', { detail: data }));
+          }
+        } catch {}
+      };
+
+      es.onerror = () => {
+        // EventSource will automatically retry in background
+      };
+
+      return () => {
+        es.close();
+      };
+    } catch {
+      return () => {};
     }
   },
 

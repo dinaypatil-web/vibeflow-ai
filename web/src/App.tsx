@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { usePlayerStore, TabType } from './store/playerStore';
 import { MoodCategory, MediaItem } from './types';
+import { api } from './services/api';
 import { Sidebar } from './components/Sidebar';
 import { Navbar } from './components/Navbar';
 import { MiniPlayer } from './components/MiniPlayer';
@@ -52,6 +53,58 @@ export const App: React.FC = () => {
   React.useEffect(() => {
     loadOfflineTracks();
   }, [loadOfflineTracks]);
+
+  // Continuous real-time playlist synchronization & direct share-link routing
+  React.useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const hashQuery = window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '';
+      const hashParams = new URLSearchParams(hashQuery);
+
+      const shareToken = urlParams.get('shareToken') || hashParams.get('shareToken') || urlParams.get('token') || hashParams.get('token');
+      const playlistId = urlParams.get('playlistId') || hashParams.get('playlistId') || urlParams.get('id') || hashParams.get('id');
+
+      if (shareToken || playlistId) {
+        setActiveTab('playlists');
+        if (shareToken) {
+          api.acceptShareToken(shareToken).then(res => {
+            if (res.playlist) {
+              try {
+                localStorage.setItem('vibeflow_selected_playlist_id', res.playlist.id);
+              } catch {}
+              window.dispatchEvent(new CustomEvent('vibeflow:playlist_updated', { detail: { playlist: res.playlist } }));
+            }
+          }).catch(() => {});
+        } else if (playlistId) {
+          try {
+            localStorage.setItem('vibeflow_selected_playlist_id', playlistId);
+          } catch {}
+          api.getPlaylist(playlistId).then(pl => {
+            if (pl) {
+              window.dispatchEvent(new CustomEvent('vibeflow:playlist_updated', { detail: { playlist: pl } }));
+            }
+          }).catch(() => {});
+        }
+      }
+    } catch {}
+
+    // Continuous real-time live events subscription
+    const unsub = api.subscribeToPlaylistEvents((event) => {
+      window.dispatchEvent(new CustomEvent('vibeflow:playlist_updated', { detail: event }));
+    });
+
+    // Fallback sync polling every 4 seconds to guarantee continuous real-time accessibility
+    const syncInterval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        window.dispatchEvent(new CustomEvent('vibeflow:playlist_poll', { detail: { timestamp: Date.now() } }));
+      }
+    }, 4000);
+
+    return () => {
+      unsub();
+      clearInterval(syncInterval);
+    };
+  }, []);
 
   const handleSelectMood = (mood: MoodCategory | null) => {
     setSelectedMood(mood);
@@ -196,6 +249,9 @@ export const App: React.FC = () => {
         {/* Import URL Modal */}
         <ImportUrlModal 
           isOpen={isImportUrlModalOpen} 
+          onSuccess={() => {
+            window.dispatchEvent(new CustomEvent('vibeflow:playlist_updated', { detail: { action: 'import_url' } }));
+          }}
           onClose={() => setIsImportUrlModalOpen(false)} 
         />
 
@@ -204,6 +260,9 @@ export const App: React.FC = () => {
           isOpen={playlistTargetTracks.length > 0 || !!playlistTargetTrack}
           track={playlistTargetTrack}
           tracks={playlistTargetTracks}
+          onSuccess={() => {
+            window.dispatchEvent(new CustomEvent('vibeflow:playlist_updated', { detail: { action: 'add_track' } }));
+          }}
           onClose={() => {
             setPlaylistTargetTrack(null);
             setPlaylistTargetTracks([]);

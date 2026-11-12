@@ -140,19 +140,35 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
   };
 
   useEffect(() => {
-    // Check if user arrived via a share link
-    const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get('shareToken');
-    if (token) {
-      api.acceptShareToken(token)
-        .then(res => {
-          if (res.playlist) {
-            handleSelectPlaylist(res.playlist);
-            fetchPlaylists(res.playlist.id);
-          }
-        })
-        .catch(() => {});
-    }
+    // Check if user arrived via a share link or direct playlist ID
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const hashQuery = window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '';
+      const hashParams = new URLSearchParams(hashQuery);
+
+      const shareToken = urlParams.get('shareToken') || hashParams.get('shareToken') || urlParams.get('token') || hashParams.get('token');
+      const playlistId = urlParams.get('playlistId') || hashParams.get('playlistId') || urlParams.get('id') || hashParams.get('id');
+
+      if (shareToken) {
+        api.acceptShareToken(shareToken)
+          .then(res => {
+            if (res.playlist) {
+              handleSelectPlaylist(res.playlist);
+              fetchPlaylists(res.playlist.id);
+            }
+          })
+          .catch(() => {});
+      } else if (playlistId) {
+        api.getPlaylist(playlistId)
+          .then(pl => {
+            if (pl) {
+              handleSelectPlaylist(pl);
+              fetchPlaylists(pl.id);
+            }
+          })
+          .catch(() => {});
+      }
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -162,6 +178,12 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
       const u = e?.detail?.user !== undefined ? e.detail.user : usePlayerStore.getState().user;
       const t = e?.detail?.token !== undefined ? e.detail.token : usePlayerStore.getState().token;
       fetchPlaylists(undefined, u, t);
+    };
+
+    // Live real-time event updates from server SSE or local dispatch
+    const handleLivePlaylistUpdate = (e: any) => {
+      const targetPlId = e?.detail?.playlist?.id || e?.detail?.playlistId;
+      fetchPlaylists(targetPlId, undefined, undefined, true);
     };
 
     // Cross-device sync: refresh playlists when user focuses or returns to this tab
@@ -178,14 +200,16 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
       }
     };
 
-    // Periodic background sync: poll server every 5 seconds while tab is active to immediately reflect deletions made on other devices
+    // Continuous real-time polling sync (every 3 seconds) ensuring live parity across all devices
     const pollInterval = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
         fetchPlaylists(undefined, undefined, undefined, true);
       }
-    }, 5000);
+    }, 3000);
 
     window.addEventListener('vibeflow:auth_change', handleAuthChange);
+    window.addEventListener('vibeflow:playlist_updated', handleLivePlaylistUpdate);
+    window.addEventListener('vibeflow:playlist_poll', handleLivePlaylistUpdate);
     window.addEventListener('focus', handleSyncRefresh);
     window.addEventListener('storage', handleStorageChange);
     document.addEventListener('visibilitychange', handleSyncRefresh);
@@ -193,6 +217,8 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
     return () => {
       clearInterval(pollInterval);
       window.removeEventListener('vibeflow:auth_change', handleAuthChange);
+      window.removeEventListener('vibeflow:playlist_updated', handleLivePlaylistUpdate);
+      window.removeEventListener('vibeflow:playlist_poll', handleLivePlaylistUpdate);
       window.removeEventListener('focus', handleSyncRefresh);
       window.removeEventListener('storage', handleStorageChange);
       document.removeEventListener('visibilitychange', handleSyncRefresh);

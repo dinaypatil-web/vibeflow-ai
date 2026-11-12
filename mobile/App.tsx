@@ -707,7 +707,24 @@ export default function App() {
   useEffect(() => {
     fetchPlaylists();
     fetchMySyncCode();
-  }, []);
+
+    // Continuous real-time synchronization across devices (every 3.5 seconds)
+    const syncInterval = setInterval(() => {
+      fetchPlaylists();
+    }, 3500);
+
+    // Refresh immediately whenever mobile app returns to active foreground
+    const appStateSub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        fetchPlaylists();
+      }
+    });
+
+    return () => {
+      clearInterval(syncInterval);
+      appStateSub.remove();
+    };
+  }, [syncUser?.id, authToken, apiBaseUrl]);
 
   // Offline Audio & Download State
   const [offlineTracks, setOfflineTracks] = useState<OfflineTrackItem[]>([

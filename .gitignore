@@ -42,6 +42,7 @@ lerna-debug.log*
 .vscode/*
 !.vscode/extensions.json
 .idea/
+.kilo/
 *.suo
 *.ntvs*
 *.njsproj

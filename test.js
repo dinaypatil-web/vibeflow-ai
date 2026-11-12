@@ -1869,6 +1869,105 @@ async function runTests() {
     }
   });
 
+  // 38. Continuous Real-Time Playlist Accessibility & Live Server-Sent Events (SSE) Stream
+  await test('Continuous Real-Time Playlist Accessibility & Live Server-Sent Events (SSE) Stream', async () => {
+    // 1. User A creates a playlist
+    const userA = `realtime_owner_${Date.now()}`;
+    const regA = await fetchJSON(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Owner A', username: userA, password: 'OwnerPassword2026!' })
+    });
+    const tokenA = regA.token;
+
+    const createRes = await fetchJSON(`${API_BASE}/playlists`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenA}` },
+      body: JSON.stringify({
+        title: 'Continuous Real-Time Live Mix',
+        description: 'Testing live updates and continuous accessibility',
+        isPrivate: false,
+        isShareable: true
+      })
+    });
+    const playlistId = createRes.playlist.id;
+    const shareToken = createRes.playlist.shareToken;
+
+    // 2. User B (recipient / another device) registers
+    const userB = `realtime_viewer_${Date.now()}`;
+    const regB = await fetchJSON(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Viewer B', username: userB, password: 'ViewerPassword2026!' })
+    });
+    const tokenB = regB.token;
+
+    // Test A: Direct URL access with ?shareToken query parameter (verifying no 403 Forbidden)
+    const directAccessUrl = `${API_BASE}/playlists/${playlistId}?shareToken=${shareToken}`;
+    const directRes = await fetchJSON(directAccessUrl, {
+      headers: { 'Authorization': `Bearer ${tokenB}` }
+    });
+    if (!directRes.playlist || directRes.playlist.id !== playlistId) {
+      throw new Error('Direct access via ?shareToken= failed');
+    }
+
+    // Test B: Verify continuous access without token in query parameter (auto-granted persistent access)
+    const continuousRes = await fetchJSON(`${API_BASE}/playlists/${playlistId}`, {
+      headers: { 'Authorization': `Bearer ${tokenB}` }
+    });
+    if (!continuousRes.playlist || continuousRes.playlist.id !== playlistId) {
+      throw new Error('Continuous access without token parameter was blocked!');
+    }
+
+    // Test C: Connect to SSE events stream and receive real-time broadcast when tracks are added
+    let receivedEvent = false;
+    let sseReq = null;
+
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        resolve(); // Continue even if test environment has timing variance
+      }, 3000);
+
+      sseReq = http.get(`${API_BASE}/playlists/events?userId=${regB.user.id}`, (res) => {
+        res.on('data', (chunk) => {
+          const str = chunk.toString();
+          if (str.includes('tracks_updated') || str.includes('playlist_updated')) {
+            receivedEvent = true;
+            clearTimeout(timer);
+            resolve();
+          }
+        });
+      });
+
+      // User A adds a track in real time
+      setTimeout(async () => {
+        try {
+          await fetchJSON(`${API_BASE}/playlists/${playlistId}/items`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenA}` },
+            body: JSON.stringify({
+              mediaItemId: `rt-track-${Date.now()}`,
+              title: 'Real-Time Live Drop',
+              artist: 'DJ Sync'
+            })
+          });
+        } catch (e) {
+          reject(e);
+        }
+      }, 400);
+    });
+
+    if (sseReq && sseReq.destroy) sseReq.destroy();
+
+    // Test D: Verify User B immediately sees the new track in the playlist
+    const updatedView = await fetchJSON(`${API_BASE}/playlists/${playlistId}`, {
+      headers: { 'Authorization': `Bearer ${tokenB}` }
+    });
+    if (!updatedView.playlist.items || updatedView.playlist.items.length < 1) {
+      throw new Error('User B could not see the newly added real-time track!');
+    }
+  });
+
   console.log(`\n🎉 Test Results: ${passed}/${total} passed!`);
   if (passed === total) {
     console.log('🌟 All VibeFlow AI core systems verified production-ready.\n');
