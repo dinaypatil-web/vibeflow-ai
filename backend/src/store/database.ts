@@ -636,6 +636,7 @@ class MemoryDatabase {
           passwords: this.data.passwords,
           playlists: this.data.playlists.filter(p => !p.id.startsWith('playlist-')),
           favorites: this.data.favorites,
+          deletedPlaylistIds: this.data.deletedPlaylistIds || [],
           syncedAt: new Date().toISOString()
         };
 
@@ -681,7 +682,7 @@ class MemoryDatabase {
     return true;
   }
 
-  private mergeCloudData(cloud: { users?: User[]; passwords?: Record<string, string>; playlists?: Playlist[]; favorites?: any[] }) {
+  private mergeCloudData(cloud: { users?: User[]; passwords?: Record<string, string>; playlists?: Playlist[]; favorites?: any[]; deletedPlaylistIds?: string[] }) {
     if (!cloud) return;
     if (cloud.users && Array.isArray(cloud.users)) {
       for (const u of cloud.users) {
@@ -700,7 +701,30 @@ class MemoryDatabase {
       for (const p of cloud.playlists) {
         const existingIdx = this.data.playlists.findIndex(x => x.id === p.id);
         if (existingIdx >= 0) {
-          this.data.playlists[existingIdx] = { ...this.data.playlists[existingIdx], ...p };
+          const existing = this.data.playlists[existingIdx];
+          // Merge sharedWith arrays (union of IDs) instead of overwriting
+          const mergedSharedWith = Array.from(new Set([
+            ...(existing.sharedWith || []),
+            ...(p.sharedWith || [])
+          ]));
+          // Merge sharedWithUsers arrays by unique ID
+          const sharedUserMap = new Map<string, any>();
+          for (const u of [...(existing.sharedWithUsers || []), ...(p.sharedWithUsers || [])]) {
+            if (u && u.id) sharedUserMap.set(u.id, u);
+          }
+          const mergedSharedWithUsers = Array.from(sharedUserMap.values());
+          // Prefer the version with more items (more up-to-date)
+          const mergedItems = (p.items && existing.items)
+            ? (p.items.length >= existing.items.length ? p.items : existing.items)
+            : (p.items || existing.items);
+          this.data.playlists[existingIdx] = {
+            ...existing,
+            ...p,
+            sharedWith: mergedSharedWith,
+            sharedWithUsers: mergedSharedWithUsers,
+            items: mergedItems,
+            itemCount: mergedItems ? mergedItems.length : (p.itemCount || existing.itemCount)
+          };
         } else {
           this.data.playlists.push(p);
         }
@@ -712,6 +736,14 @@ class MemoryDatabase {
           this.data.favorites.push(f);
         }
       }
+    }
+    // Merge deletedPlaylistIds and purge deleted playlists from memory
+    if (cloud.deletedPlaylistIds && Array.isArray(cloud.deletedPlaylistIds)) {
+      if (!this.data.deletedPlaylistIds) this.data.deletedPlaylistIds = [];
+      const deletedSet = new Set([...this.data.deletedPlaylistIds, ...cloud.deletedPlaylistIds]);
+      this.data.deletedPlaylistIds = Array.from(deletedSet);
+      // Remove any playlists that are in the deleted set
+      this.data.playlists = this.data.playlists.filter(p => !deletedSet.has(p.id));
     }
     this.saveToDisk();
   }

@@ -9,6 +9,24 @@ import { providerRegistry, fetchYouTubeDuration, fetchTrackDuration } from '../s
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'vibeflow-super-secret-key-2026';
 
+// ── Vercel Cloud Sync Middleware ──────────────────────────────────────
+// On Vercel serverless, each lambda cold-starts with empty in-memory data.
+// This middleware ensures cloud data is hydrated ONCE per request before
+// any route handler tries to look up playlists, users, or share tokens.
+let lastCloudSync = 0;
+const CLOUD_SYNC_DEBOUNCE_MS = 3000; // debounce rapid consecutive requests
+
+router.use(async (_req, _res, next) => {
+  if (process.env.VERCEL) {
+    const now = Date.now();
+    if (now - lastCloudSync > CLOUD_SYNC_DEBOUNCE_MS) {
+      lastCloudSync = now;
+      try { await db.syncFromCloud(); } catch {}
+    }
+  }
+  next();
+});
+
 export type PlaylistEvent = {
   type: 'playlist_created' | 'playlist_updated' | 'playlist_deleted' | 'tracks_updated' | 'sync';
   playlistId?: string;
@@ -112,9 +130,7 @@ function resolveUserId(req: Request): string {
 // Get playlists
 router.get('/', async (req: Request, res: Response) => {
   const userId = resolveUserId(req);
-  if (process.env.VERCEL) {
-    try { await db.syncFromCloud(); } catch {}
-  }
+  // Cloud sync handled by middleware above
 
   // Parse client-created playlist IDs passed from frontend
   let clientPlaylistIds: string[] = [];
@@ -174,7 +190,11 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 // Sync / link playlists or device to account across devices
-router.post('/sync/link', (req: Request, res: Response) => {
+router.post('/sync/link', async (req: Request, res: Response) => {
+  // Ensure cloud data is fresh for cross-device linking
+  if (process.env.VERCEL) {
+    try { await db.syncFromCloud(); } catch {}
+  }
   // Case A: Linking a second device using a 6-character sync code
   if (req.body.syncCode) {
     const { syncCode } = req.body;
@@ -996,7 +1016,7 @@ const handleExportPlaylist = async (req: Request, res: Response) => {
   const format = (req.query.format as string) || (req.body?.format as string) || 'json';
 
   if (process.env.VERCEL) {
-    try { await db.syncFromCloud(); } catch {}
+    // Cloud sync already handled by router middleware
   }
 
   let playlist = db.findPlaylistById(req.params.id);
