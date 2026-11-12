@@ -192,8 +192,10 @@ export function mergeWithLocalPlaylists(
 
 function authHeaders(token?: string | null): HeadersInit {
   const t = token || getStoredToken();
-  const h: HeadersInit = { 'Content-Type': 'application/json' };
+  const uid = getStoredUserId();
+  const h: Record<string, string> = { 'Content-Type': 'application/json' };
   if (t) h['Authorization'] = `Bearer ${t}`;
+  if (uid) h['x-user-id'] = uid;
   return h;
 }
 
@@ -428,13 +430,25 @@ export const api = {
     return await res.json();
   },
 
-  addItemToPlaylist: async (playlistId: string, mediaItemId: string, token?: string | null) => {
+  addItemToPlaylist: async (playlistId: string, mediaItemOrId: string | MediaItem, token?: string | null) => {
     const t = token !== undefined ? token : getStoredToken();
+    const mediaItemId = typeof mediaItemOrId === 'string' ? mediaItemOrId : mediaItemOrId?.id;
+    const item = typeof mediaItemOrId === 'object' ? mediaItemOrId : undefined;
     const res = await fetch(`${API_BASE}/playlists/${playlistId}/items`, {
       method: 'POST',
       headers: authHeaders(t),
-      body: JSON.stringify({ mediaItemId })
+      body: JSON.stringify({
+        mediaItemId,
+        item,
+        mediaItem: item,
+        items: item ? [item] : undefined,
+        mediaItemIds: mediaItemId ? [mediaItemId] : undefined
+      })
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to add track to playlist');
+    }
     const data = await res.json();
     if (data.playlist) {
       saveLocalCreatedPlaylist(data.playlist);
@@ -462,6 +476,10 @@ export const api = {
       headers: authHeaders(t),
       body: JSON.stringify({ mediaItemIds, items })
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to add tracks to playlist');
+    }
     const data = await res.json();
     if (data.playlist) {
       saveLocalCreatedPlaylist(data.playlist);
@@ -650,10 +668,13 @@ export const api = {
     const res = await fetch(`${API_BASE}/playlists/share/scan`, {
       method: 'POST',
       headers: authHeaders(t),
-      body: JSON.stringify({ qrData })
+      body: JSON.stringify({ qrData, userId: getStoredUserId() || undefined })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to process QR code');
+    if (data.playlist) {
+      saveLocalCreatedPlaylist(data.playlist);
+    }
     return data;
   },
 

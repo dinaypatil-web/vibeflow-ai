@@ -1719,6 +1719,156 @@ async function runTests() {
     }
   });
 
+  // 37. Reliable Track Addition to Existing Playlists & Resilient Shared QR Code Resolution
+  await test('Reliable Track Addition to Existing Playlists & Resilient Shared QR Code Resolution', async () => {
+    // 1. Create a user and an existing playlist
+    const user = `track_adder_${Date.now()}`;
+    const regRes = await fetchJSON(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Track Adder', username: user, password: 'AdderPassword2026!' })
+    });
+    const token = regRes.token;
+    const userId = regRes.user.id;
+
+    const createPlRes = await fetchJSON(`${API_BASE}/playlists`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        title: `Existing Playlist ${Date.now()}`,
+        description: 'Testing track additions and QR scanning'
+      })
+    });
+    const targetPlaylistId = createPlRes.playlist.id;
+    const shareToken = createPlRes.playlist.shareToken || `st-${targetPlaylistId}`;
+
+    // Test A: Add newly searched external track with full metadata (as sent by web AddToPlaylistModal)
+    const externalTrack1 = {
+      id: `yt-ext-${Date.now()}-1`,
+      title: 'Midnight Lo-Fi Echoes',
+      artist: 'Acoustic Traveler',
+      provider: 'youtube',
+      providerId: `video-${Date.now()}-1`,
+      streamUrl: 'https://www.youtube.com/watch?v=ext_track_1',
+      duration: 195,
+      coverArt: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=300&q=80',
+      genre: 'Lo-Fi',
+      mood: 'Chill'
+    };
+
+    const addRes1 = await fetchJSON(`${API_BASE}/playlists/${targetPlaylistId}/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        mediaItemId: externalTrack1.id,
+        item: externalTrack1,
+        mediaItem: externalTrack1
+      })
+    });
+
+    if (!addRes1.success || addRes1.addedCount !== 1) {
+      throw new Error(`Failed to add external track with full metadata: ${JSON.stringify(addRes1)}`);
+    }
+
+    // Test B: Add track with ID only (auto-ingestion fallback for external track)
+    const externalTrackId2 = `saavn-auto-${Date.now()}-2`;
+    const addRes2 = await fetchJSON(`${API_BASE}/playlists/${targetPlaylistId}/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        mediaItemId: externalTrackId2,
+        title: 'Bollywood Rain Melody',
+        artist: 'Shreya & Arijit'
+      })
+    });
+
+    if (!addRes2.success || addRes2.addedCount !== 1) {
+      throw new Error(`Failed to add track via ID-only auto-ingestion fallback: ${JSON.stringify(addRes2)}`);
+    }
+
+    // Test C: Batch add external tracks (array of objects and IDs)
+    const externalTrack3 = {
+      id: `itunes-ext-${Date.now()}-3`,
+      title: 'Monsoon Classical Raga',
+      artist: 'Ustad Zakir',
+      provider: 'itunes',
+      providerId: '99887766'
+    };
+    const externalTrackId4 = `deezer-ext-${Date.now()}-4`;
+
+    const batchAddRes = await fetchJSON(`${API_BASE}/playlists/${targetPlaylistId}/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        mediaItemIds: [externalTrack3.id, externalTrackId4],
+        items: [externalTrack3]
+      })
+    });
+
+    if (!batchAddRes.success || batchAddRes.addedCount !== 2) {
+      throw new Error(`Expected batch addedCount 2, got ${batchAddRes.addedCount}`);
+    }
+
+    // Test D: Verify playlist now contains all 4 added tracks
+    const plVerification = await fetchJSON(`${API_BASE}/playlists/${targetPlaylistId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (plVerification.playlist.items.length !== 4) {
+      throw new Error(`Expected 4 items in playlist, found ${plVerification.playlist.items.length}`);
+    }
+
+    // Test E: QR Scan with URL-encoded full share link
+    const recipientUser = `qr_scanner_${Date.now()}`;
+    const recipientReg = await fetchJSON(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'QR Recipient', username: recipientUser, password: 'RecipientPass2026!' })
+    });
+    const recipientToken = recipientReg.token;
+
+    const encodedShareUrl = encodeURIComponent(`http://192.168.1.15:5173/?shareToken=${shareToken}`);
+    const scanEncodedRes = await fetchJSON(`${API_BASE}/playlists/share/scan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${recipientToken}` },
+      body: JSON.stringify({ qrData: encodedShareUrl })
+    });
+    if (!scanEncodedRes.success || scanEncodedRes.playlist.id !== targetPlaylistId) {
+      throw new Error('Failed to resolve URL-encoded QR code');
+    }
+
+    // Test F: QR Scan with playlistId URL variant (?playlistId=pl-...)
+    const playlistIdUrl = `http://localhost:5173/?playlistId=${targetPlaylistId}`;
+    const scanPlIdRes = await fetchJSON(`${API_BASE}/playlists/share/scan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${recipientToken}` },
+      body: JSON.stringify({ qrData: playlistIdUrl })
+    });
+    if (!scanPlIdRes.success || scanPlIdRes.playlist.id !== targetPlaylistId) {
+      throw new Error('Failed to resolve ?playlistId= QR URL');
+    }
+
+    // Test G: QR Scan with JSON payload
+    const jsonPayload = JSON.stringify({ shareToken: shareToken, title: 'QR Test' });
+    const scanJsonRes = await fetchJSON(`${API_BASE}/playlists/share/scan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${recipientToken}` },
+      body: JSON.stringify({ qrData: jsonPayload })
+    });
+    if (!scanJsonRes.success || scanJsonRes.playlist.id !== targetPlaylistId) {
+      throw new Error('Failed to resolve JSON formatted QR payload');
+    }
+
+    // Test H: QR Scan with default mobile seeded playlist
+    const scanMobileDefault = await fetchJSON(`${API_BASE}/playlists/share/scan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${recipientToken}` },
+      body: JSON.stringify({ qrData: 'st-mobile-pl-1' })
+    });
+    if (!scanMobileDefault.success || scanMobileDefault.playlist.id !== 'mobile-pl-1') {
+      throw new Error('Failed to resolve default mobile playlist QR code');
+    }
+  });
+
   console.log(`\n🎉 Test Results: ${passed}/${total} passed!`);
   if (passed === total) {
     console.log('🌟 All VibeFlow AI core systems verified production-ready.\n');

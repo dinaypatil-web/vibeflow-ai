@@ -63,15 +63,16 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
       if (isMultiple) {
         await api.addItemsToPlaylist(playlistId, effectiveTracks, token);
       } else {
-        await api.addItemToPlaylist(playlistId, effectiveTracks[0].id, token);
+        await api.addItemToPlaylist(playlistId, effectiveTracks[0], token);
       }
       setAddedIds(prev => [...prev, playlistId]);
       if (onSuccess) onSuccess();
       setTimeout(() => {
         onClose();
       }, 700);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to add to playlist', err);
+      alert(err.message || 'Failed to add track to playlist');
     } finally {
       setIsSubmitting(false);
     }
@@ -100,7 +101,7 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
       if (isMultiple) {
         await api.addItemsToPlaylist(newPl.id, effectiveTracks, token);
       } else {
-        await api.addItemToPlaylist(newPl.id, effectiveTracks[0].id, token);
+        await api.addItemToPlaylist(newPl.id, effectiveTracks[0], token);
       }
 
       try {
@@ -109,8 +110,9 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
       setNewTitle('');
       if (onSuccess) onSuccess();
       onClose();
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error('Failed to create and add to playlist', err);
+      alert(err.message || 'Failed to create and add to playlist');
     } finally {
       setCreating(false);
     }

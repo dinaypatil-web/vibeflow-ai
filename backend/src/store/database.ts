@@ -882,6 +882,38 @@ class MemoryDatabase {
         pl.shareToken = `st-${pl.id}`;
       }
     }
+
+    // Ensure default mobile playlist is seeded for smooth cross-device QR scanning
+    if (!this.data.playlists.some(p => p.id === 'mobile-pl-1')) {
+      this.data.playlists.push({
+        id: 'mobile-pl-1',
+        userId: 'demo-user-id',
+        creator: {
+          id: 'demo-user-id',
+          name: 'VibeFlow Cloud',
+          username: 'vibeflow',
+          avatar: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?auto=format&fit=crop&w=600&q=80'
+        },
+        title: 'Daily Cloud Flow Mix',
+        description: 'Synced across devices • Bollywood, Lo-Fi & High-Energy',
+        coverArt: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?auto=format&fit=crop&w=600&q=80',
+        isSmart: false,
+        isPrivate: false,
+        isShareable: true,
+        itemCount: 3,
+        items: [
+          { id: 'pi-m1', playlistId: 'mobile-pl-1', mediaItemId: 'track-1', orderIndex: 0, addedAt: new Date().toISOString(), mediaItem: (this.findMediaItemById('track-1') || this.data.mediaItems[0]) as MediaItem },
+          { id: 'pi-m2', playlistId: 'mobile-pl-1', mediaItemId: 'track-2', orderIndex: 1, addedAt: new Date().toISOString(), mediaItem: (this.findMediaItemById('track-2') || this.data.mediaItems[1]) as MediaItem },
+          { id: 'pi-m3', playlistId: 'mobile-pl-1', mediaItemId: 'track-4', orderIndex: 2, addedAt: new Date().toISOString(), mediaItem: (this.findMediaItemById('track-4') || this.data.mediaItems[2]) as MediaItem }
+        ],
+        sharedWith: [],
+        sharedWithUsers: [],
+        shareToken: 'st-mobile-pl-1',
+        isSharedWithMe: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+    }
   }
 
   // User operations
@@ -1339,54 +1371,147 @@ class MemoryDatabase {
 
   public findPlaylistByShareToken(token: string): Playlist | undefined {
     if (!token || typeof token !== 'string') return undefined;
-    let clean = token.trim();
-    if (clean.includes('shareToken=')) {
+
+    // Collect all candidate tokens and IDs to test against playlists
+    const candidates: string[] = [];
+
+    let raw = token.trim();
+    // Strip surrounding quotes or angle brackets
+    raw = raw.replace(/^[<"']+|[>"']+$/g, '').trim();
+
+    // Try decoding URI component (up to 2 passes in case of double-encoding)
+    let decoded = raw;
+    try { decoded = decodeURIComponent(decoded); } catch {}
+    try { if (decoded.includes('%')) decoded = decodeURIComponent(decoded); } catch {}
+
+    candidates.push(raw, decoded);
+
+    // If it's JSON, extract relevant properties
+    for (const str of [raw, decoded]) {
       try {
-        const match = clean.match(/[?&]shareToken=([^&#\s]+)/);
-        if (match && match[1]) clean = decodeURIComponent(match[1]);
-      } catch {}
-    } else if (clean.includes('/share/')) {
-      try {
-        const match = clean.match(/\/share\/([^/?#\s]+)/);
-        if (match && match[1]) clean = decodeURIComponent(match[1]);
+        const json = JSON.parse(str);
+        if (typeof json === 'object' && json !== null) {
+          const val = json.shareToken || json.token || json.qrData || json.playlistId || json.id || json.code;
+          if (val && typeof val === 'string') {
+            candidates.push(val.trim());
+          }
+        }
       } catch {}
     }
-    const cleanLower = clean.toLowerCase();
-    return this.data.playlists.find(p => {
-      const pToken = (p.shareToken || '').toLowerCase();
-      const pId = (p.id || '').toLowerCase();
-      return pToken === cleanLower ||
-        pId === cleanLower ||
-        pToken === `st-${cleanLower}` ||
-        `st-${pId}` === cleanLower ||
-        pId === cleanLower.replace(/^st-/, '') ||
-        (cleanLower.includes('workout') && pId.includes('workout')) ||
-        (cleanLower.includes('morning') && pId.includes('morning')) ||
-        (cleanLower.includes('instrumental') && pId.includes('instrumental')) ||
-        (cleanLower.includes('retro') && pId.includes('retro'));
-    });
+
+    // Extract query parameters from URL strings (?shareToken=, ?token=, ?playlistId=, ?id=, etc.)
+    for (const str of [raw, decoded]) {
+      const qMatches = str.matchAll(/[?&#](?:shareToken|token|playlistId|id|share|code)=([^&#\s]+)/gi);
+      for (const m of qMatches) {
+        if (m[1]) {
+          try { candidates.push(decodeURIComponent(m[1]).trim()); } catch { candidates.push(m[1].trim()); }
+        }
+      }
+
+      // Extract path segments: /share/:token, /playlist/:id, /playlists/:id
+      const pMatches = str.matchAll(/\/(?:share|playlist|playlists)\/([^/?#\s]+)/gi);
+      for (const m of pMatches) {
+        if (m[1]) {
+          try { candidates.push(decodeURIComponent(m[1]).trim()); } catch { candidates.push(m[1].trim()); }
+        }
+      }
+
+      // Regex matches for common token formats (st-..., pl-..., mobile-pl-..., playlist-...)
+      const stMatch = str.match(/\b(st-[a-zA-Z0-9_-]+)\b/i);
+      if (stMatch) candidates.push(stMatch[1]);
+      const plMatch = str.match(/\b(pl-[a-zA-Z0-9_-]+)\b/i);
+      if (plMatch) candidates.push(plMatch[1]);
+      const mplMatch = str.match(/\b(mobile-pl-[a-zA-Z0-9_-]+)\b/i);
+      if (mplMatch) candidates.push(mplMatch[1]);
+      const plistMatch = str.match(/\b(playlist-[a-zA-Z0-9_-]+)\b/i);
+      if (plistMatch) candidates.push(plistMatch[1]);
+    }
+
+    // Prepare lowercase unique candidates
+    const uniqueCandidates = Array.from(new Set(candidates.filter(c => Boolean(c) && typeof c === 'string'))).map(c => c.toLowerCase());
+
+    // Step 1: Exact matches against shareToken or playlist ID
+    for (const cand of uniqueCandidates) {
+      const found = this.data.playlists.find(p => {
+        const pToken = (p.shareToken || '').toLowerCase();
+        const pId = (p.id || '').toLowerCase();
+        return pToken === cand ||
+          pId === cand ||
+          pToken === `st-${cand}` ||
+          `st-${pId}` === cand ||
+          pId === cand.replace(/^st-/, '') ||
+          pToken === cand.replace(/^st-/, '') ||
+          pId === cand.replace(/^pl-/, '');
+      });
+      if (found) return found;
+    }
+
+    // Step 2: Substring or containment matches
+    for (const cand of uniqueCandidates) {
+      if (cand.length < 3) continue;
+      const found = this.data.playlists.find(p => {
+        const pToken = (p.shareToken || '').toLowerCase();
+        const pId = (p.id || '').toLowerCase();
+        if (pToken && (cand.includes(pToken) || pToken.includes(cand))) return true;
+        if (pId && (cand.includes(pId) || pId.includes(cand))) return true;
+
+        // Compare raw numerical timestamp in id if present (e.g. pl-1790698176297 -> 1790698176297)
+        const pNum = pId.replace(/\D/g, '');
+        const candNum = cand.replace(/\D/g, '');
+        if (pNum && candNum && pNum.length >= 8 && (candNum.includes(pNum) || pNum.includes(candNum))) {
+          return true;
+        }
+
+        // Title slug match fallback for standard and default playlists
+        if (cand.includes('morning') && (pId.includes('morning') || pToken.includes('morning'))) return true;
+        if (cand.includes('workout') && (pId.includes('workout') || pToken.includes('workout'))) return true;
+        if (cand.includes('instrumental') && (pId.includes('instrumental') || pToken.includes('instrumental'))) return true;
+        if (cand.includes('retro') && (pId.includes('retro') || pToken.includes('retro'))) return true;
+        if (cand.includes('cloud') && (pId.includes('mobile-pl-1') || (p.title || '').toLowerCase().includes('cloud'))) return true;
+
+        return false;
+      });
+      if (found) return found;
+    }
+
+    return undefined;
   }
 
   public acceptShareToken(token: string, userId: string): { success: boolean; playlist?: Playlist; message?: string } {
     const playlist = this.findPlaylistByShareToken(token);
     if (!playlist) return { success: false, message: 'Invalid or expired share link' };
-    if (playlist.userId === userId) {
+    if (this.isUserOwner(playlist, userId)) {
       return { success: true, playlist, message: 'You are the creator of this playlist' };
     }
     const targetUser = this.findUserById(userId) || this.findUserByIdentifier(userId);
     if (!Array.isArray(playlist.sharedWith)) playlist.sharedWith = [];
     if (!Array.isArray(playlist.sharedWithUsers)) playlist.sharedWithUsers = [];
-    if (!playlist.sharedWith.includes(userId)) {
+    
+    const canonicalId = targetUser ? targetUser.id : userId;
+    let modified = false;
+
+    if (!playlist.sharedWith.includes(canonicalId)) {
+      playlist.sharedWith.push(canonicalId);
+      modified = true;
+    }
+    if (userId !== canonicalId && !playlist.sharedWith.includes(userId)) {
       playlist.sharedWith.push(userId);
-      if (targetUser) {
-        playlist.sharedWithUsers.push({
-          id: targetUser.id,
-          name: targetUser.name,
-          username: targetUser.username || targetUser.name,
-          avatar: targetUser.avatar,
-          email: targetUser.email
-        });
-      }
+      modified = true;
+    }
+
+    if (targetUser && !playlist.sharedWithUsers.some(u => u.id === targetUser.id || u.username === targetUser.username)) {
+      playlist.sharedWithUsers.push({
+        id: targetUser.id,
+        name: targetUser.name,
+        username: targetUser.username || targetUser.name,
+        avatar: targetUser.avatar,
+        email: targetUser.email
+      });
+      modified = true;
+    }
+
+    if (modified) {
+      playlist.updatedAt = new Date().toISOString();
       this.saveToDisk();
       this.syncToCloud().catch(() => {});
     }

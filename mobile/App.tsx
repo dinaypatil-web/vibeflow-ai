@@ -217,11 +217,12 @@ export default function App() {
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      if (syncUser?.id) headers['x-user-id'] = syncUser.id;
 
       const res = await fetch(`${apiBaseUrl}/playlists/share/scan`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ qrData: raw })
+        body: JSON.stringify({ qrData: raw, userId: syncUser?.id || undefined })
       });
       const data = await res.json();
       if (!res.ok) {

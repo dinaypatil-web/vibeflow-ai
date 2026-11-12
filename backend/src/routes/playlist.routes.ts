@@ -605,12 +605,43 @@ const handleAddItems = async (req: Request, res: Response) => {
 
   if (isBatch) {
     const addedItems: PlaylistItem[] = [];
-    for (const entry of rawBatch) {
+    for (let i = 0; i < rawBatch.length; i++) {
+      const entry = rawBatch[i];
       let targetItemId = typeof entry === 'string' ? entry : (entry?.id);
       let mediaItem = targetItemId ? db.findMediaItemById(targetItemId) : undefined;
-      if (!mediaItem && entry && typeof entry === 'object') {
+      
+      // If full object is in entry
+      if (!mediaItem && entry && typeof entry === 'object' && (entry.title || entry.id)) {
         mediaItem = db.addMediaItem(entry);
         targetItemId = mediaItem.id;
+      }
+      
+      // If parallel array items exists (e.g. mediaItemIds was passed alongside items array)
+      if (!mediaItem && Array.isArray(reqItems) && reqItems[i] && typeof reqItems[i] === 'object') {
+        mediaItem = db.addMediaItem(reqItems[i]);
+        targetItemId = mediaItem.id;
+      }
+
+      // If still missing, but targetItemId is given (e.g. newly searched track ID), auto-ingest
+      if (!mediaItem && targetItemId && typeof targetItemId === 'string') {
+        const parts = targetItemId.split('-');
+        const prov = (parts[0] || 'local') as any;
+        const pid = parts.slice(1).join('-') || targetItemId;
+        mediaItem = db.addMediaItem({
+          id: targetItemId,
+          title: (entry as any)?.title || 'Track',
+          artist: (entry as any)?.artist || 'Various Artists',
+          provider: prov,
+          providerId: pid,
+          streamUrl: (entry as any)?.streamUrl || '',
+          duration: (entry as any)?.duration || 240,
+          thumbnail: (entry as any)?.thumbnail || (entry as any)?.coverArt || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=300&q=80',
+          genre: (entry as any)?.genre || 'Music',
+          mood: (entry as any)?.mood || 'Energetic',
+          capabilities: ['stream_direct', 'preview_only'],
+          isOfflinePermitted: false,
+          isLocal: prov === 'local'
+        });
       }
 
       if (!mediaItem) continue;
@@ -659,6 +690,28 @@ const handleAddItems = async (req: Request, res: Response) => {
     const toInsert = item || reqMediaItem;
     mediaItem = db.addMediaItem(toInsert);
     targetItemId = mediaItem.id;
+  }
+
+  // Fallback: If only mediaItemId was supplied (or mediaItem wasn't indexed in DB yet), auto-ingest
+  if (!mediaItem && targetItemId && typeof targetItemId === 'string') {
+    const parts = targetItemId.split('-');
+    const prov = (parts[0] || 'local') as any;
+    const pid = parts.slice(1).join('-') || targetItemId;
+    mediaItem = db.addMediaItem({
+      id: targetItemId,
+      title: req.body.title || (item as any)?.title || 'Track',
+      artist: req.body.artist || (item as any)?.artist || 'Various Artists',
+      provider: prov,
+      providerId: pid,
+      streamUrl: req.body.streamUrl || '',
+      duration: req.body.duration || 240,
+      thumbnail: req.body.thumbnail || req.body.coverArt || (item as any)?.thumbnail || (item as any)?.coverArt || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=300&q=80',
+      genre: req.body.genre || 'Music',
+      mood: req.body.mood || 'Energetic',
+      capabilities: ['stream_direct', 'preview_only'],
+      isOfflinePermitted: false,
+      isLocal: prov === 'local'
+    });
   }
 
   if (!mediaItem) {
