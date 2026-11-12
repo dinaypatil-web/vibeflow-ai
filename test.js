@@ -1590,6 +1590,135 @@ async function runTests() {
     }
   });
 
+  // 36. Multi-Device Cross-Device Playlist Synchronization & Server Persistence
+  await test('Cross-Device Playlist Server Persistence & Real-Time Sync Across Devices for Same User', async () => {
+    // 1. User registers on Device A
+    const userEmail = `multidev_${Date.now()}@vibeflow.io`;
+    const userPassword = 'CrossDevicePassword2026!';
+    const regRes = await fetchJSON(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Cross Device Tester',
+        email: userEmail,
+        username: `multidev_${Date.now()}`,
+        password: userPassword
+      })
+    });
+    const deviceAToken = regRes.token;
+    const userId = regRes.user.id;
+
+    // 2. Device A creates a new playlist directly saved on the server database
+    const playlistTitle = `Rock Favorites Device A ${Date.now()}`;
+    const createRes = await fetchJSON(`${API_BASE}/playlists`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${deviceAToken}`
+      },
+      body: JSON.stringify({
+        title: playlistTitle,
+        description: 'Created on Device A for cross-device sync test'
+      })
+    });
+    const playlistId = createRes.playlist.id;
+    if (!playlistId) throw new Error('Playlist creation failed on Device A');
+
+    // 3. Device A adds a track to the playlist
+    const catalog = await fetchJSON(`${API_BASE}/media/items`);
+    const track1 = catalog.items[0];
+    const track2 = catalog.items[1];
+    await fetchJSON(`${API_BASE}/playlists/${playlistId}/items`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${deviceAToken}`
+      },
+      body: JSON.stringify({
+        mediaItemId: track1.id,
+        item: track1
+      })
+    });
+
+    // 4. Device B (different device / browser / mobile) logs in with the same credentials
+    // Note: Device B has NO local storage cache or client-created IDs from Device A
+    const loginRes = await fetchJSON(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        identifier: userEmail,
+        password: userPassword,
+        clientPlaylistIds: [] // Fresh device session
+      })
+    });
+    const deviceBToken = loginRes.token;
+    if (!deviceBToken) throw new Error('Device B login failed');
+
+    // 5. Device B queries playlists from server
+    const deviceBPlaylistsRes = await fetchJSON(`${API_BASE}/playlists?userId=${encodeURIComponent(userId)}`, {
+      headers: {
+        'Authorization': `Bearer ${deviceBToken}`
+      }
+    });
+    const deviceBPlaylists = deviceBPlaylistsRes.playlists || [];
+    const foundOnDeviceB = deviceBPlaylists.find(p => p.id === playlistId);
+    if (!foundOnDeviceB) {
+      throw new Error(`Playlist "${playlistTitle}" created on Device A was NOT found on Device B!`);
+    }
+    if (foundOnDeviceB.title !== playlistTitle) {
+      throw new Error(`Playlist title mismatch on Device B: expected "${playlistTitle}", got "${foundOnDeviceB.title}"`);
+    }
+    if (foundOnDeviceB.isSharedWithMe === true) {
+      throw new Error('Device B should own this playlist (isSharedWithMe should be false)');
+    }
+    if (!foundOnDeviceB.items || foundOnDeviceB.items.length < 1) {
+      throw new Error('Playlist items were not retrieved on Device B');
+    }
+
+    // 6. Device B adds track 2 to the playlist
+    await fetchJSON(`${API_BASE}/playlists/${playlistId}/items`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${deviceBToken}`
+      },
+      body: JSON.stringify({
+        mediaItemId: track2.id,
+        item: track2
+      })
+    });
+
+    // 7. Device A fetches playlists again and verifies it sees track 2
+    const deviceAPlaylistsRes = await fetchJSON(`${API_BASE}/playlists?userId=${encodeURIComponent(userId)}`, {
+      headers: {
+        'Authorization': `Bearer ${deviceAToken}`
+      }
+    });
+    const updatedOnDeviceA = (deviceAPlaylistsRes.playlists || []).find(p => p.id === playlistId);
+    if (!updatedOnDeviceA || !updatedOnDeviceA.items || updatedOnDeviceA.items.length < 2) {
+      throw new Error('Device A did not see track added by Device B');
+    }
+
+    // 8. Device B deletes the playlist
+    await fetchJSON(`${API_BASE}/playlists/${playlistId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${deviceBToken}`
+      }
+    });
+
+    // 9. Device A verifies playlist is removed across devices
+    const postDeleteRes = await fetchJSON(`${API_BASE}/playlists?userId=${encodeURIComponent(userId)}`, {
+      headers: {
+        'Authorization': `Bearer ${deviceAToken}`
+      }
+    });
+    const shouldBeDeleted = (postDeleteRes.playlists || []).find(p => p.id === playlistId);
+    if (shouldBeDeleted) {
+      throw new Error('Playlist deleted by Device B still appeared on Device A');
+    }
+  });
+
   console.log(`\n🎉 Test Results: ${passed}/${total} passed!`);
   if (passed === total) {
     console.log('🌟 All VibeFlow AI core systems verified production-ready.\n');

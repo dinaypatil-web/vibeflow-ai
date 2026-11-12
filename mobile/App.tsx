@@ -12,7 +12,8 @@ import {
   StatusBar,
   ActivityIndicator,
   AppState,
-  Alert
+  Alert,
+  Platform
 } from 'react-native';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -116,6 +117,28 @@ const INITIAL_MOBILE_PLAYLISTS: Playlist[] = [
   }
 ];
 
+const detectDefaultApiUrl = (): string => {
+  try {
+    const rn = require('react-native') as any;
+    const scriptURL = rn.NativeModules?.SourceCode?.scriptURL;
+    if (scriptURL && typeof scriptURL === 'string') {
+      const match = scriptURL.match(/https?:\/\/([^/:]+)/);
+      if (match && match[1] && match[1] !== 'localhost' && match[1] !== '127.0.0.1') {
+        return `http://${match[1]}:4000/api`;
+      }
+    }
+  } catch {}
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:4000/api';
+  }
+  return 'http://localhost:4000/api';
+};
+
+const AUTH_USER_KEY = '@vibeflow:auth_user';
+const AUTH_TOKEN_KEY = '@vibeflow:auth_token';
+const CACHED_PLAYLISTS_KEY = '@vibeflow:cached_playlists';
+const API_BASE_URL_KEY = '@vibeflow:api_base_url';
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<'home' | 'explore' | 'playlists' | 'library' | 'ai'>('home');
   const [currentTrack, setCurrentTrack] = useState<MediaItem | null>(SAMPLE_TRACKS[0]);
@@ -139,7 +162,7 @@ export default function App() {
 
   // Playlists & Cloud Sync across devices
   const [playlists, setPlaylists] = useState<Playlist[]>(INITIAL_MOBILE_PLAYLISTS);
-  const [apiBaseUrl, setApiBaseUrl] = useState<string>('http://localhost:4000/api');
+  const [apiBaseUrl, setApiBaseUrl] = useState<string>(detectDefaultApiUrl());
   const [isSyncModalVisible, setIsSyncModalVisible] = useState(false);
   const [syncCodeInput, setSyncCodeInput] = useState('');
   const [mySyncCode, setMySyncCode] = useState<string>('');
@@ -156,6 +179,12 @@ export default function App() {
   const syncUserRef = useRef(syncUser);
   syncUserRef.current = syncUser;
   const historyRecordedTrackIdRef = useRef<string | null>(null);
+
+  // Standalone Playlist Creation on Mobile
+  const [isCreatePlaylistModalVisible, setIsCreatePlaylistModalVisible] = useState(false);
+  const [newStandalonePlaylistTitle, setNewStandalonePlaylistTitle] = useState('');
+  const [newStandalonePlaylistDesc, setNewStandalonePlaylistDesc] = useState('');
+  const [isCreatingStandalonePlaylist, setIsCreatingStandalonePlaylist] = useState(false);
 
   // Multi-select playlists & bulk deletion
   const [isSelectMode, setIsSelectMode] = useState(false);
@@ -392,6 +421,7 @@ export default function App() {
             }))
           }));
           setPlaylists(transformed);
+          AsyncStorage.setItem(CACHED_PLAYLISTS_KEY, JSON.stringify(transformed)).catch(() => {});
           // Immediately prune any selected playlist IDs that were deleted on another device
           setSelectedPlaylistIds(prev => prev.filter(id => serverList.some((p: any) => p.id === id)));
           if (qrSharePlaylist && !serverList.some((p: any) => p.id === qrSharePlaylist.id)) {
@@ -401,10 +431,60 @@ export default function App() {
           setPlaylists([]);
           setSelectedPlaylistIds([]);
           setQrSharePlaylist(null);
+          AsyncStorage.setItem(CACHED_PLAYLISTS_KEY, JSON.stringify([])).catch(() => {});
         }
       }
     } catch (err) {
       console.warn('Network fetch playlists error:', err);
+    }
+  };
+
+  const handleCreateStandalonePlaylist = async () => {
+    const title = newStandalonePlaylistTitle.trim();
+    if (!title) {
+      Alert.alert('Required', 'Please enter a playlist title.');
+      return;
+    }
+    setIsCreatingStandalonePlaylist(true);
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      if (syncUser?.id) headers['x-user-id'] = syncUser.id;
+
+      const res = await fetch(`${apiBaseUrl}/playlists`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          title,
+          description: newStandalonePlaylistDesc.trim() || 'Created on mobile device',
+          userId: syncUser?.id || 'demo-user-id',
+          creator: syncUser ? {
+            id: syncUser.id,
+            name: syncUser.name,
+            username: syncUser.username || syncUser.name,
+            email: syncUser.email
+          } : undefined
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to create playlist');
+      }
+      const data = await res.json();
+      const created = data.playlist;
+      if (created) {
+        const updated = [created, ...playlists.filter(p => p.id !== created.id)];
+        setPlaylists(updated);
+        setIsCreatePlaylistModalVisible(false);
+        setNewStandalonePlaylistTitle('');
+        setNewStandalonePlaylistDesc('');
+        AsyncStorage.setItem(CACHED_PLAYLISTS_KEY, JSON.stringify(updated)).catch(() => {});
+        Alert.alert('Success', `Playlist "${created.title}" created and saved to server!`);
+      }
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Could not create playlist');
+    } finally {
+      setIsCreatingStandalonePlaylist(false);
     }
   };
 
@@ -429,6 +509,8 @@ export default function App() {
       if (!res.ok) throw new Error(data.error || 'Invalid credentials');
       setSyncUser(data.user);
       setAuthToken(data.token);
+      AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(data.user)).catch(() => {});
+      if (data.token) AsyncStorage.setItem(AUTH_TOKEN_KEY, data.token).catch(() => {});
       if (data.user.syncCode) setMySyncCode(data.user.syncCode);
       if (data.playlists && Array.isArray(data.playlists)) {
         const transformed = data.playlists.map((p: any) => ({
@@ -450,6 +532,7 @@ export default function App() {
           }))
         }));
         setPlaylists(transformed);
+        AsyncStorage.setItem(CACHED_PLAYLISTS_KEY, JSON.stringify(transformed)).catch(() => {});
       }
       setSyncSuccess(`Logged in as ${data.user.name}! Syncing all your cloud playlists...`);
       await fetchPlaylists(apiBaseUrl, data.user.id, data.token);
@@ -492,6 +575,8 @@ export default function App() {
       if (!res.ok) throw new Error(data.error || 'Registration failed');
       setSyncUser(data.user);
       setAuthToken(data.token);
+      AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(data.user)).catch(() => {});
+      if (data.token) AsyncStorage.setItem(AUTH_TOKEN_KEY, data.token).catch(() => {});
       setSyncSuccess(`Account created for ${data.user.name}! Playlists ready.`);
       await fetchPlaylists(apiBaseUrl, data.user.id, data.token);
       setTimeout(() => {
@@ -518,6 +603,8 @@ export default function App() {
       if (!res.ok) throw new Error(data.error || 'Demo login failed');
       setSyncUser(data.user);
       setAuthToken(data.token);
+      AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(data.user)).catch(() => {});
+      if (data.token) AsyncStorage.setItem(AUTH_TOKEN_KEY, data.token).catch(() => {});
       setSyncSuccess(`Logged in as Demo User (${data.user.name})!`);
       await fetchPlaylists(apiBaseUrl, data.user.id, data.token);
       setTimeout(() => {
@@ -535,6 +622,9 @@ export default function App() {
     setSyncUser(null);
     setAuthToken(null);
     setPlaylists(INITIAL_MOBILE_PLAYLISTS);
+    AsyncStorage.removeItem(AUTH_USER_KEY).catch(() => {});
+    AsyncStorage.removeItem(AUTH_TOKEN_KEY).catch(() => {});
+    AsyncStorage.removeItem(CACHED_PLAYLISTS_KEY).catch(() => {});
     setSyncSuccess('Signed out. Switched to offline guest mode.');
     setTimeout(() => {
       setSyncSuccess(null);
@@ -568,6 +658,9 @@ export default function App() {
       if (!res.ok) throw new Error(data.error || 'Invalid sync code');
       if (data.user) {
         setSyncUser(data.user);
+        setAuthToken(data.token || null);
+        AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(data.user)).catch(() => {});
+        if (data.token) AsyncStorage.setItem(AUTH_TOKEN_KEY, data.token).catch(() => {});
         setMySyncCode(data.user.syncCode || code);
         if (Array.isArray(data.playlists) && data.playlists.length > 0) {
           const transformed = data.playlists.map((p: any) => ({
@@ -589,8 +682,9 @@ export default function App() {
             }))
           }));
           setPlaylists(transformed);
+          AsyncStorage.setItem(CACHED_PLAYLISTS_KEY, JSON.stringify(transformed)).catch(() => {});
         } else {
-          fetchPlaylists(apiBaseUrl, data.user.id);
+          fetchPlaylists(apiBaseUrl, data.user.id, data.token);
         }
         setSyncSuccess(`Connected to ${data.user.name}'s account! Playlists synced.`);
         setTimeout(() => setIsSyncModalVisible(false), 1400);
@@ -731,6 +825,38 @@ export default function App() {
         });
       } catch (err) {
         console.warn('Failed to set audio mode for background playback', err);
+      }
+
+      // ── Restore server URL & user session across app restarts ─────────────
+      try {
+        const savedUrl = await AsyncStorage.getItem(API_BASE_URL_KEY);
+        const activeUrl = savedUrl || detectDefaultApiUrl();
+        setApiBaseUrl(activeUrl);
+
+        const savedUserStr = await AsyncStorage.getItem(AUTH_USER_KEY);
+        const savedToken = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+        const savedCachedPls = await AsyncStorage.getItem(CACHED_PLAYLISTS_KEY);
+
+        if (savedCachedPls) {
+          try {
+            const parsed = JSON.parse(savedCachedPls);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setPlaylists(parsed);
+            }
+          } catch {}
+        }
+
+        if (savedUserStr && savedToken) {
+          const parsedUser = JSON.parse(savedUserStr);
+          setSyncUser(parsedUser);
+          setAuthToken(savedToken);
+          if (parsedUser.syncCode) setMySyncCode(parsedUser.syncCode);
+          fetchPlaylists(activeUrl, parsedUser.id, savedToken);
+        } else {
+          fetchPlaylists(activeUrl);
+        }
+      } catch (err) {
+        console.warn('[VibeFlow] Startup session restore error:', err);
       }
 
       // ── Restore last playback session ──────────────────────────────────────
@@ -1292,6 +1418,21 @@ export default function App() {
                   {syncUser ? `Account: ${syncUser.name} • Cross-Device Active` : 'Playlists synced across all your devices'}
                 </Text>
               </View>
+              <TouchableOpacity
+                style={[
+                  styles.syncSmallBtn,
+                  { backgroundColor: '#6366f1', borderColor: '#818cf8', marginRight: 6 }
+                ]}
+                onPress={() => {
+                  setNewStandalonePlaylistTitle('');
+                  setNewStandalonePlaylistDesc('');
+                  setIsCreatePlaylistModalVisible(true);
+                }}
+              >
+                <Text style={[styles.syncSmallBtnText, { color: '#ffffff', fontWeight: 'bold' }]}>
+                  + New
+                </Text>
+              </TouchableOpacity>
               {playlists.length > 0 && (
                 <TouchableOpacity
                   style={[
@@ -1869,22 +2010,55 @@ export default function App() {
               )}
 
               {/* Backend URL config for LAN/Wi-Fi devices */}
-              <Text style={[styles.qualitySectionTitle, { marginTop: 14 }]}>Server API Endpoint:</Text>
-              <TextInput
-                style={styles.syncUrlInput}
-                value={apiBaseUrl}
-                onChangeText={setApiBaseUrl}
-                placeholder="http://localhost:4000/api"
-                placeholderTextColor="#64748b"
-                autoCapitalize="none"
-              />
-              <View style={styles.lanHelpersRow}>
-                <TouchableOpacity onPress={() => setApiBaseUrl('http://localhost:4000/api')}>
-                  <Text style={styles.lanHelperChip}>localhost</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setApiBaseUrl('http://10.0.2.2:4000/api')}>
-                  <Text style={styles.lanHelperChip}>Android Emulator (10.0.2.2)</Text>
-                </TouchableOpacity>
+              <View style={{ marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)' }}>
+                <Text style={styles.qualitySectionTitle}>🌐 Server API Endpoint (Cross-Device):</Text>
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                  <TextInput
+                    style={[styles.syncUrlInput, { flex: 1, marginBottom: 0 }]}
+                    value={apiBaseUrl}
+                    onChangeText={(val) => {
+                      setApiBaseUrl(val);
+                      AsyncStorage.setItem(API_BASE_URL_KEY, val.trim()).catch(() => {});
+                    }}
+                    placeholder="http://192.168.1.x:4000/api"
+                    placeholderTextColor="#64748b"
+                    autoCapitalize="none"
+                  />
+                  <TouchableOpacity
+                    style={[styles.syncSmallBtn, { backgroundColor: '#4f46e5', borderColor: '#6366f1' }]}
+                    onPress={async () => {
+                      const trimmed = apiBaseUrl.trim();
+                      try {
+                        await AsyncStorage.setItem(API_BASE_URL_KEY, trimmed);
+                        Alert.alert('Server Endpoint Saved', `Saved: ${trimmed}\nFetching playlists...`);
+                        fetchPlaylists(trimmed);
+                      } catch {}
+                    }}
+                  >
+                    <Text style={[styles.syncSmallBtnText, { color: '#ffffff', fontWeight: 'bold' }]}>Save</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={[styles.lanHelpersRow, { marginTop: 8 }]}>
+                  <TouchableOpacity onPress={() => {
+                    const detected = detectDefaultApiUrl();
+                    setApiBaseUrl(detected);
+                    AsyncStorage.setItem(API_BASE_URL_KEY, detected).catch(() => {});
+                  }}>
+                    <Text style={[styles.lanHelperChip, { color: '#38bdf8', borderColor: 'rgba(56,189,248,0.3)' }]}>⚡ Auto-Detect</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => {
+                    setApiBaseUrl('http://localhost:4000/api');
+                    AsyncStorage.setItem(API_BASE_URL_KEY, 'http://localhost:4000/api').catch(() => {});
+                  }}>
+                    <Text style={styles.lanHelperChip}>localhost</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => {
+                    setApiBaseUrl('http://10.0.2.2:4000/api');
+                    AsyncStorage.setItem(API_BASE_URL_KEY, 'http://10.0.2.2:4000/api').catch(() => {});
+                  }}>
+                    <Text style={styles.lanHelperChip}>Android Emulator (10.0.2.2)</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </ScrollView>
           </View>
@@ -2245,6 +2419,66 @@ export default function App() {
                 </View>
               </ScrollView>
             )}
+          </View>
+        </View>
+      </Modal>
+      {/* Create Standalone Playlist Modal */}
+      <Modal visible={isCreatePlaylistModalVisible} animationType="slide" transparent>
+        <View style={styles.downloadModalBackdrop}>
+          <View style={[styles.syncModalCard, { padding: 20 }]}>
+            <View style={styles.downloadModalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ fontSize: 20 }}>📋</Text>
+                <Text style={styles.downloadModalTitle}>Create New Playlist</Text>
+              </View>
+              <TouchableOpacity onPress={() => setIsCreatePlaylistModalVisible(false)}>
+                <Text style={styles.closeText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ marginTop: 14 }}>
+              <Text style={styles.inputLabel}>Playlist Title:</Text>
+              <TextInput
+                style={styles.authTextInput}
+                value={newStandalonePlaylistTitle}
+                onChangeText={setNewStandalonePlaylistTitle}
+                placeholder="e.g. Chillout Beats, Gym Motivation..."
+                placeholderTextColor="#64748b"
+                autoFocus
+              />
+
+              <Text style={styles.inputLabel}>Description (optional):</Text>
+              <TextInput
+                style={[styles.authTextInput, { height: 70, textAlignVertical: 'top' }]}
+                value={newStandalonePlaylistDesc}
+                onChangeText={setNewStandalonePlaylistDesc}
+                placeholder="Describe your vibe or collection..."
+                placeholderTextColor="#64748b"
+                multiline
+              />
+
+              <TouchableOpacity
+                style={[
+                  styles.authPrimaryBtn,
+                  (!newStandalonePlaylistTitle.trim() || isCreatingStandalonePlaylist) && { opacity: 0.6 }
+                ]}
+                disabled={!newStandalonePlaylistTitle.trim() || isCreatingStandalonePlaylist}
+                onPress={handleCreateStandalonePlaylist}
+              >
+                {isCreatingStandalonePlaylist ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.authPrimaryBtnText}>Create & Save to Server</Text>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.demoLoginBtn, { marginTop: 4 }]}
+                onPress={() => setIsCreatePlaylistModalVisible(false)}
+              >
+                <Text style={styles.demoLoginBtnText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>

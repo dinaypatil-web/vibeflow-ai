@@ -716,7 +716,11 @@ class MemoryDatabase {
     this.saveToDisk();
   }
 
+  private isSavingDisk = false;
+
   public saveToDisk() {
+    if (this.isSavingDisk) return;
+    this.isSavingDisk = true;
     try {
       const { dir, file } = this.getFilePath();
       if (!fs.existsSync(dir)) {
@@ -729,8 +733,12 @@ class MemoryDatabase {
           fs.writeFileSync(DATA_FILE, JSON.stringify(this.data, null, 2), 'utf-8');
         } catch {}
       }
-    } catch (err) {
-      console.warn('Could not persist data file to disk', err);
+    } catch (err: any) {
+      if (err?.code !== 'UNKNOWN' && err?.errno !== -4094) {
+        console.warn('Could not persist data file to disk', err);
+      }
+    } finally {
+      this.isSavingDisk = false;
     }
     // Sync to cloud storage in background
     this.syncToCloud().catch(() => {});

@@ -322,6 +322,7 @@ export const api = {
       const t = token !== undefined ? token : getStoredToken();
       const headers: HeadersInit = {};
       if (t) headers['Authorization'] = `Bearer ${t}`;
+      if (uid) headers['x-user-id'] = uid;
 
       const clientIds = getStoredCreatedPlaylistIds(uid);
       if (clientIds.length > 0) {
