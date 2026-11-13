@@ -1,6 +1,12 @@
 import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { db } from '../store/database';
+import { 
+  tursoSavePlaylist, 
+  tursoGetPlaylist, 
+  tursoGetPlaylistByShareToken, 
+  tursoRemovePlaylistItem 
+} from '../store/turso';
 import { Playlist, PlaylistItem, MediaItem } from '../types';
 import { DEFAULT_PREFERENCES } from './auth.routes';
 import { AIRecommendationService } from '../services/aiRecommendationService';
@@ -465,6 +471,15 @@ router.get('/:id', async (req: Request, res: Response) => {
     playlist = db.findPlaylistByShareToken(req.params.id);
   }
   if (!playlist) {
+    playlist = await tursoGetPlaylist(req.params.id);
+    if (!playlist) {
+      playlist = await tursoGetPlaylistByShareToken(req.params.id);
+    }
+    if (playlist) {
+      db.createPlaylist(playlist);
+    }
+  }
+  if (!playlist) {
     return res.status(404).json({ error: 'Playlist not found' });
   }
 
@@ -546,7 +561,7 @@ router.post('/:id/resolve-durations', async (req: Request, res: Response) => {
 });
 
 // Reorder playlist tracks
-router.put('/:id/reorder', (req: Request, res: Response) => {
+router.put('/:id/reorder', async (req: Request, res: Response) => {
   const userId = resolveUserId(req);
   const playlist = db.findPlaylistById(req.params.id);
   if (!playlist) {
@@ -605,7 +620,8 @@ router.put('/:id/reorder', (req: Request, res: Response) => {
   });
   playlist.itemCount = playlist.items.length;
   playlist.updatedAt = new Date().toISOString();
-  db.saveToDisk();
+  db.persistPlaylist(playlist);
+  await tursoSavePlaylist(playlist);
 
   broadcastPlaylistEvent({
     type: 'tracks_updated',
@@ -853,7 +869,8 @@ const handleAddItems = async (req: Request, res: Response) => {
 
     playlist.itemCount = playlist.items.length;
     playlist.updatedAt = new Date().toISOString();
-    db.saveToDisk();
+    db.persistPlaylist(playlist);
+    await tursoSavePlaylist(playlist);
 
     broadcastPlaylistEvent({
       type: 'tracks_updated',
@@ -930,7 +947,8 @@ const handleAddItems = async (req: Request, res: Response) => {
   playlist.items.push(newItem);
   playlist.itemCount = playlist.items.length;
   playlist.updatedAt = new Date().toISOString();
-  db.saveToDisk();
+  db.persistPlaylist(playlist);
+  await tursoSavePlaylist(playlist);
 
   broadcastPlaylistEvent({
     type: 'tracks_updated',
@@ -989,7 +1007,8 @@ router.post('/:id/import-url', async (req: Request, res: Response) => {
     playlist.itemCount = playlist.items.length;
     playlist.updatedAt = new Date().toISOString();
     await enrichPlaylistDurations(playlist);
-    db.saveToDisk();
+    db.persistPlaylist(playlist);
+    await tursoSavePlaylist(playlist);
 
     broadcastPlaylistEvent({
       type: 'tracks_updated',
@@ -1014,7 +1033,7 @@ router.post('/:id/import-url', async (req: Request, res: Response) => {
 });
 
 // Remove item from playlist
-router.delete('/:id/items/:mediaItemId', (req: Request, res: Response) => {
+router.delete('/:id/items/:mediaItemId', async (req: Request, res: Response) => {
   const playlist = db.findPlaylistById(req.params.id);
   if (!playlist || !playlist.items) {
     return res.status(404).json({ error: 'Playlist not found' });
@@ -1022,7 +1041,9 @@ router.delete('/:id/items/:mediaItemId', (req: Request, res: Response) => {
 
   playlist.items = playlist.items.filter(i => i.mediaItemId !== req.params.mediaItemId && i.id !== req.params.mediaItemId);
   playlist.itemCount = playlist.items.length;
-  db.saveToDisk();
+  db.persistPlaylist(playlist);
+  await tursoRemovePlaylistItem(playlist.id, req.params.mediaItemId);
+  await tursoSavePlaylist(playlist);
 
   broadcastPlaylistEvent({
     type: 'tracks_updated',
@@ -1038,16 +1059,23 @@ router.delete('/:id/items/:mediaItemId', (req: Request, res: Response) => {
 const handleExportPlaylist = async (req: Request, res: Response) => {
   const format = (req.query.format as string) || (req.body?.format as string) || 'json';
 
-  if (process.env.VERCEL) {
-    // Cloud sync already handled by router middleware
-  }
-
   let playlist = db.findPlaylistById(req.params.id);
   if (!playlist) {
     playlist = db.findPlaylistByShareToken(req.params.id);
   }
 
-  // If provided in request body (e.g. from client sync), use it
+  // If not found in memory, query Turso edge database directly
+  if (!playlist) {
+    playlist = await tursoGetPlaylist(req.params.id);
+    if (!playlist) {
+      playlist = await tursoGetPlaylistByShareToken(req.params.id);
+    }
+    if (playlist) {
+      db.createPlaylist(playlist);
+    }
+  }
+
+  // If provided in request body (e.g. from client fallback sync), use it
   if (!playlist && req.body && req.body.playlist) {
     playlist = req.body.playlist;
   }
@@ -1059,25 +1087,28 @@ const handleExportPlaylist = async (req: Request, res: Response) => {
     });
   }
 
-  const items = playlist.items?.map(i => i.mediaItem || (i as any)) || [];
+  const items = (playlist.items || [])
+    .map(i => (i && (i.mediaItem || i)) || null)
+    .filter(Boolean);
 
   if (format === 'm3u') {
     let m3u = '#EXTM3U\n';
-    m3u += `#PLAYLIST:${playlist.title}\n`;
+    m3u += `#PLAYLIST:${playlist.title || 'Playlist'}\n`;
     for (const item of items) {
+      if (!item) continue;
       const dur = Math.round(item.duration || 0);
       const artist = item.artist || 'Unknown Artist';
       const title = item.title || 'Unknown Track';
       m3u += `#EXTINF:${dur},${artist} - ${title}\n`;
-      m3u += `${item.streamUrl || item.embedUrl || (item.provider === 'youtube' && item.providerId ? `https://www.youtube.com/watch?v=${item.providerId}` : title)}\n`;
+      m3u += `${item.streamUrl || item.embedUrl || (item.provider === 'youtube' && item.providerId ? `https://www.youtube.com/watch?v=${item.providerId}` : item.title || 'unknown')}\n`;
     }
     res.setHeader('Content-Type', 'audio/x-mpegurl; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${playlist.title.replace(/[^\w\s-]/gi, '_')}.m3u"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${(playlist.title || 'Playlist').replace(/[^\w\s-]/gi, '_')}.m3u"`);
     return res.send(m3u);
   }
 
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="${playlist.title.replace(/[^\w\s-]/gi, '_')}.json"`);
+  res.setHeader('Content-Disposition', `attachment; filename="${(playlist.title || 'Playlist').replace(/[^\w\s-]/gi, '_')}.json"`);
   return res.json({ playlist, items });
 };
 

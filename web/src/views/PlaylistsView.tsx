@@ -487,22 +487,25 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
     }
   };
 
-  const handleExport = (format: 'json' | 'm3u') => {
+  const handleExport = async (format: 'json' | 'm3u') => {
     if (!selectedPlaylist) return;
 
-    try {
-      const sanitizedTitle = (selectedPlaylist.title || 'Playlist').replace(/[^\w\s-]/gi, '_').trim() || 'Playlist';
-      const items = (selectedPlaylist.items || []).map(i => i.mediaItem || (i as any));
+    const sanitizedTitle = (selectedPlaylist.title || 'Playlist').replace(/[^\w\s-]/gi, '_').trim() || 'Playlist';
+    const items = (selectedPlaylist.items || [])
+      .map(i => (i && (i.mediaItem || i)) || null)
+      .filter((item): item is any => Boolean(item));
 
+    try {
       if (format === 'm3u') {
         let m3u = '#EXTM3U\n';
-        m3u += `#PLAYLIST:${selectedPlaylist.title}\n`;
+        m3u += `#PLAYLIST:${selectedPlaylist.title || 'Playlist'}\n`;
         for (const item of items) {
+          if (!item) continue;
           const trackDuration = Math.round(item.duration || 0);
           const trackArtist = item.artist || 'Unknown Artist';
           const trackTitle = item.title || 'Unknown Track';
           m3u += `#EXTINF:${trackDuration},${trackArtist} - ${trackTitle}\n`;
-          const trackUrl = item.streamUrl || item.embedUrl || (item.provider === 'youtube' && item.providerId ? `https://www.youtube.com/watch?v=${item.providerId}` : item.title);
+          const trackUrl = item.streamUrl || item.embedUrl || (item.provider === 'youtube' && item.providerId ? `https://www.youtube.com/watch?v=${item.providerId}` : item.title || 'track');
           m3u += `${trackUrl}\n`;
         }
 
@@ -519,11 +522,11 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
         const exportData = {
           playlist: {
             id: selectedPlaylist.id,
-            title: selectedPlaylist.title,
-            description: selectedPlaylist.description,
+            title: selectedPlaylist.title || 'Playlist',
+            description: selectedPlaylist.description || '',
             trackCount: items.length,
-            createdAt: selectedPlaylist.createdAt,
-            updatedAt: selectedPlaylist.updatedAt,
+            createdAt: selectedPlaylist.createdAt || new Date().toISOString(),
+            updatedAt: selectedPlaylist.updatedAt || new Date().toISOString(),
             creator: selectedPlaylist.creator
           },
           items
@@ -540,7 +543,30 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
         setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
       }
     } catch (err) {
-      console.warn('Client-side export failed, falling back to server export:', err);
+      console.warn('Client-side export error, falling back to server export with payload:', err);
+      try {
+        const res = await fetch(`${API_BASE}/playlists/${selectedPlaylist.id}/export?format=${format}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ playlist: selectedPlaylist, format })
+        });
+        if (res.ok) {
+          const blob = await res.blob();
+          const ext = format === 'm3u' ? 'm3u' : 'json';
+          const mime = format === 'm3u' ? 'audio/x-mpegurl;charset=utf-8' : 'application/json;charset=utf-8';
+          const fileBlob = new Blob([blob], { type: mime });
+          const downloadUrl = URL.createObjectURL(fileBlob);
+          const a = document.createElement('a');
+          a.href = downloadUrl;
+          a.download = `${sanitizedTitle}.${ext}`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+          return;
+        }
+      } catch {}
+
       const url = `${API_BASE}/playlists/${selectedPlaylist.id}/export?format=${format}`;
       window.open(url, '_blank');
     }

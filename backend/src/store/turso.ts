@@ -206,43 +206,45 @@ export async function tursoDeleteUser(userId: string): Promise<void> {
 export async function tursoSavePlaylist(playlist: Playlist): Promise<void> {
   try {
     await initTurso();
-    await tursoClient.execute({
-      sql: `
-        INSERT OR REPLACE INTO playlists 
-        (id, user_id, title, description, cover_art, is_smart, smart_definition, is_private, is_shareable, is_pinned, share_token, shared_with, shared_with_users, creator, item_count, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-      args: [
-        playlist.id,
-        playlist.userId,
-        playlist.title,
-        playlist.description || '',
-        playlist.coverArt || '',
-        playlist.isSmart ? 1 : 0,
-        playlist.smartDefinition ? JSON.stringify(playlist.smartDefinition) : null,
-        playlist.isPrivate ? 1 : 0,
-        playlist.isShareable ? 1 : 0,
-        playlist.isPinned ? 1 : 0,
-        playlist.shareToken || `st-${playlist.id}`,
-        JSON.stringify(playlist.sharedWith || []),
-        JSON.stringify(playlist.sharedWithUsers || []),
-        JSON.stringify(playlist.creator || {}),
-        playlist.itemCount || (playlist.items ? playlist.items.length : 0),
-        playlist.createdAt || new Date().toISOString(),
-        playlist.updatedAt || new Date().toISOString()
-      ]
-    });
+    const batchStatements: any[] = [
+      {
+        sql: `
+          INSERT OR REPLACE INTO playlists 
+          (id, user_id, title, description, cover_art, is_smart, smart_definition, is_private, is_shareable, is_pinned, share_token, shared_with, shared_with_users, creator, item_count, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        args: [
+          playlist.id,
+          playlist.userId,
+          playlist.title,
+          playlist.description || '',
+          playlist.coverArt || '',
+          playlist.isSmart ? 1 : 0,
+          playlist.smartDefinition ? JSON.stringify(playlist.smartDefinition) : null,
+          playlist.isPrivate ? 1 : 0,
+          playlist.isShareable ? 1 : 0,
+          playlist.isPinned ? 1 : 0,
+          playlist.shareToken || `st-${playlist.id}`,
+          JSON.stringify(playlist.sharedWith || []),
+          JSON.stringify(playlist.sharedWithUsers || []),
+          JSON.stringify(playlist.creator || {}),
+          playlist.itemCount || (playlist.items ? playlist.items.length : 0),
+          playlist.createdAt || new Date().toISOString(),
+          playlist.updatedAt || new Date().toISOString()
+        ]
+      }
+    ];
 
-    // Save playlist items if present
     if (playlist.items && Array.isArray(playlist.items)) {
-      await tursoClient.execute({
+      batchStatements.push({
         sql: `DELETE FROM playlist_items WHERE playlist_id = ?`,
         args: [playlist.id]
       });
 
       for (let idx = 0; idx < playlist.items.length; idx++) {
         const it = playlist.items[idx];
-        await tursoClient.execute({
+        if (!it) continue;
+        batchStatements.push({
           sql: `
             INSERT OR REPLACE INTO playlist_items 
             (id, playlist_id, media_item_id, order_index, added_at, media_item)
@@ -251,7 +253,7 @@ export async function tursoSavePlaylist(playlist: Playlist): Promise<void> {
           args: [
             it.id || `item-${playlist.id}-${idx}`,
             playlist.id,
-            it.mediaItemId || it.mediaItem?.id,
+            it.mediaItemId || it.mediaItem?.id || '',
             it.orderIndex !== undefined ? it.orderIndex : idx,
             it.addedAt || new Date().toISOString(),
             JSON.stringify(it.mediaItem || {})
@@ -259,8 +261,154 @@ export async function tursoSavePlaylist(playlist: Playlist): Promise<void> {
         });
       }
     }
+
+    await tursoClient.batch(batchStatements, 'write');
   } catch (err) {
     console.warn('[Turso] tursoSavePlaylist error:', err);
+  }
+}
+
+export async function tursoSavePlaylistItems(playlistId: string, items: PlaylistItem[]): Promise<void> {
+  try {
+    await initTurso();
+    const batchStatements: any[] = [
+      {
+        sql: `DELETE FROM playlist_items WHERE playlist_id = ?`,
+        args: [playlistId]
+      }
+    ];
+
+    for (let idx = 0; idx < items.length; idx++) {
+      const it = items[idx];
+      if (!it) continue;
+      batchStatements.push({
+        sql: `
+          INSERT OR REPLACE INTO playlist_items 
+          (id, playlist_id, media_item_id, order_index, added_at, media_item)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `,
+        args: [
+          it.id || `item-${playlistId}-${idx}`,
+          playlistId,
+          it.mediaItemId || it.mediaItem?.id || '',
+          it.orderIndex !== undefined ? it.orderIndex : idx,
+          it.addedAt || new Date().toISOString(),
+          JSON.stringify(it.mediaItem || {})
+        ]
+      });
+    }
+
+    batchStatements.push({
+      sql: `UPDATE playlists SET item_count = ?, updated_at = ? WHERE id = ?`,
+      args: [items.length, new Date().toISOString(), playlistId]
+    });
+
+    await tursoClient.batch(batchStatements, 'write');
+  } catch (err) {
+    console.warn('[Turso] tursoSavePlaylistItems error:', err);
+  }
+}
+
+export async function tursoRemovePlaylistItem(playlistId: string, itemIdOrMediaItemId: string): Promise<void> {
+  try {
+    await initTurso();
+    await tursoClient.batch([
+      {
+        sql: `DELETE FROM playlist_items WHERE playlist_id = ? AND (id = ? OR media_item_id = ?)`,
+        args: [playlistId, itemIdOrMediaItemId, itemIdOrMediaItemId]
+      },
+      {
+        sql: `
+          UPDATE playlists 
+          SET item_count = (SELECT COUNT(*) FROM playlist_items WHERE playlist_id = ?),
+              updated_at = ?
+          WHERE id = ?
+        `,
+        args: [playlistId, new Date().toISOString(), playlistId]
+      }
+    ], 'write');
+  } catch (err) {
+    console.warn('[Turso] tursoRemovePlaylistItem error:', err);
+  }
+}
+
+export async function tursoGetPlaylist(playlistId: string): Promise<Playlist | undefined> {
+  try {
+    await initTurso();
+    const res = await tursoClient.execute({
+      sql: `SELECT * FROM playlists WHERE id = ? LIMIT 1`,
+      args: [playlistId]
+    });
+    if (!res.rows || res.rows.length === 0) return undefined;
+    const row = res.rows[0];
+
+    const itemsRes = await tursoClient.execute({
+      sql: `SELECT * FROM playlist_items WHERE playlist_id = ? ORDER BY order_index ASC`,
+      args: [playlistId]
+    });
+
+    let creator: any;
+    let sharedWith: string[] = [];
+    let sharedWithUsers: any[] = [];
+    let smartDef: any;
+
+    try { if (row.creator) creator = JSON.parse(String(row.creator)); } catch {}
+    try { if (row.shared_with) sharedWith = JSON.parse(String(row.shared_with)); } catch {}
+    try { if (row.shared_with_users) sharedWithUsers = JSON.parse(String(row.shared_with_users)); } catch {}
+    try { if (row.smart_definition) smartDef = JSON.parse(String(row.smart_definition)); } catch {}
+
+    const items: PlaylistItem[] = itemsRes.rows.map(itRow => {
+      let mediaItem: any;
+      try { if (itRow.media_item) mediaItem = JSON.parse(String(itRow.media_item)); } catch {}
+      return {
+        id: String(itRow.id),
+        playlistId: playlistId,
+        mediaItemId: String(itRow.media_item_id),
+        orderIndex: Number(itRow.order_index || 0),
+        addedAt: String(itRow.added_at || ''),
+        mediaItem
+      };
+    });
+
+    return {
+      id: String(row.id),
+      userId: String(row.user_id),
+      title: String(row.title),
+      description: String(row.description || ''),
+      coverArt: String(row.cover_art || ''),
+      isSmart: Boolean(row.is_smart),
+      smartDefinition: smartDef,
+      isPrivate: Boolean(row.is_private),
+      isShareable: Boolean(row.is_shareable),
+      isPinned: Boolean(row.is_pinned),
+      shareToken: String(row.share_token || `st-${row.id}`),
+      sharedWith,
+      sharedWithUsers,
+      creator,
+      itemCount: items.length || Number(row.item_count || 0),
+      items,
+      createdAt: String(row.created_at || ''),
+      updatedAt: String(row.updated_at || '')
+    };
+  } catch (err) {
+    console.warn('[Turso] tursoGetPlaylist error:', err);
+    return undefined;
+  }
+}
+
+export async function tursoGetPlaylistByShareToken(shareToken: string): Promise<Playlist | undefined> {
+  try {
+    await initTurso();
+    const cleanToken = shareToken.trim().toLowerCase();
+    const res = await tursoClient.execute({
+      sql: `SELECT * FROM playlists WHERE lower(share_token) = ? OR lower(share_token) = ? OR lower(id) = ? LIMIT 1`,
+      args: [cleanToken, `st-${cleanToken}`, cleanToken]
+    });
+    if (!res.rows || res.rows.length === 0) return undefined;
+    return await tursoGetPlaylist(String(res.rows[0].id));
+  } catch (err) {
+    console.warn('[Turso] tursoGetPlaylistByShareToken error:', err);
+    return undefined;
   }
 }
 
@@ -487,3 +635,4 @@ export async function tursoLoadAll(): Promise<Partial<DatabaseSchema>> {
     return {};
   }
 }
+

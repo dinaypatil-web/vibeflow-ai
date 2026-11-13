@@ -13,6 +13,10 @@ import {
   tursoToggleFavorite, 
   tursoRecordHistory, 
   tursoLoadAll,
+  tursoGetPlaylist,
+  tursoGetPlaylistByShareToken,
+  tursoSavePlaylistItems,
+  tursoRemovePlaylistItem,
   isRemoteTurso 
 } from './turso';
 import { 
@@ -1341,6 +1345,47 @@ class MemoryDatabase {
 
   public findPlaylistById(id: string): Playlist | undefined {
     return this.data.playlists.find(p => p.id === id);
+  }
+
+  public async findPlaylistByIdAsync(id: string): Promise<Playlist | undefined> {
+    const pl = this.findPlaylistById(id);
+    if (pl) return pl;
+    try {
+      const fromTurso = await tursoGetPlaylist(id);
+      if (fromTurso) {
+        const existingIdx = this.data.playlists.findIndex(p => p.id === fromTurso.id);
+        if (existingIdx >= 0) {
+          this.data.playlists[existingIdx] = fromTurso;
+        } else {
+          this.data.playlists.push(fromTurso);
+        }
+        return fromTurso;
+      }
+    } catch {}
+    return undefined;
+  }
+
+  public async findPlaylistByShareTokenAsync(token: string): Promise<Playlist | undefined> {
+    const pl = this.findPlaylistByShareToken(token);
+    if (pl) return pl;
+    try {
+      const fromTurso = await tursoGetPlaylistByShareToken(token);
+      if (fromTurso) {
+        const existingIdx = this.data.playlists.findIndex(p => p.id === fromTurso.id);
+        if (existingIdx >= 0) {
+          this.data.playlists[existingIdx] = fromTurso;
+        } else {
+          this.data.playlists.push(fromTurso);
+        }
+        return fromTurso;
+      }
+    } catch {}
+    return undefined;
+  }
+
+  public persistPlaylist(playlist: Playlist): void {
+    this.saveToDisk();
+    tursoSavePlaylist(playlist).catch(err => console.warn('[Turso] persistPlaylist error:', err));
   }
 
   public createPlaylist(playlist: Playlist): Playlist {

@@ -64,3 +64,7 @@ tmp/
 scratch/
 *.db
 *.db-journal
+*.db-wal
+auth
+auth-wal
+auth-shm
