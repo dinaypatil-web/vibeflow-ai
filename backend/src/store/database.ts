@@ -1,6 +1,21 @@
 import fs from 'fs';
 import path from 'path';
 import { 
+  initTurso, 
+  tursoSaveUser, 
+  tursoUpdatePassword, 
+  tursoUpdatePreferences, 
+  tursoDeleteUser, 
+  tursoSavePlaylist, 
+  tursoDeletePlaylist, 
+  tursoDeleteMultiplePlaylists, 
+  tursoClearPlaylists, 
+  tursoToggleFavorite, 
+  tursoRecordHistory, 
+  tursoLoadAll,
+  isRemoteTurso 
+} from './turso';
+import { 
   User, 
   UserSummary,
   UserPreferences, 
@@ -431,6 +446,28 @@ class MemoryDatabase {
     this.loadFromDisk();
     this.seedDefaultPlaylists();
     this.ensurePlaylistIntegrity();
+    this.initTursoAndSync().catch(() => {});
+  }
+
+  private async initTursoAndSync() {
+    try {
+      await initTurso();
+      const tursoData = await tursoLoadAll();
+      if (tursoData.users && (tursoData.users.length > 0 || (tursoData.playlists && tursoData.playlists.length > 0))) {
+        this.mergeCloudData(tursoData);
+      } else {
+        // Initial migration of current in-memory state into Turso
+        for (const u of this.data.users) {
+          const hash = this.data.passwords[u.id] || (u.email ? this.data.passwords[u.email.toLowerCase()] : '');
+          await tursoSaveUser(u, hash);
+        }
+        for (const pl of this.data.playlists) {
+          await tursoSavePlaylist(pl);
+        }
+      }
+    } catch (err) {
+      console.warn('[VibeFlow] Turso initialization note:', err);
+    }
   }
 
   private cloudSyncInFlight: Promise<void> | null = null;
@@ -579,7 +616,18 @@ class MemoryDatabase {
 
   public async syncFromCloud(): Promise<boolean> {
     try {
-      // 1. Upstash Redis / Vercel KV if configured
+      // 1. Primary: Turso server-based edge SQL database
+      const tursoData = await tursoLoadAll();
+      if (tursoData.users && (tursoData.users.length > 0 || (tursoData.playlists && tursoData.playlists.length > 0))) {
+        this.mergeCloudData(tursoData);
+        return true;
+      }
+    } catch (err) {
+      // Offline or local fallback
+    }
+
+    try {
+      // 2. Secondary fallback: Upstash Redis / Vercel KV if configured
       const kvUrl = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
       const kvToken = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
 
@@ -631,6 +679,17 @@ class MemoryDatabase {
 
     this.cloudSyncInFlight = (async () => {
       try {
+        // 1. Persist to Turso server-based database
+        try {
+          for (const u of this.data.users) {
+            const hash = this.data.passwords[u.id] || (u.email ? this.data.passwords[u.email.toLowerCase()] : '');
+            tursoSaveUser(u, hash).catch(() => {});
+          }
+          for (const pl of this.data.playlists) {
+            tursoSavePlaylist(pl).catch(() => {});
+          }
+        } catch {}
+
         const payload = {
           users: this.data.users,
           passwords: this.data.passwords,
@@ -1016,6 +1075,7 @@ class MemoryDatabase {
       this.data.passwords[user.username.toLowerCase()] = passwordHash;
     }
     this.saveToDisk();
+    tursoUpdatePassword(user.id, passwordHash).catch(() => {});
     return true;
   }
 
@@ -1042,6 +1102,7 @@ class MemoryDatabase {
       this.data.passwords[user.username.toLowerCase()] = passwordHash;
     }
     this.saveToDisk();
+    tursoSaveUser(user, passwordHash).catch(() => {});
     return user;
   }
 
@@ -1054,6 +1115,9 @@ class MemoryDatabase {
       userId: user.id
     } as UserPreferences;
     this.saveToDisk();
+    if (user.preferences) {
+      tursoUpdatePreferences(user.id, user.preferences).catch(() => {});
+    }
     return user.preferences;
   }
 
@@ -1322,6 +1386,7 @@ class MemoryDatabase {
     this.data.playlists.push(playlist);
     this.saveToDisk();
     this.syncToCloud().catch(() => {});
+    tursoSavePlaylist(playlist).catch(() => {});
     return playlist;
   }
 
@@ -1359,6 +1424,7 @@ class MemoryDatabase {
       playlist.updatedAt = new Date().toISOString();
       this.saveToDisk();
       this.syncToCloud().catch(() => {});
+      tursoSavePlaylist(playlist).catch(() => {});
     }
 
     return { 
@@ -1383,6 +1449,7 @@ class MemoryDatabase {
     playlist.updatedAt = new Date().toISOString();
     this.saveToDisk();
     this.syncToCloud().catch(() => {});
+    tursoSavePlaylist(playlist).catch(() => {});
     return { success: true, playlist, message: 'Revoked access for user' };
   }
 
@@ -1398,6 +1465,7 @@ class MemoryDatabase {
     }
     this.saveToDisk();
     this.syncToCloud().catch(() => {});
+    tursoSavePlaylist(playlist).catch(() => {});
     return true;
   }
 
@@ -1546,6 +1614,7 @@ class MemoryDatabase {
       playlist.updatedAt = new Date().toISOString();
       this.saveToDisk();
       this.syncToCloud().catch(() => {});
+      tursoSavePlaylist(playlist).catch(() => {});
     }
     return { success: true, playlist, message: `Added "${playlist.title}" to your shared playlists` };
   }
@@ -1575,6 +1644,7 @@ class MemoryDatabase {
     if (!playlist) return undefined;
     Object.assign(playlist, updates, { updatedAt: new Date().toISOString() });
     this.saveToDisk();
+    tursoSavePlaylist(playlist).catch(() => {});
     return playlist;
   }
 
@@ -1603,6 +1673,7 @@ class MemoryDatabase {
     this.data.deletedPlaylistIds = [];
     this.saveToDisk();
     this.syncToCloud().catch(() => {});
+    tursoClearPlaylists(userId).catch(() => {});
     return {
       success: true,
       clearedCount: beforeCount - this.data.playlists.length,
@@ -1621,6 +1692,7 @@ class MemoryDatabase {
     }
     this.saveToDisk();
     this.syncToCloud().catch(() => {});
+    tursoDeletePlaylist(id).catch(() => {});
     return true;
   }
 
@@ -1668,6 +1740,7 @@ class MemoryDatabase {
     if (changed) {
       this.saveToDisk();
       this.syncToCloud().catch(() => {});
+      tursoDeleteMultiplePlaylists(deletedIds).catch(() => {});
     }
 
     return { deletedIds, failedIds };
@@ -1791,6 +1864,7 @@ class MemoryDatabase {
     playlist.itemCount = playlist.items.length;
     playlist.updatedAt = new Date().toISOString();
     this.saveToDisk();
+    tursoSavePlaylist(playlist).catch(() => {});
 
     return { success: true, playlist, addedItems };
   }
@@ -1835,6 +1909,7 @@ class MemoryDatabase {
     }
 
     this.saveToDisk();
+    tursoDeleteUser(targetId).catch(() => {});
     return true;
   }
 
@@ -1851,6 +1926,7 @@ class MemoryDatabase {
     if (idx !== -1) {
       this.data.favorites.splice(idx, 1);
       this.saveToDisk();
+      tursoToggleFavorite(userId, mediaItemId).catch(() => {});
       return false; // un-favorited
     } else {
       this.data.favorites.push({
@@ -1860,6 +1936,7 @@ class MemoryDatabase {
         createdAt: new Date().toISOString()
       });
       this.saveToDisk();
+      tursoToggleFavorite(userId, mediaItemId).catch(() => {});
       return true; // favorited
     }
   }
@@ -1918,6 +1995,7 @@ class MemoryDatabase {
       this.data.history = this.data.history.slice(0, 500);
     }
     this.saveToDisk();
+    tursoRecordHistory(targetUserId, mediaItemId, playedSeconds, completionRate, finalItem).catch(() => {});
   }
 
   public getHistory(userId: string): { mediaItem: MediaItem; playedSeconds: number; listenedAt: string }[] {

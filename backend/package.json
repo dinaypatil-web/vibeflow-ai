@@ -13,6 +13,7 @@
     "test": "node -e \"console.log('Automated tests passed!')\""
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "@types/crypto-js": "^4.2.2",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
