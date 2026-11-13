@@ -25,6 +25,7 @@ export const MiniPlayer: React.FC = () => {
   const {
     currentTrack,
     isPlaying,
+    autoplayBlocked,
     currentTime,
     duration,
     volume,
@@ -191,8 +192,10 @@ export const MiniPlayer: React.FC = () => {
             {/* Play/Pause */}
             <button 
               onClick={togglePlay}
-              className="w-10 h-10 rounded-full bg-gradient-to-tr from-brand-600 to-accent-cyan text-white flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-lg shadow-brand-500/30"
-              title={isPlaying ? 'Pause' : 'Play'}
+              className={`w-10 h-10 rounded-full bg-gradient-to-tr from-brand-600 to-accent-cyan text-white flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-lg shadow-brand-500/30 ${
+                autoplayBlocked ? 'ring-2 ring-brand-400 ring-offset-2 ring-offset-surface-900 animate-pulse' : ''
+              }`}
+              title={isPlaying ? 'Pause' : (autoplayBlocked ? 'Click to resume playback' : 'Play')}
             >
               {isPlaying ? (
                 <Pause className="w-5 h-5 fill-current" />

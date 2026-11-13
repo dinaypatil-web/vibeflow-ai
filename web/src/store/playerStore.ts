@@ -25,6 +25,44 @@ const LS_THEME = 'vibeflow_theme';
 const LS_SAVED_CREDS = 'vibeflow_saved_credentials';
 const LS_SAVED_ACCOUNTS = 'vibeflow_saved_accounts';
 const LS_LOCAL_USERS = 'vibeflow_local_users';
+const LS_PLAYBACK_STATE = 'vibeflow_playback_state';
+const LS_PLAYBACK_QUEUE = 'vibeflow_playback_queue';
+
+export interface PersistedPlaybackState {
+  currentTrack: MediaItem;
+  currentTime: number;
+  queueIndex: number;
+  wasPlaying: boolean;
+  savedAt: number;
+}
+
+let lastPersistedTime = 0;
+export function savePlaybackStateWeb(
+  track: MediaItem | null,
+  currentTime: number,
+  queue: MediaItem[] = [],
+  queueIndex: number = -1,
+  isPlaying: boolean = false
+) {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    if (!track) {
+      localStorage.removeItem(LS_PLAYBACK_STATE);
+      return;
+    }
+    const statePayload: PersistedPlaybackState = {
+      currentTrack: track,
+      currentTime: Math.max(0, Math.round(currentTime)),
+      queueIndex: Math.max(0, queueIndex),
+      wasPlaying: isPlaying,
+      savedAt: Date.now()
+    };
+    localStorage.setItem(LS_PLAYBACK_STATE, JSON.stringify(statePayload));
+    if (Array.isArray(queue) && queue.length > 0) {
+      localStorage.setItem(LS_PLAYBACK_QUEUE, JSON.stringify(queue.slice(0, 50)));
+    }
+  } catch {}
+}
 
 export function persistSavedCredentials(cred: SavedCredential): SavedCredential[] {
   try {
@@ -68,7 +106,22 @@ function loadPersisted() {
       ? JSON.parse(savedAccountsRaw) 
       : (savedCredentials ? [savedCredentials] : []);
 
-    return { token, user, favorites: favs, spotifyAccount, theme: savedTheme, savedCredentials, savedAccounts };
+    const playbackRaw = localStorage.getItem(LS_PLAYBACK_STATE);
+    const playbackState: PersistedPlaybackState | null = playbackRaw ? JSON.parse(playbackRaw) : null;
+    const queueRaw = localStorage.getItem(LS_PLAYBACK_QUEUE);
+    const playbackQueue: MediaItem[] = queueRaw ? JSON.parse(queueRaw) : [];
+
+    return { 
+      token, 
+      user, 
+      favorites: favs, 
+      spotifyAccount, 
+      theme: savedTheme, 
+      savedCredentials, 
+      savedAccounts,
+      playbackState,
+      playbackQueue
+    };
   } catch {
     return { 
       token: null, 
@@ -77,16 +130,20 @@ function loadPersisted() {
       spotifyAccount: { provider: 'spotify' as const, connected: false }, 
       theme: 'dark' as AppTheme,
       savedCredentials: null,
-      savedAccounts: []
+      savedAccounts: [],
+      playbackState: null,
+      playbackQueue: []
     };
   }
 }
 
-const persisted = loadPersisted();
+export const persisted = loadPersisted();
 
 interface PlayerState {
   currentTrack: MediaItem | null;
   isPlaying: boolean;
+  autoplayBlocked: boolean;
+  setAutoplayBlocked: (blocked: boolean) => void;
   queue: MediaItem[];
   queueIndex: number;
   currentTime: number;
@@ -166,12 +223,18 @@ interface PlayerState {
 }
 
 export const usePlayerStore = create<PlayerState>((set, get) => ({
-  currentTrack: null,
+  currentTrack: persisted.playbackState?.currentTrack || null,
   isPlaying: false,
-  queue: [],
-  queueIndex: -1,
-  currentTime: 0,
-  duration: 0,
+  autoplayBlocked: false,
+  setAutoplayBlocked: (blocked: boolean) => set({ autoplayBlocked: blocked }),
+  queue: (persisted.playbackQueue && persisted.playbackQueue.length > 0)
+    ? persisted.playbackQueue
+    : (persisted.playbackState?.currentTrack ? [persisted.playbackState.currentTrack] : []),
+  queueIndex: typeof persisted.playbackState?.queueIndex === 'number' && persisted.playbackState.queueIndex >= 0
+    ? persisted.playbackState.queueIndex
+    : (persisted.playbackState?.currentTrack ? 0 : -1),
+  currentTime: persisted.playbackState?.currentTime || 0,
+  duration: persisted.playbackState?.currentTrack?.duration || 0,
   volume: 0.85,
   isMuted: false,
   playbackSpeed: 1.0,
@@ -301,11 +364,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({
       currentTrack: resolvedTrack,
       isPlaying: true,
+      autoplayBlocked: false,
       queue,
       queueIndex,
       currentTime: 0,
       duration: track.duration || 0
     });
+    savePlaybackStateWeb(resolvedTrack, 0, queue, queueIndex, true);
   },
 
   togglePlay: () => {
@@ -314,10 +379,21 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       get().playTrack(queue[0]);
       return;
     }
-    set({ isPlaying: !isPlaying });
+    const nextState = !isPlaying;
+    set({ isPlaying: nextState, autoplayBlocked: false });
+    const st = get();
+    if (st.currentTrack) {
+      savePlaybackStateWeb(st.currentTrack, st.currentTime, st.queue, st.queueIndex, nextState);
+    }
   },
 
-  setPlaying: (isPlaying) => set({ isPlaying }),
+  setPlaying: (isPlaying) => {
+    set({ isPlaying, autoplayBlocked: isPlaying ? false : get().autoplayBlocked });
+    const st = get();
+    if (st.currentTrack) {
+      savePlaybackStateWeb(st.currentTrack, st.currentTime, st.queue, st.queueIndex, isPlaying);
+    }
+  },
 
   nextTrack: () => {
     const { queue, queueIndex, isShuffle, repeatMode } = get();
@@ -349,6 +425,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         currentTime: 0,
         duration: nextTrack.duration || 0
       });
+      savePlaybackStateWeb(nextTrack, 0, queue, nextIndex, true);
     }
   },
 
@@ -395,10 +472,21 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         currentTime: 0,
         duration: prevTrack.duration || 0
       });
+      savePlaybackStateWeb(prevTrack, 0, queue, prevIndex, true);
     }
   },
 
-  setCurrentTime: (time) => set({ currentTime: time }),
+  setCurrentTime: (time) => {
+    set({ currentTime: time });
+    const now = Date.now();
+    if (now - lastPersistedTime > 3000) {
+      lastPersistedTime = now;
+      const st = get();
+      if (st.currentTrack) {
+        savePlaybackStateWeb(st.currentTrack, time, st.queue, st.queueIndex, st.isPlaying);
+      }
+    }
+  },
   setDuration: (duration) => {
     const validDur = typeof duration === 'number' && !isNaN(duration) && duration > 0 ? Math.round(duration) : 0;
     set(state => {
@@ -412,7 +500,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       return { duration };
     });
   },
-  seekTo: (time) => set({ seekRequestedTime: time, currentTime: time }),
+  seekTo: (time) => {
+    set({ seekRequestedTime: time, currentTime: time });
+    const st = get();
+    if (st.currentTrack) {
+      savePlaybackStateWeb(st.currentTrack, time, st.queue, st.queueIndex, st.isPlaying);
+    }
+  },
   clearSeekRequest: () => set({ seekRequestedTime: null }),
 
   setVolume: (volume) => set({ volume, isMuted: volume === 0 }),

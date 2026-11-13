@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { usePlayerStore } from '../store/playerStore';
+import { usePlayerStore, savePlaybackStateWeb, persisted } from '../store/playerStore';
 import { api, API_BASE } from '../services/api';
 
 // Global audio analyser export for visualizers
@@ -40,6 +40,36 @@ export const AudioEngine: React.FC = () => {
   const getCurrentStreamUrl = (): string | undefined => {
     return usePlayerStore.getState().currentTrack?.streamUrl;
   };
+
+  // ── Auto-Resume Playback on App Reopen / Refresh ───────────────────────
+  const hasAttemptedAutoResumeRef = useRef(false);
+  useEffect(() => {
+    if (hasAttemptedAutoResumeRef.current) return;
+    hasAttemptedAutoResumeRef.current = true;
+
+    const st = usePlayerStore.getState();
+    const persistedState = persisted.playbackState;
+    if (st.currentTrack && persistedState?.wasPlaying !== false) {
+      console.log('[AudioEngine] Auto-resuming track from previous session at', st.currentTime, 's');
+      setPlaying(true);
+
+      const unlockAutoplay = () => {
+        const currentSt = usePlayerStore.getState();
+        if (currentSt.currentTrack) {
+          currentSt.setPlaying(true);
+          if (audioRef.current && audioRef.current.paused && currentSt.currentTrack.provider !== 'youtube') {
+            audioRef.current.play().catch(() => {});
+          }
+        }
+        window.removeEventListener('pointerdown', unlockAutoplay);
+        window.removeEventListener('keydown', unlockAutoplay);
+        window.removeEventListener('touchstart', unlockAutoplay);
+      };
+      window.addEventListener('pointerdown', unlockAutoplay, { passive: true });
+      window.addEventListener('keydown', unlockAutoplay, { passive: true });
+      window.addEventListener('touchstart', unlockAutoplay, { passive: true });
+    }
+  }, [setPlaying]);
 
   // 1. Load YouTube IFrame API script once globally
   useEffect(() => {
@@ -244,11 +274,28 @@ export const AudioEngine: React.FC = () => {
         if (globalAudioContext && globalAudioContext.state === 'suspended') {
           globalAudioContext.resume().catch(() => {});
         }
+
+        // Persist exact playback state to localStorage on tab background/hide
+        if (state.currentTrack) {
+          const cur = audioRef.current ? audioRef.current.currentTime : state.currentTime;
+          savePlaybackStateWeb(state.currentTrack, cur, state.queue, state.queueIndex, state.isPlaying);
+        }
       } else {
-        // Tab brought back into view: re-acquire wake lock if playing
+        // Tab brought back into view / call disconnected: re-acquire wake lock and resume if playing
         if (state.isPlaying) {
           requestWakeLock();
+          if (audioRef.current && audioRef.current.paused && audioRef.current.src && state.currentTrack?.provider !== 'youtube') {
+            audioRef.current.play().catch(() => {});
+          }
         }
+      }
+    };
+
+    const handleBeforeUnload = () => {
+      const state = usePlayerStore.getState();
+      if (state.currentTrack) {
+        const cur = audioRef.current ? audioRef.current.currentTime : state.currentTime;
+        savePlaybackStateWeb(state.currentTrack, cur, state.queue, state.queueIndex, state.isPlaying);
       }
     };
 
@@ -259,17 +306,18 @@ export const AudioEngine: React.FC = () => {
       if (globalAudioContext && globalAudioContext.state === 'suspended') {
         globalAudioContext.resume().catch(() => {});
       }
-      // CRITICAL: NEVER play audioRef if current track is YouTube video iframe! Prevents dual audio streams playing simultaneously
       const isYtActive = state.currentTrack.provider === 'youtube' && !ytEmbedFailedRef.current;
       if (!isYtActive && document.hidden && audioRef.current && audioRef.current.paused && audioRef.current.src) {
         audioRef.current.play().catch(() => {});
       }
     }, 1000);
 
+    window.addEventListener('beforeunload', handleBeforeUnload);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('pagehide', handleVisibilityChange);
     return () => {
       clearInterval(backgroundWatchdog);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('pagehide', handleVisibilityChange);
     };
@@ -484,7 +532,12 @@ export const AudioEngine: React.FC = () => {
             globalAudioContext.resume().catch(() => {});
           }
           audio.play().catch(err => {
-            console.warn('Autoplay prevented or stream error:', err);
+            if (err.name === 'NotAllowedError') {
+              console.log('[AudioEngine] Browser autoplay waiting for user gesture to resume');
+              usePlayerStore.setState({ autoplayBlocked: true });
+            } else {
+              console.warn('Playback error:', err);
+            }
           });
         } else {
           audio.pause();

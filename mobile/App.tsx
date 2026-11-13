@@ -770,18 +770,34 @@ export default function App() {
 
   const soundRef = useRef<Audio.Sound | null>(null);
   const playbackRequestIdRef = useRef<number>(0);
+  const wasPlayingBeforeInterruptionRef = useRef<boolean>(false);
+  const userPausedRef = useRef<boolean>(false);
 
   // ── Playback Persistence ──────────────────────────────────────────────────
   const PLAYBACK_STATE_KEY = '@vibeflow:playback_state';
-  // Tracks last position persisted to AsyncStorage so we throttle writes to once per 5s
+  // Tracks last position persisted to AsyncStorage so we throttle writes to once per 4s
   const lastPersistedPositionRef = useRef<number>(-1);
   const lastPersistedTimeRef = useRef<number>(0);
 
-  const savePlaybackState = async (trackId: string, positionMs: number) => {
+  const savePlaybackState = async (
+    track: MediaItem | null, 
+    positionMs: number, 
+    queue: MediaItem[] = [], 
+    queueIndex: number = 0, 
+    wasPlaying: boolean = true
+  ) => {
+    if (!track) return;
     try {
       await AsyncStorage.setItem(
         PLAYBACK_STATE_KEY,
-        JSON.stringify({ trackId, positionMs })
+        JSON.stringify({
+          track,
+          trackId: track.id,
+          positionMs: Math.max(0, positionMs),
+          queue: queue.length > 0 ? queue : (queueRef.current || []),
+          queueIndex,
+          wasPlaying
+        })
       );
     } catch (err) {
       console.warn('[VibeFlow] Failed to save playback state:', err);
@@ -877,14 +893,18 @@ export default function App() {
         console.warn('[VibeFlow] Startup session restore error:', err);
       }
 
-      // ── Restore last playback session ──────────────────────────────────────
+      // ── Restore last playback session & auto-resume ────────────────────────
       try {
         const saved = await AsyncStorage.getItem(PLAYBACK_STATE_KEY);
         if (saved) {
-          const { trackId, positionMs } = JSON.parse(saved) as { trackId: string; positionMs: number };
-          const allTracks = [...SAMPLE_TRACKS];
-          const track = allTracks.find(t => t.id === trackId);
-          if (track && track.streamUrl && positionMs >= 0) {
+          const parsed = JSON.parse(saved);
+          const track: MediaItem | undefined = parsed.track || [...SAMPLE_TRACKS].find(t => t.id === parsed.trackId);
+          const positionMs = typeof parsed.positionMs === 'number' && parsed.positionMs >= 0 ? parsed.positionMs : 0;
+          const restoredQueue: MediaItem[] = Array.isArray(parsed.queue) && parsed.queue.length > 0 ? parsed.queue : (track ? [track] : []);
+          const restoredIdx = typeof parsed.queueIndex === 'number' && parsed.queueIndex >= 0 ? parsed.queueIndex : 0;
+          const shouldResume = parsed.wasPlaying !== false;
+
+          if (track && track.streamUrl) {
             try {
               await Audio.setAudioModeAsync({
                 staysActiveInBackground: true,
@@ -894,19 +914,26 @@ export default function App() {
                 interruptionModeAndroid: 1,
                 interruptionModeIOS: 1,
               });
+
+              queueRef.current = restoredQueue;
+              setQueue(restoredQueue);
+              queueIndexRef.current = restoredIdx;
+              setQueueIndex(restoredIdx);
+              setCurrentTrack(track);
+              currentTrackRef.current = track;
+              setPositionMillis(positionMs);
+
               const { sound } = await Audio.Sound.createAsync(
                 buildAudioSource(track.streamUrl),
                 {
-                  shouldPlay: false,       // paused — user taps ▶ to resume
+                  shouldPlay: shouldResume,       // Auto-resumes playback on restart/re-open!
                   positionMillis: positionMs,
                   staysActiveInBackground: true,
-                  progressUpdateIntervalMillis: 1000, // 1s interval reduces CPU load & phone heating
-                  // Use default ExoPlayer backend — robust HTTPS streaming in background
+                  progressUpdateIntervalMillis: 1000,
                 },
                 (status: any) => {
                   if (status.isLoaded) {
                     positionMillisRef.current = status.positionMillis;
-                    // Only trigger React state render if Now Playing modal is visible
                     if (isModalOpenRef.current) {
                       setPositionMillis(status.positionMillis);
                       setDurationMillis(status.durationMillis || 0);
@@ -922,6 +949,7 @@ export default function App() {
                   }
                 }
               );
+
               // Guard against race if user already tapped play or selected a track
               if (playbackRequestIdRef.current > 0) {
                 try {
@@ -930,18 +958,13 @@ export default function App() {
                 } catch {}
                 return;
               }
+
               soundRef.current = sound;
-              const idx = queueRef.current.findIndex(t => t.id === track.id);
-              const safeIdx = idx >= 0 ? idx : 0;
-              queueIndexRef.current = safeIdx;
-              setQueueIndex(safeIdx);
-              setCurrentTrack(track);
-              currentTrackRef.current = track;
-              setPositionMillis(positionMs);
-              setIsPlaying(false);
-              isPlayingRef.current = false;
+              setIsPlaying(shouldResume);
+              isPlayingRef.current = shouldResume;
+              userPausedRef.current = !shouldResume;
             } catch (restoreErr) {
-              console.warn('[VibeFlow] Failed to restore playback session:', restoreErr);
+              console.warn('[VibeFlow] Failed to restore & resume playback session:', restoreErr);
             }
           }
         }
@@ -953,31 +976,53 @@ export default function App() {
     initAudio();
 
     // AppState listener:
-    // • background / inactive → persist position in case OS kills process
-    // • active (foreground) → sync UI status without interrupting ExoPlayer background thread
+    // • background / inactive → phone call incoming/active or app backgrounded; persist position
+    // • active (foreground) → user disconnected phone call or brought app forward; auto-resume
     const sub = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'background' || nextAppState === 'inactive') {
-        // Persist position so a cold restart can resume from here
         const currentTrackSnapshot = currentTrackRef.current;
-        if (currentTrackSnapshot && soundRef.current) {
-          soundRef.current.getStatusAsync().then((status: any) => {
-            if (status.isLoaded) {
-              savePlaybackState(currentTrackSnapshot.id, status.positionMillis);
-            }
-          }).catch(() => {});
+        if (currentTrackSnapshot) {
+          if (isPlayingRef.current) {
+            wasPlayingBeforeInterruptionRef.current = true;
+          }
+          if (soundRef.current) {
+            soundRef.current.getStatusAsync().then((status: any) => {
+              if (status.isLoaded) {
+                savePlaybackState(
+                  currentTrackSnapshot, 
+                  status.positionMillis, 
+                  queueRef.current, 
+                  queueIndexRef.current, 
+                  wasPlayingBeforeInterruptionRef.current
+                );
+              }
+            }).catch(() => {});
+          }
         }
-        // NOTE: Do NOT call setAudioModeAsync or playAsync from background!
-        // ExoPlayer with staysActiveInBackground: true continues playing natively.
-        // Calling setAudioModeAsync or playAsync from background disrupts audio focus and stops playback.
       } else if (nextAppState === 'active') {
-        // App returned to foreground: sync UI playback status with background player
+        // User disconnected the call or app returned to active
         if (soundRef.current) {
-          soundRef.current.getStatusAsync().then((status: any) => {
+          soundRef.current.getStatusAsync().then(async (status: any) => {
             if (status.isLoaded) {
               setPositionMillis(status.positionMillis);
               setDurationMillis(status.durationMillis || 0);
-              setIsPlaying(status.isPlaying);
-              isPlayingRef.current = status.isPlaying;
+
+              // AUTO-RESUME ON CALL DISCONNECT:
+              // If music was playing before the phone call / interruption, resume immediately!
+              if (wasPlayingBeforeInterruptionRef.current && !userPausedRef.current) {
+                console.log('[VibeFlow Mobile] Call disconnected / active. Resuming audio playback...');
+                try {
+                  await soundRef.current?.playAsync();
+                  setIsPlaying(true);
+                  isPlayingRef.current = true;
+                  wasPlayingBeforeInterruptionRef.current = false;
+                } catch (err) {
+                  console.warn('[VibeFlow Mobile] Auto-resume after call error:', err);
+                }
+              } else {
+                setIsPlaying(status.isPlaying);
+                isPlayingRef.current = status.isPlaying;
+              }
             }
           }).catch(() => {});
         }
@@ -1111,6 +1156,13 @@ export default function App() {
               isPlayingRef.current = status.isPlaying;
             }
 
+            // Throttle saving playback position to AsyncStorage every 4s
+            const now = Date.now();
+            if (now - lastPersistedTimeRef.current > 4000 && track) {
+              lastPersistedTimeRef.current = now;
+              savePlaybackState(track, status.positionMillis, queueRef.current, queueIndexRef.current, status.isPlaying);
+            }
+
             // Record listening history once track plays for >= 5 seconds
             if (status.positionMillis >= 5000 && track?.id && historyRecordedTrackIdRef.current !== track.id) {
               historyRecordedTrackIdRef.current = track.id;
@@ -1172,6 +1224,9 @@ export default function App() {
       soundRef.current = sound;
       setIsPlaying(true);
       isPlayingRef.current = true;
+      userPausedRef.current = false;
+      wasPlayingBeforeInterruptionRef.current = false;
+      savePlaybackState(track, 0, queueRef.current, queueIndexRef.current, true);
     } catch (err) {
       console.warn('Failed to play audio track on mobile', err);
     }
@@ -1224,16 +1279,22 @@ export default function App() {
     }
 
     if (isPlaying) {
+      userPausedRef.current = true;
+      wasPlayingBeforeInterruptionRef.current = false;
       await soundRef.current.pauseAsync();
       setIsPlaying(false);
       isPlayingRef.current = false;
       if (currentTrackRef.current) {
-        savePlaybackState(currentTrackRef.current.id, positionMillisRef.current);
+        savePlaybackState(currentTrackRef.current, positionMillisRef.current, queueRef.current, queueIndexRef.current, false);
       }
     } else {
+      userPausedRef.current = false;
       await soundRef.current.playAsync();
       setIsPlaying(true);
       isPlayingRef.current = true;
+      if (currentTrackRef.current) {
+        savePlaybackState(currentTrackRef.current, positionMillisRef.current, queueRef.current, queueIndexRef.current, true);
+      }
     }
   };
 
