@@ -237,3 +237,6 @@ export interface NaturalLanguageSearchQuery {
   extractedArtist?: string;
   semanticMatchSummary: string;
 }
+
+export * from './equalizer';
+

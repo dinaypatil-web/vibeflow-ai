@@ -1,10 +1,76 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { usePlayerStore, savePlaybackStateWeb, persisted } from '../store/playerStore';
 import { api, API_BASE } from '../services/api';
+import { EQ_FREQUENCIES, SpatialMode, SPATIAL_OPTIONS } from '../types';
 
 // Global audio analyser export for visualizers
 export let globalAudioAnalyser: AnalyserNode | null = null;
 export let globalAudioContext: AudioContext | null = null;
+
+// Equalizer & Spatial Processing Nodes
+let eqPreampNode: GainNode | null = null;
+let eqFilterNodes: BiquadFilterNode[] = [];
+let dryGainNode: GainNode | null = null;
+let wetGainNode: GainNode | null = null;
+let convolverNode: ConvolverNode | null = null;
+const reverbBuffers: Record<string, AudioBuffer> = {};
+
+function getReverbBuffer(ctx: AudioContext, mode: 'studio' | 'concert' | 'club' | 'stadium'): AudioBuffer {
+  if (reverbBuffers[mode]) return reverbBuffers[mode];
+
+  const duration = mode === 'studio' ? 0.6 : mode === 'club' ? 1.4 : mode === 'concert' ? 2.4 : 3.5;
+  const decay = mode === 'studio' ? 3.5 : mode === 'club' ? 2.8 : mode === 'concert' ? 2.2 : 1.8;
+  const sampleRate = ctx.sampleRate;
+  const length = Math.floor(sampleRate * duration);
+  const impulse = ctx.createBuffer(2, length, sampleRate);
+  const left = impulse.getChannelData(0);
+  const right = impulse.getChannelData(1);
+
+  for (let i = 0; i < length; i++) {
+    const t = i / sampleRate;
+    const envelope = Math.pow(1 - t / duration, decay);
+    left[i] = (Math.random() * 2 - 1) * envelope;
+    right[i] = (Math.random() * 2 - 1) * envelope;
+  }
+
+  reverbBuffers[mode] = impulse;
+  return impulse;
+}
+
+export function applyEqualizerSettings(
+  bands: number[],
+  preampDb: number,
+  enabled: boolean,
+  spatialMode: SpatialMode
+) {
+  if (!globalAudioContext) return;
+  const now = globalAudioContext.currentTime;
+
+  // 1. Preamp gain
+  if (eqPreampNode) {
+    const targetPreampGain = enabled ? Math.pow(10, preampDb / 20) : 1.0;
+    eqPreampNode.gain.setTargetAtTime(targetPreampGain, now, 0.02);
+  }
+
+  // 2. Filter bands
+  eqFilterNodes.forEach((filter, idx) => {
+    const targetGain = enabled ? (bands[idx] ?? 0) : 0;
+    filter.gain.setTargetAtTime(targetGain, now, 0.02);
+  });
+
+  // 3. Spatial Immersion Modes (Convolver Reverb)
+  if (dryGainNode && wetGainNode && convolverNode) {
+    if (!enabled || spatialMode === 'off') {
+      dryGainNode.gain.setTargetAtTime(1.0, now, 0.02);
+      wetGainNode.gain.setTargetAtTime(0.0, now, 0.02);
+    } else {
+      const spatialOpt = SPATIAL_OPTIONS.find(s => s.id === spatialMode) || SPATIAL_OPTIONS[0];
+      convolverNode.buffer = getReverbBuffer(globalAudioContext, spatialMode as any);
+      dryGainNode.gain.setTargetAtTime(1.0 - spatialOpt.wetMix * 0.4, now, 0.02);
+      wetGainNode.gain.setTargetAtTime(spatialOpt.wetMix, now, 0.02);
+    }
+  }
+}
 
 export const AudioEngine: React.FC = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -95,7 +161,7 @@ export const AudioEngine: React.FC = () => {
     }
   }, []);
 
-  // 2. Setup Web Audio API Analyser for visualizers + auto-resume protector
+  // 2. Setup Web Audio API Pipeline (10-Band Equalizer + Spatial Immersion + Analyser)
   useEffect(() => {
     if (!audioRef.current) return;
     try {
@@ -106,9 +172,67 @@ export const AudioEngine: React.FC = () => {
         analyser.fftSize = 64;
         globalAudioAnalyser = analyser;
 
+        // 1. Preamp Gain Node
+        const preamp = globalAudioContext.createGain();
+        eqPreampNode = preamp;
+
+        // 2. 10 Equalizer Biquad Filter Nodes
+        eqFilterNodes = EQ_FREQUENCIES.map((freq, i) => {
+          const filter = globalAudioContext!.createBiquadFilter();
+          if (i === 0) {
+            filter.type = 'lowshelf';
+          } else if (i === EQ_FREQUENCIES.length - 1) {
+            filter.type = 'highshelf';
+          } else {
+            filter.type = 'peaking';
+            filter.Q.value = 1.4;
+          }
+          filter.frequency.value = freq;
+          filter.gain.value = 0;
+          return filter;
+        });
+
+        // 3. Spatial Reverb & Mix Nodes
+        const convolver = globalAudioContext.createConvolver();
+        convolver.buffer = getReverbBuffer(globalAudioContext, 'concert');
+        convolverNode = convolver;
+
+        const dry = globalAudioContext.createGain();
+        const wet = globalAudioContext.createGain();
+        dryGainNode = dry;
+        wetGainNode = wet;
+
+        // 4. Connect Audio Pipeline:
+        // source -> preamp -> filter[0] -> filter[1] -> ... -> filter[9]
         const source = globalAudioContext.createMediaElementSource(audioRef.current);
-        source.connect(analyser);
+        source.connect(preamp);
+
+        let lastNode: AudioNode = preamp;
+        eqFilterNodes.forEach(filter => {
+          lastNode.connect(filter);
+          lastNode = filter;
+        });
+
+        // filter[9] splits to dry and convolver(wet)
+        lastNode.connect(dry);
+        lastNode.connect(convolver);
+        convolver.connect(wet);
+
+        // dry and wet merge into analyser
+        dry.connect(analyser);
+        wet.connect(analyser);
+
+        // analyser connects to speakers
         analyser.connect(globalAudioContext.destination);
+
+        // Apply initial equalizer state from store
+        const initialEq = usePlayerStore.getState();
+        applyEqualizerSettings(
+          initialEq.eqBands,
+          initialEq.eqPreamp,
+          initialEq.eqEnabled,
+          initialEq.spatialMode
+        );
 
         // Auto-resume if browser suspends context in background
         globalAudioContext.onstatechange = () => {
@@ -121,6 +245,12 @@ export const AudioEngine: React.FC = () => {
       // Audio element might already be connected
     }
   }, []);
+
+  // 2.1 Keep Equalizer & Playing Modes synced in real-time with AudioContext
+  const { eqEnabled, eqPreset, eqBands, eqPreamp, spatialMode } = usePlayerStore();
+  useEffect(() => {
+    applyEqualizerSettings(eqBands, eqPreamp, eqEnabled, spatialMode);
+  }, [eqEnabled, eqPreset, eqBands, eqPreamp, spatialMode]);
 
   // 3. Screen Wake Lock API — keeps audio thread uninterrupted
   const requestWakeLock = useCallback(async () => {

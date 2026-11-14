@@ -17,7 +17,8 @@ import {
   Youtube,
   HardDrive,
   Waves,
-  Download
+  Download,
+  SlidersHorizontal
 } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
 
@@ -34,6 +35,8 @@ export const MiniPlayer: React.FC = () => {
     isShuffle,
     favorites,
     sleepTimerRemainingSeconds,
+    eqEnabled,
+    eqPreset,
     togglePlay,
     nextTrack,
     previousTrack,
@@ -44,6 +47,7 @@ export const MiniPlayer: React.FC = () => {
     toggleShuffle,
     toggleFavorite,
     setNowPlayingOpen,
+    openNowPlayingWithTab,
     setSleepTimer,
     openDownloadModal,
     setSpotifyConnectModalOpen,
@@ -242,6 +246,19 @@ export const MiniPlayer: React.FC = () => {
             title="Download MP3 for offline listening"
           >
             <Download className="w-4 h-4" />
+          </button>
+
+          {/* Equalizer & Playing Modes quick trigger */}
+          <button
+            onClick={() => openNowPlayingWithTab('equalizer')}
+            className={`p-2 rounded-lg transition-colors ${
+              eqEnabled 
+                ? 'text-brand-400 bg-brand-500/10 hover:bg-brand-500/20' 
+                : 'text-slate-400 hover:text-brand-300 hover:bg-surface-750'
+            }`}
+            title={`Equalizer (${eqPreset.replace('_', ' ')})`}
+          >
+            <SlidersHorizontal className="w-4 h-4" />
           </button>
 
           {/* Sleep timer quick setting */}

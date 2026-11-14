@@ -16,6 +16,7 @@ import {
   ListMusic, 
   FileText, 
   Sliders, 
+  SlidersHorizontal,
   Share2, 
   Check, 
   DownloadCloud,
@@ -28,8 +29,9 @@ import {
 } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
 import { globalAudioAnalyser } from './AudioEngine';
+import { EqualizerPanel } from './EqualizerPanel';
 import { api } from '../services/api';
-import { MediaItem } from '../types';
+import { MediaItem, EQ_PRESETS } from '../types';
 
 interface NowPlayingModalProps {
   onAddToPlaylist?: (track: MediaItem) => void;
@@ -53,6 +55,8 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
     sleepTimerMinutes,
     sleepTimerRemainingSeconds,
     seekRequestedTime,
+    eqEnabled,
+    eqPreset,
     togglePlay,
     setPlaying,
     setCurrentTime,
@@ -75,7 +79,7 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
     openDownloadModal
   } = usePlayerStore();
 
-  const [activeTab, setActiveTab] = useState<'visualizer' | 'video' | 'spotify' | 'lyrics' | 'queue'>('visualizer');
+  const [activeTab, setActiveTab] = useState<'visualizer' | 'equalizer' | 'video' | 'spotify' | 'lyrics' | 'queue'>('visualizer');
   const [videoStartSeconds, setVideoStartSeconds] = useState<number>(0);
   const videoIframeRef = useRef<HTMLIFrameElement | null>(null);
   const [showSleepModal, setShowSleepModal] = useState(false);
@@ -149,7 +153,7 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
   }, [isNowPlayingOpen, activeTab, isPlaying]);
 
   // Switch tab with seamless Audio <-> Video sync
-  const handleSwitchTab = (tab: 'visualizer' | 'video' | 'spotify' | 'lyrics' | 'queue') => {
+  const handleSwitchTab = (tab: 'visualizer' | 'equalizer' | 'video' | 'spotify' | 'lyrics' | 'queue') => {
     if (tab === 'video') {
       // Audio is playing at currentTime; start video from this exact position
       const startPos = Math.max(0, Math.floor(usePlayerStore.getState().currentTime));
@@ -196,17 +200,23 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
     }
   };
 
-  // Reset tab to visualizer on fresh modal open, release video on close/unmount
+  // Reset tab to visualizer or requested tab on fresh modal open, release video on close/unmount
+  const nowPlayingInitialTab = usePlayerStore(s => s.nowPlayingInitialTab);
   useEffect(() => {
     if (isNowPlayingOpen) {
-      setActiveTab('visualizer');
+      if (nowPlayingInitialTab) {
+        setActiveTab(nowPlayingInitialTab as any);
+        usePlayerStore.setState({ nowPlayingInitialTab: null });
+      } else {
+        setActiveTab('visualizer');
+      }
       setVideoTabActive(false);
     } else {
       if (usePlayerStore.getState().isVideoTabActive) {
         setVideoTabActive(false);
       }
     }
-  }, [isNowPlayingOpen, setVideoTabActive]);
+  }, [isNowPlayingOpen, nowPlayingInitialTab, setVideoTabActive]);
 
   useEffect(() => {
     return () => {
@@ -335,6 +345,15 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
               >
                 Visualizer
               </button>
+              <button
+                onClick={() => handleSwitchTab('equalizer')}
+                className={`px-3 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
+                  activeTab === 'equalizer' ? 'bg-gradient-to-r from-brand-600 to-indigo-600 text-white shadow-xs font-semibold' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                <span>Equalizer</span>
+              </button>
               {currentTrack.provider === 'youtube' && (
                 <button
                   onClick={() => handleSwitchTab('video')}
@@ -423,6 +442,95 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
         </div>
 
         {/* Modal Body */}
+        {activeTab === 'equalizer' ? (
+          <div className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col gap-6">
+            <EqualizerPanel />
+
+            {/* Playback Controls Footer while on Equalizer */}
+            <div className="bg-surface-850/80 p-4 md:p-6 rounded-2xl border border-white/5 space-y-4 shadow-xl">
+              {/* Playback Progress Timeline */}
+              <div className="space-y-2">
+                <div 
+                  className="w-full h-2 bg-surface-750 rounded-full cursor-pointer relative group"
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                    const targetTime = ratio * duration;
+                    seekTo(targetTime);
+                    setCurrentTime(targetTime);
+                  }}
+                >
+                  <div
+                    className="h-full bg-gradient-to-r from-brand-500 via-accent-cyan to-brand-400 rounded-full relative"
+                    style={{ width: `${progressPercent}%` }}
+                  >
+                    <div className="w-3.5 h-3.5 rounded-full bg-white shadow-md absolute right-0 top-1/2 -translate-y-1/2 group-hover:scale-125 transition-transform" />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
+                  <span>{formatTime(currentTime)}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-white font-medium truncate max-w-[200px] sm:max-w-md">{currentTrack.title}</span>
+                    <span>•</span>
+                    <span className="text-slate-400 truncate max-w-[150px]">{currentTrack.artist}</span>
+                  </div>
+                  <span>{formatTime(duration)}</span>
+                </div>
+              </div>
+
+              {/* Main Interactive Controls */}
+              <div className="flex items-center justify-center gap-6 pt-1">
+                <button
+                  onClick={toggleShuffle}
+                  className={`p-2.5 rounded-xl hover:bg-surface-800 transition-colors ${
+                    isShuffle ? 'text-brand-400' : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Shuffle"
+                >
+                  <Shuffle className="w-5 h-5" />
+                </button>
+
+                <button
+                  onClick={previousTrack}
+                  className="p-2.5 text-slate-300 hover:text-white hover:bg-surface-800 rounded-xl transition-colors"
+                  title="Previous"
+                >
+                  <SkipBack className="w-6 h-6 fill-current" />
+                </button>
+
+                <button
+                  onClick={handleTogglePlay}
+                  className="w-14 h-14 rounded-full bg-gradient-to-tr from-brand-600 via-brand-500 to-accent-cyan text-white flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl shadow-brand-500/35"
+                  title={isPlaying ? 'Pause' : 'Play'}
+                >
+                  {isPlaying ? (
+                    <Pause className="w-7 h-7 fill-current" />
+                  ) : (
+                    <Play className="w-7 h-7 fill-current translate-x-0.5" />
+                  )}
+                </button>
+
+                <button
+                  onClick={nextTrack}
+                  className="p-2.5 text-slate-300 hover:text-white hover:bg-surface-800 rounded-xl transition-colors"
+                  title="Next"
+                >
+                  <SkipForward className="w-6 h-6 fill-current" />
+                </button>
+
+                <button
+                  onClick={cycleRepeatMode}
+                  className={`p-2.5 rounded-xl hover:bg-surface-800 transition-colors ${
+                    repeatMode !== 'off' ? 'text-brand-400' : 'text-slate-400 hover:text-white'
+                  }`}
+                  title={`Repeat: ${repeatMode}`}
+                >
+                  {repeatMode === 'one' ? <Repeat1 className="w-5 h-5" /> : <Repeat className="w-5 h-5" />}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
         <div className="flex-1 overflow-y-auto p-6 md:p-8 flex flex-col md:flex-row items-center gap-8">
           {/* Left: Vinyl Disc Art & Visualizer OR HD Video Stream */}
           <div className="w-full md:w-1/2 flex flex-col items-center">
@@ -735,8 +843,21 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
                 </div>
               </div>
 
-              {/* Download, Sleep timer & Favorite buttons */}
+              {/* Download, Sleep timer, Equalizer & Favorite buttons */}
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleSwitchTab('equalizer')}
+                  className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 font-medium transition-all border text-xs ${
+                    eqEnabled
+                      ? 'bg-brand-500/15 border-brand-500/40 text-brand-300 hover:bg-brand-500/25'
+                      : 'bg-surface-800 border-white/5 text-slate-400 hover:text-white'
+                  }`}
+                  title="Equalizer & Playing Modes"
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-brand-400" />
+                  <span className="hidden sm:inline">EQ: {EQ_PRESETS.find(p => p.id === eqPreset)?.name || 'Custom'}</span>
+                </button>
+
                 <button
                   onClick={() => openDownloadModal(currentTrack)}
                   className="px-3 py-1.5 rounded-xl bg-surface-800 hover:bg-brand-600 hover:text-white text-slate-300 flex items-center gap-1.5 font-medium transition-all border border-white/5"
@@ -807,6 +928,7 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({ onAddToPlaylis
             )}
           </div>
         </div>
+        )}
       </div>
     </div>
   );

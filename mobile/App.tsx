@@ -138,6 +138,19 @@ const AUTH_USER_KEY = '@vibeflow:auth_user';
 const AUTH_TOKEN_KEY = '@vibeflow:auth_token';
 const CACHED_PLAYLISTS_KEY = '@vibeflow:cached_playlists';
 const API_BASE_URL_KEY = '@vibeflow:api_base_url';
+const EQUALIZER_KEY = '@vibeflow:equalizer';
+
+export const MOBILE_EQ_PRESETS = [
+  { id: 'flat', name: 'Studio Flat', icon: '🎧', desc: 'Balanced studio monitor reference', bands: [0, 0, 0, 0, 0] },
+  { id: 'bass_boost', name: 'Bass Boost', icon: '🔊', desc: 'Deep sub-bass and heavy low-end punch', bands: [6, 4, 0, 1, 3] },
+  { id: 'vocal', name: 'Vocal Clarity', icon: '🎤', desc: 'Crisp voice presence and reduced mud', bands: [-2, 1, 5, 3, -1] },
+  { id: 'rock', name: 'Rock & Metal', icon: '🎸', desc: 'Punchy kick drums and sharp electric guitars', bands: [5, 2, -2, 4, 6] },
+  { id: 'pop', name: 'Pop & Vibrant', icon: '🎵', desc: 'Bright radio polish and energetic mids', bands: [3, 2, 1, 4, 3] },
+  { id: 'electronic', name: 'Club & Dance', icon: '⚡', desc: 'Rave energy, massive bass & crisp synths', bands: [7, 3, -1, 5, 6] },
+  { id: 'lofi', name: 'Lo-Fi Chill', icon: '☕', desc: 'Warm tape rolloff and mellow vibe', bands: [4, 2, 0, -3, -6] },
+  { id: 'night_mode', name: 'Late Night', icon: '🌙', desc: 'Gentle dynamics, tamed heavy bass', bands: [-4, -1, 1, -2, -5] },
+  { id: 'concert_hall', name: 'Concert Arena', icon: '🏛️', desc: 'Live auditorium reverb and soundstage', bands: [2, 0, 2, 4, 3] }
+];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'home' | 'explore' | 'playlists' | 'library' | 'ai'>('home');
@@ -204,6 +217,32 @@ export default function App() {
   const [isScanningQr, setIsScanningQr] = useState(false);
   const [scanQrError, setScanQrError] = useState<string | null>(null);
   const [scannedPlaylistSuccess, setScannedPlaylistSuccess] = useState<Playlist | null>(null);
+
+  // Mobile Equalizer & Sound Playing Modes
+  const [isEqualizerModalVisible, setIsEqualizerModalVisible] = useState(false);
+  const [mobileEqEnabled, setMobileEqEnabled] = useState(true);
+  const [mobileEqPreset, setMobileEqPreset] = useState('flat');
+  const [mobileEqBands, setMobileEqBands] = useState<number[]>([0, 0, 0, 0, 0]);
+
+  useEffect(() => {
+    AsyncStorage.getItem(EQUALIZER_KEY).then(val => {
+      if (val) {
+        try {
+          const parsed = JSON.parse(val);
+          if (parsed.preset) setMobileEqPreset(parsed.preset);
+          if (typeof parsed.enabled === 'boolean') setMobileEqEnabled(parsed.enabled);
+          if (Array.isArray(parsed.bands)) setMobileEqBands(parsed.bands);
+        } catch {}
+      }
+    }).catch(() => {});
+  }, []);
+
+  const saveMobileEq = (preset: string, enabled: boolean, bands: number[]) => {
+    setMobileEqPreset(preset);
+    setMobileEqEnabled(enabled);
+    setMobileEqBands(bands);
+    AsyncStorage.setItem(EQUALIZER_KEY, JSON.stringify({ preset, enabled, bands })).catch(() => {});
+  };
 
   const handleScanSharedPlaylist = async (customPayload?: string) => {
     const raw = (customPayload || scannedQrInput).trim();
@@ -1839,6 +1878,16 @@ export default function App() {
                 >
                   <Text style={styles.modalDownloadActionText}>📥 Download MP3 (All Qualities)</Text>
                 </TouchableOpacity>
+
+                {/* Equalizer & Playing Modes Trigger */}
+                <TouchableOpacity
+                  onPress={() => setIsEqualizerModalVisible(true)}
+                  style={styles.modalEqualizerAction}
+                >
+                  <Text style={styles.modalEqualizerActionText}>
+                    🎛️ Equalizer & Modes ({MOBILE_EQ_PRESETS.find(p => p.id === mobileEqPreset)?.name || 'Custom'})
+                  </Text>
+                </TouchableOpacity>
               </View>
             </ScrollView>
           )}
@@ -2561,6 +2610,189 @@ export default function App() {
           </View>
         </View>
       </Modal>
+
+      {/* Mobile Equalizer & Sound Playing Modes Modal */}
+      <Modal visible={isEqualizerModalVisible} animationType="slide" transparent>
+        <View style={styles.downloadModalBackdrop}>
+          <View style={[styles.syncModalCard, { maxHeight: '90%', padding: 20 }]}>
+            <View style={styles.downloadModalHeader}>
+              <View>
+                <Text style={styles.downloadModalTitle}>🎛️ Equalizer & Modes</Text>
+                <Text style={{ color: '#94a3b8', fontSize: 11, marginTop: 2 }}>Sound Profiles & Frequency Shaping</Text>
+              </View>
+              <TouchableOpacity onPress={() => setIsEqualizerModalVisible(false)}>
+                <Text style={styles.closeText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 12 }}>
+              {/* Power Switch & Reset */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <TouchableOpacity
+                  onPress={() => saveMobileEq(mobileEqPreset, !mobileEqEnabled, mobileEqBands)}
+                  style={{
+                    backgroundColor: mobileEqEnabled ? '#7c3aed' : '#22283e',
+                    paddingHorizontal: 14,
+                    paddingVertical: 8,
+                    borderRadius: 12,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                >
+                  <Text style={{ color: '#ffffff', fontWeight: 'bold', fontSize: 12 }}>
+                    {mobileEqEnabled ? '● EQ ACTIVE' : '○ BYPASSED'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => saveMobileEq('flat', true, [0, 0, 0, 0, 0])}
+                  style={{
+                    backgroundColor: '#181d30',
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,255,255,0.1)'
+                  }}
+                >
+                  <Text style={{ color: '#94a3b8', fontSize: 12, fontWeight: '600' }}>Reset Flat</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Playing Modes Grid */}
+              <Text style={{ color: '#cbd5e1', fontSize: 13, fontWeight: '700', marginBottom: 10 }}>
+                Playing Modes ({MOBILE_EQ_PRESETS.length})
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 8, marginBottom: 20 }}>
+                {MOBILE_EQ_PRESETS.map(preset => {
+                  const isSel = mobileEqPreset === preset.id;
+                  return (
+                    <TouchableOpacity
+                      key={preset.id}
+                      onPress={() => saveMobileEq(preset.id, true, [...preset.bands])}
+                      style={{
+                        width: '48%',
+                        backgroundColor: isSel ? 'rgba(124,58,237,0.25)' : '#181d30',
+                        borderColor: isSel ? '#8b5cf6' : 'rgba(255,255,255,0.06)',
+                        borderWidth: 1,
+                        borderRadius: 14,
+                        padding: 12,
+                        marginBottom: 6
+                      }}
+                    >
+                      <Text style={{ fontSize: 20, marginBottom: 4 }}>{preset.icon}</Text>
+                      <Text style={{ color: isSel ? '#ffffff' : '#e2e8f0', fontWeight: 'bold', fontSize: 13 }}>
+                        {preset.name}
+                      </Text>
+                      <Text style={{ color: '#94a3b8', fontSize: 10, marginTop: 2 }} numberOfLines={2}>
+                        {preset.desc}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* 5-Band Equalizer Adjuster */}
+              <Text style={{ color: '#cbd5e1', fontSize: 13, fontWeight: '700', marginBottom: 10 }}>
+                Frequency Bands (-12 dB to +12 dB)
+              </Text>
+              {['60Hz (Sub Bass)', '250Hz (Bass)', '1kHz (Mids)', '4kHz (Presence)', '14kHz (Treble)'].map((label, idx) => {
+                const gain = mobileEqBands[idx] ?? 0;
+                return (
+                  <View
+                    key={label}
+                    style={{
+                      backgroundColor: '#181d30',
+                      borderRadius: 12,
+                      padding: 12,
+                      marginBottom: 8,
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}
+                  >
+                    <View>
+                      <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '600' }}>{label}</Text>
+                      <Text style={{
+                        color: gain > 0 ? '#34d399' : gain < 0 ? '#fbbf24' : '#94a3b8',
+                        fontSize: 11,
+                        fontWeight: 'bold',
+                        marginTop: 2
+                      }}>
+                        {gain > 0 ? `+${gain}` : gain} dB
+                      </Text>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          const updated = [...mobileEqBands];
+                          updated[idx] = Math.max(-12, updated[idx] - 1);
+                          saveMobileEq('custom', true, updated);
+                        }}
+                        style={{
+                          backgroundColor: '#27314d',
+                          width: 34,
+                          height: 34,
+                          borderRadius: 8,
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        <Text style={{ color: '#ffffff', fontSize: 18, fontWeight: 'bold' }}>−</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => {
+                          const updated = [...mobileEqBands];
+                          updated[idx] = 0;
+                          saveMobileEq('custom', true, updated);
+                        }}
+                        style={{
+                          backgroundColor: '#1e263d',
+                          paddingHorizontal: 8,
+                          height: 34,
+                          borderRadius: 8,
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        <Text style={{ color: '#94a3b8', fontSize: 10, fontWeight: '600' }}>0 dB</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => {
+                          const updated = [...mobileEqBands];
+                          updated[idx] = Math.min(12, updated[idx] + 1);
+                          saveMobileEq('custom', true, updated);
+                        }}
+                        style={{
+                          backgroundColor: '#27314d',
+                          width: 34,
+                          height: 34,
+                          borderRadius: 8,
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        <Text style={{ color: '#ffffff', fontSize: 18, fontWeight: 'bold' }}>+</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })}
+
+              <TouchableOpacity
+                onPress={() => setIsEqualizerModalVisible(false)}
+                style={[styles.authPrimaryBtn, { marginTop: 12, marginBottom: 20 }]}
+              >
+                <Text style={styles.authPrimaryBtnText}>Apply & Close</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -2977,6 +3209,20 @@ const styles = StyleSheet.create({
   },
   modalDownloadActionText: {
     color: '#c4b5fd',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  modalEqualizerAction: {
+    marginTop: 12,
+    backgroundColor: 'rgba(6,182,212,0.15)',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(6,182,212,0.3)',
+  },
+  modalEqualizerActionText: {
+    color: '#67e8f9',
     fontSize: 12,
     fontWeight: 'bold',
   },

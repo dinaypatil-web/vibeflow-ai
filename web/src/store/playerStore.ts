@@ -1,5 +1,16 @@
 import { create } from 'zustand';
-import { MediaItem, User, UserPreferences, SourceAccount, AppTheme, OfflineTrack } from '../types';
+import { 
+  MediaItem, 
+  User, 
+  UserPreferences, 
+  SourceAccount, 
+  AppTheme, 
+  OfflineTrack,
+  PlayingModeId,
+  SpatialMode,
+  PersistedEqualizerState,
+  EQ_PRESETS
+} from '../types';
 import { api, API_BASE } from '../services/api';
 import { offlineStorage } from '../services/offlineStorage';
 
@@ -27,6 +38,14 @@ const LS_SAVED_ACCOUNTS = 'vibeflow_saved_accounts';
 const LS_LOCAL_USERS = 'vibeflow_local_users';
 const LS_PLAYBACK_STATE = 'vibeflow_playback_state';
 const LS_PLAYBACK_QUEUE = 'vibeflow_playback_queue';
+const LS_EQUALIZER = 'vibeflow_equalizer';
+
+export function saveEqualizerStateWeb(eq: PersistedEqualizerState) {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(LS_EQUALIZER, JSON.stringify(eq));
+  } catch {}
+}
 
 export interface PersistedPlaybackState {
   currentTrack: MediaItem;
@@ -111,6 +130,15 @@ function loadPersisted() {
     const queueRaw = localStorage.getItem(LS_PLAYBACK_QUEUE);
     const playbackQueue: MediaItem[] = queueRaw ? JSON.parse(queueRaw) : [];
 
+    const eqRaw = localStorage.getItem(LS_EQUALIZER);
+    const equalizerState: PersistedEqualizerState = eqRaw ? JSON.parse(eqRaw) : {
+      enabled: true,
+      preset: 'flat',
+      bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      preamp: 0,
+      spatialMode: 'off'
+    };
+
     return { 
       token, 
       user, 
@@ -120,7 +148,8 @@ function loadPersisted() {
       savedCredentials, 
       savedAccounts,
       playbackState,
-      playbackQueue
+      playbackQueue,
+      equalizerState
     };
   } catch {
     return { 
@@ -132,7 +161,14 @@ function loadPersisted() {
       savedCredentials: null,
       savedAccounts: [],
       playbackState: null,
-      playbackQueue: []
+      playbackQueue: [],
+      equalizerState: {
+        enabled: true,
+        preset: 'flat' as PlayingModeId,
+        bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        preamp: 0,
+        spatialMode: 'off' as SpatialMode
+      }
     };
   }
 }
@@ -180,6 +216,22 @@ interface PlayerState {
   loadOfflineTracks: () => Promise<void>;
   removeOfflineTrack: (id: string) => Promise<void>;
   clearOfflineStorage: () => Promise<void>;
+
+  // Equalizer & Playing Modes
+  eqEnabled: boolean;
+  eqPreset: PlayingModeId;
+  eqBands: number[];
+  eqPreamp: number;
+  spatialMode: SpatialMode;
+  nowPlayingInitialTab: 'visualizer' | 'equalizer' | 'video' | 'spotify' | 'lyrics' | 'queue' | null;
+
+  setEqEnabled: (enabled: boolean) => void;
+  setEqPreset: (presetId: PlayingModeId) => void;
+  setEqBand: (index: number, gainDb: number) => void;
+  setEqPreamp: (gainDb: number) => void;
+  setSpatialMode: (mode: SpatialMode) => void;
+  resetEq: () => void;
+  openNowPlayingWithTab: (tab: 'visualizer' | 'equalizer' | 'video' | 'spotify' | 'lyrics' | 'queue') => void;
 
   // Actions
   setTheme: (theme: AppTheme) => void;
@@ -256,6 +308,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   isSpotifyConnectModalOpen: false,
   spotifyAccount: persisted.spotifyAccount,
   theme: persisted.theme,
+
+  // Equalizer & Playing Modes
+  eqEnabled: persisted.equalizerState?.enabled ?? true,
+  eqPreset: persisted.equalizerState?.preset ?? 'flat',
+  eqBands: Array.isArray(persisted.equalizerState?.bands) && persisted.equalizerState.bands.length === 10
+    ? [...persisted.equalizerState.bands]
+    : [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  eqPreamp: persisted.equalizerState?.preamp ?? 0,
+  spatialMode: persisted.equalizerState?.spatialMode ?? 'off',
+  nowPlayingInitialTab: null,
 
   downloadModalTrack: null,
   isDownloadModalOpen: false,
@@ -545,6 +607,107 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setNowPlayingOpen: (open) => set({ isNowPlayingOpen: open, ...(open ? {} : { isVideoTabActive: false }) }),
   setVideoTabActive: (isVideoTabActive) => set({ isVideoTabActive }),
   setActiveTab: (tab) => set({ activeTab: tab }),
+
+  setEqEnabled: (enabled) => {
+    set({ eqEnabled: enabled });
+    const s = get();
+    saveEqualizerStateWeb({
+      enabled,
+      preset: s.eqPreset,
+      bands: s.eqBands,
+      preamp: s.eqPreamp,
+      spatialMode: s.spatialMode
+    });
+  },
+
+  setEqPreset: (presetId) => {
+    const found = EQ_PRESETS.find(p => p.id === presetId);
+    if (found) {
+      const newBands = [...found.bands];
+      const newPreamp = found.preamp ?? 0;
+      const newSpatial = found.spatialMode ?? 'off';
+      set({
+        eqPreset: presetId,
+        eqBands: newBands,
+        eqPreamp: newPreamp,
+        spatialMode: newSpatial
+      });
+      saveEqualizerStateWeb({
+        enabled: get().eqEnabled,
+        preset: presetId,
+        bands: newBands,
+        preamp: newPreamp,
+        spatialMode: newSpatial
+      });
+    }
+  },
+
+  setEqBand: (index, gainDb) => {
+    const s = get();
+    const currentBands = [...s.eqBands];
+    currentBands[index] = Math.max(-12, Math.min(12, Number(gainDb.toFixed(1))));
+    set({
+      eqBands: currentBands,
+      eqPreset: 'custom'
+    });
+    saveEqualizerStateWeb({
+      enabled: s.eqEnabled,
+      preset: 'custom',
+      bands: currentBands,
+      preamp: s.eqPreamp,
+      spatialMode: s.spatialMode
+    });
+  },
+
+  setEqPreamp: (gainDb) => {
+    const s = get();
+    const preamp = Math.max(-6, Math.min(6, Number(gainDb.toFixed(1))));
+    set({ eqPreamp: preamp });
+    saveEqualizerStateWeb({
+      enabled: s.eqEnabled,
+      preset: s.eqPreset,
+      bands: s.eqBands,
+      preamp,
+      spatialMode: s.spatialMode
+    });
+  },
+
+  setSpatialMode: (mode) => {
+    const s = get();
+    set({ spatialMode: mode });
+    saveEqualizerStateWeb({
+      enabled: s.eqEnabled,
+      preset: s.eqPreset,
+      bands: s.eqBands,
+      preamp: s.eqPreamp,
+      spatialMode: mode
+    });
+  },
+
+  resetEq: () => {
+    const flatBands = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    set({
+      eqEnabled: true,
+      eqPreset: 'flat',
+      eqBands: flatBands,
+      eqPreamp: 0,
+      spatialMode: 'off'
+    });
+    saveEqualizerStateWeb({
+      enabled: true,
+      preset: 'flat',
+      bands: flatBands,
+      preamp: 0,
+      spatialMode: 'off'
+    });
+  },
+
+  openNowPlayingWithTab: (tab) => {
+    set({
+      isNowPlayingOpen: true,
+      nowPlayingInitialTab: tab
+    });
+  },
 
   setSleepTimer: (minutes) => {
     if (minutes === null) {
