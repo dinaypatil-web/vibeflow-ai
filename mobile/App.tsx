@@ -57,6 +57,11 @@ interface Playlist {
   itemCount?: number;
   items?: PlaylistItem[];
   shareToken?: string;
+  isPinned?: boolean;
+  isSharedWithMe?: boolean;
+  isPrivate?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
   creator?: {
     id?: string;
     name: string;
@@ -118,6 +123,36 @@ const INITIAL_MOBILE_PLAYLISTS: Playlist[] = [
 ];
 
 export const PRODUCTION_CLOUD_API_URL = 'https://vibeflowai18.vercel.app/api';
+
+const getPlaylistTimestampMobile = (p: Playlist): number => {
+  const d = p.createdAt || p.updatedAt;
+  if (!d) return 0;
+  const t = new Date(d).getTime();
+  return isNaN(t) ? 0 : t;
+};
+
+const sortPlaylistsStableMobile = (list: Playlist[]): Playlist[] => {
+  return [...list].sort((a, b) => {
+    if (a.isPinned && !b.isPinned) return -1;
+    if (!a.isPinned && b.isPinned) return 1;
+
+    const aCustom = !a.id.startsWith('playlist-') && !a.id.startsWith('mobile-pl-') && !(a as any).isSharedWithMe;
+    const bCustom = !b.id.startsWith('playlist-') && !b.id.startsWith('mobile-pl-') && !(b as any).isSharedWithMe;
+    if (aCustom && !bCustom) return -1;
+    if (!aCustom && bCustom) return 1;
+
+    const aShared = Boolean((a as any).isSharedWithMe);
+    const bShared = Boolean((b as any).isSharedWithMe);
+    if (aShared && !bShared) return -1;
+    if (!aShared && bShared) return 1;
+
+    const timeA = getPlaylistTimestampMobile(a);
+    const timeB = getPlaylistTimestampMobile(b);
+    if (timeA !== timeB) return timeB - timeA;
+
+    return a.id.localeCompare(b.id);
+  });
+};
 
 const detectDefaultApiUrl = (): string => {
   try {
@@ -473,14 +508,25 @@ export default function App() {
   };
 
   const fetchPlaylists = async (baseUrl = apiBaseUrl, uid = syncUser?.id || 'demo-user-id', token = authToken) => {
+    // If baseUrl is local or points to localhost, force to cloud URL on iOS/physical device
+    let activeEndpoint = baseUrl;
+    if (activeEndpoint.includes('localhost') || activeEndpoint.includes('127.0.0.1') || activeEndpoint.includes('10.0.2.2')) {
+      activeEndpoint = PRODUCTION_CLOUD_API_URL;
+      setApiBaseUrl(PRODUCTION_CLOUD_API_URL);
+      AsyncStorage.setItem(API_BASE_URL_KEY, PRODUCTION_CLOUD_API_URL).catch(() => {});
+    }
+
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
     headers['x-user-id'] = uid;
+    if (syncUser?.email) {
+      headers['x-user-email'] = syncUser.email;
+    }
 
     try {
-      const res = await fetch(`${baseUrl}/playlists?userId=${encodeURIComponent(uid)}`, { headers });
+      const res = await fetch(`${activeEndpoint}/playlists?userId=${encodeURIComponent(uid)}`, { headers });
       if (res.ok) {
         const data = await res.json();
         const serverList = data.playlists || [];
@@ -506,14 +552,20 @@ export default function App() {
               }
             }))
           }));
-          setPlaylists(transformed);
-          AsyncStorage.setItem(CACHED_PLAYLISTS_KEY, JSON.stringify(transformed)).catch(() => {});
+          const sorted = sortPlaylistsStableMobile(transformed);
+          setPlaylists(prev => {
+            if (prev.length === sorted.length && prev.every((p, i) => p.id === sorted[i].id && p.updatedAt === sorted[i].updatedAt && (p.items?.length || 0) === (sorted[i].items?.length || 0))) {
+              return prev;
+            }
+            return sorted;
+          });
+          AsyncStorage.setItem(CACHED_PLAYLISTS_KEY, JSON.stringify(sorted)).catch(() => {});
           // Immediately prune any selected playlist IDs that were deleted on another device
           setSelectedPlaylistIds(prev => prev.filter(id => serverList.some((p: any) => p.id === id)));
           if (qrSharePlaylist && !serverList.some((p: any) => p.id === qrSharePlaylist.id)) {
             setQrSharePlaylist(null);
           }
-        } else if (Array.isArray(serverList)) {
+        } else if (Array.isArray(serverList) && (!syncUser || syncUser.id === 'demo-user-id')) {
           setPlaylists([]);
           setSelectedPlaylistIds([]);
           setQrSharePlaylist(null);
@@ -523,7 +575,7 @@ export default function App() {
     } catch (err) {
       console.warn('Network fetch playlists error:', err);
       // Auto-fallback to live cloud backend if local dev endpoint is unreachable on physical device
-      if (baseUrl !== PRODUCTION_CLOUD_API_URL && (baseUrl.includes('localhost') || baseUrl.includes('10.0.2.2'))) {
+      if (activeEndpoint !== PRODUCTION_CLOUD_API_URL) {
         try {
           const fallbackRes = await fetch(`${PRODUCTION_CLOUD_API_URL}/playlists?userId=${encodeURIComponent(uid)}`, { headers });
           if (fallbackRes.ok) {
@@ -550,10 +602,11 @@ export default function App() {
                   }
                 }))
               }));
-            setPlaylists(transformed);
+            const sorted = sortPlaylistsStableMobile(transformed);
+            setPlaylists(sorted);
             setApiBaseUrl(PRODUCTION_CLOUD_API_URL);
             AsyncStorage.setItem(API_BASE_URL_KEY, PRODUCTION_CLOUD_API_URL).catch(() => {});
-            AsyncStorage.setItem(CACHED_PLAYLISTS_KEY, JSON.stringify(transformed)).catch(() => {});
+            AsyncStorage.setItem(CACHED_PLAYLISTS_KEY, JSON.stringify(sorted)).catch(() => {});
           }
         } catch {}
       }
@@ -1018,7 +1071,12 @@ export default function App() {
       // ── Restore server URL & user session across app restarts ─────────────
       try {
         const savedUrl = await AsyncStorage.getItem(API_BASE_URL_KEY);
-        const activeUrl = savedUrl || detectDefaultApiUrl();
+        let activeUrl = savedUrl || detectDefaultApiUrl();
+        // Crucial for physical iPhone: if URL points to localhost, 127.0.0.1, or 10.0.2.2, force reset to live production cloud backend
+        if (!activeUrl || activeUrl.includes('localhost') || activeUrl.includes('127.0.0.1') || activeUrl.includes('10.0.2.2')) {
+          activeUrl = PRODUCTION_CLOUD_API_URL;
+          AsyncStorage.setItem(API_BASE_URL_KEY, PRODUCTION_CLOUD_API_URL).catch(() => {});
+        }
         setApiBaseUrl(activeUrl);
 
         const savedUserStr = await AsyncStorage.getItem(AUTH_USER_KEY);

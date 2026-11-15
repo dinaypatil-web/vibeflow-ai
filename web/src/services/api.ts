@@ -38,6 +38,40 @@ const LS_SELECTED_PLAYLIST_ID = 'vibeflow_selected_playlist_id';
 const getCacheKey = (userId: string) => `vibeflow_cached_playlists_${userId}`;
 const getCreatedIdsKey = (userId: string) => `vibeflow_created_playlist_ids_${userId}`;
 
+export const getPlaylistTimestamp = (p: Playlist): number => {
+  const d = p.createdAt || p.updatedAt;
+  if (!d) return 0;
+  const t = new Date(d).getTime();
+  return isNaN(t) ? 0 : t;
+};
+
+export const sortPlaylistsStable = (list: Playlist[]): Playlist[] => {
+  return [...list].sort((a, b) => {
+    // 1. Pinned playlists always come first
+    if (a.isPinned && !b.isPinned) return -1;
+    if (!a.isPinned && b.isPinned) return 1;
+
+    // 2. Personal custom playlists before shared playlists
+    const aCustom = !a.id.startsWith('playlist-') && !a.isSharedWithMe;
+    const bCustom = !b.id.startsWith('playlist-') && !b.isSharedWithMe;
+    if (aCustom && !bCustom) return -1;
+    if (!aCustom && bCustom) return 1;
+
+    const aShared = Boolean(a.isSharedWithMe);
+    const bShared = Boolean(b.isSharedWithMe);
+    if (aShared && !bShared) return -1;
+    if (!aShared && bShared) return 1;
+
+    // 3. Newest first
+    const timeA = getPlaylistTimestamp(a);
+    const timeB = getPlaylistTimestamp(b);
+    if (timeA !== timeB) return timeB - timeA;
+
+    // 4. Deterministic tie-breaker by ID
+    return a.id.localeCompare(b.id);
+  });
+};
+
 export function getStoredCreatedPlaylistIds(userId?: string): string[] {
   try {
     const uid = userId || getStoredUserId();
@@ -71,7 +105,8 @@ export function saveLocalCreatedPlaylist(playlist: Playlist, userId?: string) {
     } else {
       cached.unshift(playlist);
     }
-    localStorage.setItem(getCacheKey(uid), JSON.stringify(cached.slice(0, 100)));
+    const sorted = sortPlaylistsStable(cached);
+    localStorage.setItem(getCacheKey(uid), JSON.stringify(sorted.slice(0, 100)));
     localStorage.setItem(LS_SELECTED_PLAYLIST_ID, playlist.id);
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('vibeflow:playlist_updated', { detail: { playlist } }));
@@ -117,10 +152,10 @@ export function getLocallyCachedPlaylists(userId?: string): Playlist[] {
   try {
     const uid = userId || getStoredUserId();
     const raw = localStorage.getItem(getCacheKey(uid));
-    if (raw) return JSON.parse(raw);
+    if (raw) return sortPlaylistsStable(JSON.parse(raw));
     if (uid === 'demo-user-id') {
       const legacy = localStorage.getItem(LS_CACHED_PLAYLISTS);
-      return legacy ? JSON.parse(legacy) : [];
+      return legacy ? sortPlaylistsStable(JSON.parse(legacy)) : [];
     }
     return [];
   } catch {
@@ -215,7 +250,7 @@ export function mergeWithLocalPlaylists(
       ...localCreatedIds
     ])).filter(id => !deletedSet.has(id));
 
-    const merged = Array.from(map.values());
+    const merged = sortPlaylistsStable(Array.from(map.values()));
     localStorage.setItem(getCacheKey(uid), JSON.stringify(merged.slice(0, 100)));
     localStorage.setItem(getCreatedIdsKey(uid), JSON.stringify(updatedCreatedIds.slice(0, 100)));
 
@@ -375,10 +410,20 @@ export const api = {
   // Playlists — token-scoped per logged-in user with offline resilience
   getPlaylists: async (userId?: string, token?: string | null): Promise<Playlist[]> => {
     try {
-      const uid = userId || getStoredUserId();
+      let uid = userId || getStoredUserId();
       const t = token !== undefined ? token : getStoredToken();
       const headers: HeadersInit = {};
       if (t) headers['Authorization'] = `Bearer ${t}`;
+
+      try {
+        const uRaw = localStorage.getItem('vibeflow_user');
+        if (uRaw) {
+          const u = JSON.parse(uRaw);
+          if (u.email) headers['x-user-email'] = u.email;
+          if (u.id && (!uid || uid === 'demo-user-id')) uid = u.id;
+        }
+      } catch {}
+
       if (uid) headers['x-user-id'] = uid;
 
       const clientIds = getStoredCreatedPlaylistIds(uid);
@@ -391,11 +436,11 @@ export const api = {
       const data = await res.json();
       const serverPlaylists: Playlist[] = data.playlists || [];
       const deletedIds: string[] = data.deletedPlaylistIds || [];
-      return mergeWithLocalPlaylists(serverPlaylists, uid, deletedIds);
+      return sortPlaylistsStable(mergeWithLocalPlaylists(serverPlaylists, uid, deletedIds));
     } catch (err) {
       console.warn('API getPlaylists error, returning locally cached playlists:', err);
       const uid = userId || getStoredUserId();
-      return getLocallyCachedPlaylists(uid);
+      return sortPlaylistsStable(getLocallyCachedPlaylists(uid));
     }
   },
 

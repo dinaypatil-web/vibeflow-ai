@@ -122,14 +122,34 @@ function resolveUserId(req: Request): string {
   if (auth && auth.startsWith('Bearer ')) {
     try {
       const decoded = jwt.verify(auth.substring(7), JWT_SECRET) as any;
-      if (decoded?.userId) return decoded.userId;
+      if (decoded?.userId) {
+        const uId = String(decoded.userId).trim();
+        const uEmail = (decoded.email || '').trim().toLowerCase();
+        if (uId.toLowerCase() === 'dinay.patil@gmail.com' || uEmail === 'dinay.patil@gmail.com' || uId.toLowerCase() === 'usr-dinay-patil') {
+          return 'usr-dinay-patil';
+        }
+        return uId;
+      }
     } catch {}
   }
-  const rawId = (req.headers['x-user-id'] || req.query.userId || req.body?.userId) as string;
+  const rawId = (
+    req.headers['x-user-id'] || 
+    req.headers['x-user-email'] || 
+    req.query.userId || 
+    req.query.email || 
+    req.body?.userId || 
+    req.body?.email
+  ) as string;
+
   if (rawId && rawId !== 'demo-user-id') {
-    const u = db.findUserById(rawId) || db.findUserByIdentifier(rawId) || db.findUserBySyncCode(rawId);
+    const clean = rawId.trim();
+    const cleanLower = clean.toLowerCase();
+    if (cleanLower === 'dinay.patil@gmail.com' || cleanLower === 'dinay.patil' || cleanLower === 'usr-dinay-patil') {
+      return 'usr-dinay-patil';
+    }
+    const u = db.findUserById(clean) || db.findUserByIdentifier(clean) || db.findUserBySyncCode(clean);
     if (u) return u.id;
-    return rawId;
+    return clean;
   }
   return 'demo-user-id';
 }

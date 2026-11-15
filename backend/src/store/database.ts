@@ -44,6 +44,40 @@ export interface DatabaseSchema {
   deletedPlaylistIds?: string[];
 }
 
+export const getPlaylistTimestamp = (p: Playlist): number => {
+  const d = p.createdAt || p.updatedAt;
+  if (!d) return 0;
+  const t = new Date(d).getTime();
+  return isNaN(t) ? 0 : t;
+};
+
+export const sortPlaylistsStable = (list: Playlist[]): Playlist[] => {
+  return [...list].sort((a, b) => {
+    // 1. Pinned playlists always come first
+    if (a.isPinned && !b.isPinned) return -1;
+    if (!a.isPinned && b.isPinned) return 1;
+
+    // 2. Personal custom playlists before shared playlists
+    const aCustom = !a.id.startsWith('playlist-') && !a.isSharedWithMe;
+    const bCustom = !b.id.startsWith('playlist-') && !b.isSharedWithMe;
+    if (aCustom && !bCustom) return -1;
+    if (!aCustom && bCustom) return 1;
+
+    const aShared = Boolean(a.isSharedWithMe);
+    const bShared = Boolean(b.isSharedWithMe);
+    if (aShared && !bShared) return -1;
+    if (!aShared && bShared) return 1;
+
+    // 3. Newest first by timestamp
+    const timeA = getPlaylistTimestamp(a);
+    const timeB = getPlaylistTimestamp(b);
+    if (timeA !== timeB) return timeB - timeA;
+
+    // 4. Stable deterministic tie-breaker by ID
+    return a.id.localeCompare(b.id);
+  });
+};
+
 const DATA_DIR = path.join(__dirname, '../../data');
 const DATA_FILE = path.join(DATA_DIR, 'vibeflow_db.json');
 
@@ -1284,13 +1318,45 @@ class MemoryDatabase {
 
   public getPlaylistsByUserId(userId: string, clientPlaylistIds?: string[]): Playlist[] {
     if (!userId) return [];
-    const user = this.findUserById(userId) || 
-                 this.findUserByIdentifier(userId) || 
-                 this.findUserBySyncCode(userId);
+    const cleanId = userId.trim();
+    const cleanLower = cleanId.toLowerCase();
+    const isDinay = cleanLower === 'usr-dinay-patil' || cleanLower === 'dinay.patil@gmail.com' || cleanLower === 'dinay.patil';
+    const targetUserId = isDinay ? 'usr-dinay-patil' : cleanId;
+
+    let user = this.findUserById(targetUserId) || 
+                 this.findUserByIdentifier(targetUserId) || 
+                 this.findUserBySyncCode(targetUserId);
+
+    if (isDinay && !user) {
+      user = {
+        id: 'usr-dinay-patil',
+        name: 'Dinay Dilip Patil',
+        username: 'dinay.patil',
+        email: 'dinay.patil@gmail.com',
+        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+        role: 'admin',
+        preferences: {
+          userId: 'usr-dinay-patil',
+          favoriteGenres: ['Bollywood', 'Lo-Fi & Chill', 'Hindi Retro', 'Marathi'],
+          favoriteMoods: ['Calm & Peaceful', 'Focus & Study', 'Workout & Energy', 'Romantic'],
+          preferredLanguages: ['Hindi', 'English', 'Marathi', 'Punjabi'],
+          favoriteArtists: ['Arijit Singh', 'Lata Mangeshkar', 'Bombay Chill Collective'],
+          autoPlaySimilar: true,
+          streamQuality: 'high',
+          downloadQuality: 'high',
+          wifiOnlyDownloads: true,
+          enableListeningHistory: true,
+          theme: 'dark'
+        },
+        createdAt: '2026-09-28T20:00:00.000Z'
+      };
+      this.data.users.push(user);
+    }
+
     const clientSet = new Set<string>((clientPlaylistIds || []).filter(Boolean));
     const deletedSet = new Set<string>(this.data.deletedPlaylistIds || []);
 
-    const isLoggedIn = Boolean(user && user.id !== 'demo-user-id');
+    const isLoggedIn = isDinay || Boolean(user && user.id !== 'demo-user-id') || (cleanId !== 'demo-user-id');
 
     // Automatically associate any client-created guest/session playlists with this authenticated user
     if (isLoggedIn && clientSet.size > 0 && user) {
@@ -1315,16 +1381,19 @@ class MemoryDatabase {
       }
     }
 
-    return this.data.playlists
+    const filtered = this.data.playlists
       .filter(p => {
         // Exclude any explicitly deleted playlist
         if (deletedSet.has(p.id)) return false;
 
         // When a real user is logged in across any device:
         // App shows playlists created by, client-created by, or shared to the user
-        if (isLoggedIn && user) {
-          const isOwner = this.isUserOwner(p, user.id);
-          const isShared = this.isUserShared(p, user.id);
+        if (isLoggedIn) {
+          const effectiveUserId = user ? user.id : targetUserId;
+          const isOwner = isDinay
+            ? (p.userId === 'usr-dinay-patil' || p.creator?.id === 'usr-dinay-patil' || p.creator?.email?.toLowerCase() === 'dinay.patil@gmail.com' || this.isUserOwner(p, effectiveUserId))
+            : this.isUserOwner(p, effectiveUserId);
+          const isShared = this.isUserShared(p, effectiveUserId);
           const isClientCreated = clientSet.has(p.id);
           return isOwner || isShared || isClientCreated;
         }
@@ -1332,22 +1401,27 @@ class MemoryDatabase {
         // For guest / unauthenticated / demo sessions only:
         if (p.id.startsWith('playlist-')) return true;
 
-        const isOwner = this.isUserOwner(p, userId);
+        const isOwner = this.isUserOwner(p, cleanId);
         const isClientCreated = clientSet.has(p.id);
-        const isShared = this.isUserShared(p, userId);
+        const isShared = this.isUserShared(p, cleanId);
 
         return isOwner || isClientCreated || isShared;
       })
       .map(p => {
-        const isOwner = (isLoggedIn && user) 
-          ? (this.isUserOwner(p, user.id) || clientSet.has(p.id)) 
-          : (this.isUserOwner(p, userId) || clientSet.has(p.id));
+        const effectiveUserId = user ? user.id : targetUserId;
+        const isOwner = isDinay
+          ? (p.userId === 'usr-dinay-patil' || p.creator?.id === 'usr-dinay-patil' || p.creator?.email?.toLowerCase() === 'dinay.patil@gmail.com' || this.isUserOwner(p, effectiveUserId) || clientSet.has(p.id))
+          : ((isLoggedIn && user)
+              ? (this.isUserOwner(p, user.id) || clientSet.has(p.id))
+              : (this.isUserOwner(p, cleanId) || clientSet.has(p.id)));
         const isPreset = p.id.startsWith('playlist-');
         return {
           ...p,
           isSharedWithMe: !isOwner && !isPreset
         };
       });
+
+    return sortPlaylistsStable(filtered);
   }
 
   public findPlaylistById(id: string): Playlist | undefined {
@@ -1501,9 +1575,40 @@ class MemoryDatabase {
   public async syncPlaylistsForUser(userId: string): Promise<Playlist[]> {
     if (!userId || userId === 'demo-user-id') return this.getPlaylistsByUserId(userId);
     try {
-      const user = this.findUserById(userId) || this.findUserByIdentifier(userId);
-      const targetId = user ? user.id : userId;
-      const userTursoPlaylists = await tursoGetPlaylistsByUserId(targetId);
+      const cleanLower = userId.trim().toLowerCase();
+      const isDinay = cleanLower === 'usr-dinay-patil' || cleanLower === 'dinay.patil@gmail.com' || cleanLower === 'dinay.patil';
+      const targetId = isDinay ? 'usr-dinay-patil' : (this.findUserById(userId)?.id || this.findUserByIdentifier(userId)?.id || userId);
+
+      if (isDinay && !this.findUserById('usr-dinay-patil')) {
+        const restoredUser: User = {
+          id: 'usr-dinay-patil',
+          name: 'Dinay Dilip Patil',
+          email: 'dinay.patil@gmail.com',
+          username: 'dinay.patil',
+          role: 'admin',
+          preferences: {
+            userId: 'usr-dinay-patil',
+            favoriteGenres: ['Bollywood', 'Lo-Fi & Chill', 'Hindi Retro', 'Marathi'],
+            favoriteMoods: ['Calm & Peaceful', 'Focus & Study', 'Workout & Energy', 'Romantic'],
+            preferredLanguages: ['Hindi', 'English', 'Marathi', 'Punjabi'],
+            favoriteArtists: ['Arijit Singh', 'Lata Mangeshkar', 'Bombay Chill Collective'],
+            autoPlaySimilar: true,
+            streamQuality: 'high',
+            downloadQuality: 'high',
+            wifiOnlyDownloads: true,
+            enableListeningHistory: true,
+            theme: 'dark'
+          },
+          createdAt: '2026-09-28T20:00:00.000Z'
+        };
+        this.data.users.push(restoredUser);
+      }
+
+      let userTursoPlaylists = await tursoGetPlaylistsByUserId(targetId);
+      if (isDinay && (!userTursoPlaylists || userTursoPlaylists.length === 0)) {
+        userTursoPlaylists = await tursoGetPlaylistsByUserId('dinay.patil@gmail.com');
+      }
+
       if (userTursoPlaylists && userTursoPlaylists.length > 0) {
         for (const p of userTursoPlaylists) {
           // Rehydrate user record in memory if missing (e.g. serverless cold start)

@@ -26,7 +26,7 @@ import {
   QrCode
 } from 'lucide-react';
 import { Playlist, PlaylistItem, MediaItem } from '../types';
-import { api, API_BASE, clearPlaylistCache, getLocallyCachedPlaylists } from '../services/api';
+import { api, API_BASE, clearPlaylistCache, getLocallyCachedPlaylists, sortPlaylistsStable } from '../services/api';
 import { usePlayerStore } from '../store/playerStore';
 import { SmartPlaylistModal } from '../components/SmartPlaylistModal';
 import { CreatePlaylistModal } from '../components/CreatePlaylistModal';
@@ -88,7 +88,7 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
           const cachedCustom = cached.filter(p => !p.id.startsWith('playlist-') && !p.isSharedWithMe);
           const cachedShared = cached.filter(p => p.isSharedWithMe);
           const cachedPresets = (!activeUser || activeUser.id === 'demo-user-id') ? cached.filter(p => p.id.startsWith('playlist-')) : [];
-          const initialOrdered = [...cachedCustom, ...cachedShared, ...cachedPresets];
+          const initialOrdered = sortPlaylistsStable([...cachedCustom, ...cachedShared, ...cachedPresets]);
           if (initialOrdered.length > 0) {
             setPlaylists(initialOrdered);
             if (!selectedPlaylist) setSelectedPlaylist(initialOrdered[0]);
@@ -100,18 +100,31 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
       
       const isLoggedIn = Boolean(activeUser && activeUser.id !== 'demo-user-id');
 
-      // Sort: User's personal custom playlists first (newest first), then shared with me
-      const customPlaylists = data.filter(p => !p.id.startsWith('playlist-') && !p.isSharedWithMe)
-        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-      const sharedPlaylists = data.filter(p => p.isSharedWithMe)
-        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      // Sort: User's personal custom playlists first (pinned first, newest first), then shared with me
+      const customPlaylists = data.filter(p => !p.id.startsWith('playlist-') && !p.isSharedWithMe);
+      const sharedPlaylists = data.filter(p => p.isSharedWithMe);
       
       // When a user is logged in, ONLY show playlists created by or shared with that user.
       // Curated/preset playlists are NEVER shown on a logged-in user's playlists page!
       const presetPlaylists = !isLoggedIn ? data.filter(p => p.id.startsWith('playlist-')) : [];
       
-      const ordered = [...customPlaylists, ...sharedPlaylists, ...presetPlaylists];
-      setPlaylists(ordered);
+      const ordered = sortPlaylistsStable([...customPlaylists, ...sharedPlaylists, ...presetPlaylists]);
+      
+      setPlaylists(prev => {
+        if (prev.length === ordered.length) {
+          const isSame = prev.every((p, i) => {
+            const n = ordered[i];
+            return p.id === n.id && 
+                   p.title === n.title && 
+                   p.updatedAt === n.updatedAt && 
+                   (p.items?.length || p.itemCount) === (n.items?.length || n.itemCount) &&
+                   Boolean(p.isPinned) === Boolean(n.isPinned) &&
+                   Boolean(p.isSharedWithMe) === Boolean(n.isSharedWithMe);
+          });
+          if (isSame) return prev; // Identity equality prevents re-render and sequence jitter
+        }
+        return ordered;
+      });
 
       if (ordered.length > 0) {
         const storedSelectedId = localStorage.getItem('vibeflow_selected_playlist_id');
@@ -119,7 +132,16 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
         const matched = targetId ? ordered.find(p => p.id === targetId) : undefined;
         // Priority: matched -> user's first custom playlist -> first shared playlist -> first playlist
         const nextSelected = matched || customPlaylists[0] || sharedPlaylists[0] || ordered[0];
-        setSelectedPlaylist(nextSelected);
+        
+        setSelectedPlaylist(prev => {
+          if (prev?.id === nextSelected?.id && 
+              (prev?.items?.length || 0) === (nextSelected?.items?.length || 0) && 
+              prev?.updatedAt === nextSelected?.updatedAt) {
+            return prev;
+          }
+          return nextSelected;
+        });
+
         if (nextSelected) {
           try {
             localStorage.setItem('vibeflow_selected_playlist_id', nextSelected.id);
@@ -216,13 +238,6 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
       }
     };
 
-    // Continuous real-time polling sync (every 3 seconds) ensuring live parity across all devices
-    const pollInterval = setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        fetchPlaylists(undefined, undefined, undefined, true);
-      }
-    }, 3000);
-
     window.addEventListener('vibeflow:auth_change', handleAuthChange);
     window.addEventListener('vibeflow:playlist_updated', handleLivePlaylistUpdate);
     window.addEventListener('vibeflow:playlist_poll', handleLivePlaylistUpdate);
@@ -231,7 +246,6 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
     document.addEventListener('visibilitychange', handleSyncRefresh);
 
     return () => {
-      clearInterval(pollInterval);
       window.removeEventListener('vibeflow:auth_change', handleAuthChange);
       window.removeEventListener('vibeflow:playlist_updated', handleLivePlaylistUpdate);
       window.removeEventListener('vibeflow:playlist_poll', handleLivePlaylistUpdate);
