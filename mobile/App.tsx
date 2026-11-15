@@ -130,10 +130,8 @@ const detectDefaultApiUrl = (): string => {
       }
     }
   } catch {}
-  if (Platform.OS === 'android') {
-    return 'http://10.0.2.2:4000/api';
-  }
-  return 'http://localhost:4000/api';
+  // On physical iOS and Android mobile devices, always default to live production cloud backend
+  return PRODUCTION_CLOUD_API_URL;
 };
 
 const AUTH_USER_KEY = '@vibeflow:auth_user';
@@ -675,7 +673,7 @@ export default function App() {
         AsyncStorage.setItem(CACHED_PLAYLISTS_KEY, JSON.stringify(transformed)).catch(() => {});
       }
       setSyncSuccess(`Logged in as ${data.user.name}! Syncing all your cloud playlists...`);
-      await fetchPlaylists(apiBaseUrl, data.user.id, data.token);
+      await fetchPlaylists(targetUrl, data.user.id, data.token);
       setTimeout(() => {
         setIsSyncModalVisible(false);
         setSyncSuccess(null);
@@ -706,11 +704,28 @@ export default function App() {
     setSyncSuccess(null);
     try {
       const clientPlaylistIds = playlists.filter(p => !p.id.startsWith('mobile-pl-')).map(p => p.id);
-      const res = await fetch(`${apiBaseUrl}/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name || username, email, username, password, clientPlaylistIds })
-      });
+      let targetUrl = apiBaseUrl;
+      let res: Response;
+      try {
+        res = await fetch(`${targetUrl}/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name || username, email, username, password, clientPlaylistIds })
+        });
+      } catch (netErr) {
+        if (targetUrl !== PRODUCTION_CLOUD_API_URL) {
+          targetUrl = PRODUCTION_CLOUD_API_URL;
+          res = await fetch(`${targetUrl}/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name || username, email, username, password, clientPlaylistIds })
+          });
+          setApiBaseUrl(PRODUCTION_CLOUD_API_URL);
+          AsyncStorage.setItem(API_BASE_URL_KEY, PRODUCTION_CLOUD_API_URL).catch(() => {});
+        } else {
+          throw netErr;
+        }
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Registration failed');
       setSyncUser(data.user);
@@ -718,7 +733,7 @@ export default function App() {
       AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(data.user)).catch(() => {});
       if (data.token) AsyncStorage.setItem(AUTH_TOKEN_KEY, data.token).catch(() => {});
       setSyncSuccess(`Account created for ${data.user.name}! Playlists ready.`);
-      await fetchPlaylists(apiBaseUrl, data.user.id, data.token);
+      await fetchPlaylists(targetUrl, data.user.id, data.token);
       setTimeout(() => {
         setIsSyncModalVisible(false);
         setSyncSuccess(null);

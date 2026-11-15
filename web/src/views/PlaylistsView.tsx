@@ -26,7 +26,7 @@ import {
   QrCode
 } from 'lucide-react';
 import { Playlist, PlaylistItem, MediaItem } from '../types';
-import { api, API_BASE, clearPlaylistCache } from '../services/api';
+import { api, API_BASE, clearPlaylistCache, getLocallyCachedPlaylists } from '../services/api';
 import { usePlayerStore } from '../store/playerStore';
 import { SmartPlaylistModal } from '../components/SmartPlaylistModal';
 import { CreatePlaylistModal } from '../components/CreatePlaylistModal';
@@ -80,6 +80,22 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
     try {
       const activeUser = overrideUser !== undefined ? overrideUser : user;
       const activeToken = overrideToken !== undefined ? overrideToken : token;
+
+      // Instant cache display for seamless cross-device switching without layout flicker
+      if (playlists.length === 0) {
+        const cached = getLocallyCachedPlaylists(activeUser?.id);
+        if (cached && cached.length > 0) {
+          const cachedCustom = cached.filter(p => !p.id.startsWith('playlist-') && !p.isSharedWithMe);
+          const cachedShared = cached.filter(p => p.isSharedWithMe);
+          const cachedPresets = (!activeUser || activeUser.id === 'demo-user-id') ? cached.filter(p => p.id.startsWith('playlist-')) : [];
+          const initialOrdered = [...cachedCustom, ...cachedShared, ...cachedPresets];
+          if (initialOrdered.length > 0) {
+            setPlaylists(initialOrdered);
+            if (!selectedPlaylist) setSelectedPlaylist(initialOrdered[0]);
+          }
+        }
+      }
+
       const data = await api.getPlaylists(activeUser?.id, activeToken);
       
       const isLoggedIn = Boolean(activeUser && activeUser.id !== 'demo-user-id');

@@ -195,7 +195,9 @@ router.get('/', async (req: Request, res: Response) => {
     }
     return Promise.resolve(false);
   });
-  await Promise.allSettled(enrichPromises);
+  // Execute duration enrichment in background so GET / response is instantaneous (<50ms)
+  // instead of blocking HTTP response for 20+ seconds scraping external APIs
+  Promise.allSettled(enrichPromises).catch(() => {});
 
   res.json({ playlists: hydrated, deletedPlaylistIds: db.getDeletedPlaylistIds() });
 });

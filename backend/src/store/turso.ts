@@ -338,10 +338,50 @@ export async function tursoGetPlaylistsByUserId(userId: string): Promise<Playlis
     const cleanId = (userId || '').trim().toLowerCase();
     if (!cleanId) return [];
 
-    const res = await tursoClient.execute({
-      sql: `SELECT * FROM playlists WHERE lower(user_id) = ? OR lower(creator) LIKE ? OR lower(shared_with) LIKE ? ORDER BY updated_at DESC`,
-      args: [cleanId, `%"id":"${cleanId}"%`, `%"${cleanId}"%`]
-    });
+    const aliases = new Set<string>();
+    aliases.add(cleanId);
+    if (cleanId.includes('@')) {
+      aliases.add(cleanId.split('@')[0]);
+    }
+    // Expand aliases using in-memory user registry if available
+    try {
+      const { db } = require('./database');
+      if (db) {
+        const u = db.findUserById(cleanId) || db.findUserByIdentifier(cleanId) || db.findUserBySyncCode(cleanId);
+        if (u) {
+          if (u.id) aliases.add(u.id.toLowerCase());
+          if (u.email) aliases.add(u.email.toLowerCase());
+          if (u.username) aliases.add(u.username.toLowerCase());
+        }
+      }
+    } catch {}
+
+    const aliasList = Array.from(aliases);
+    const userIdConditions = aliasList.map(() => `lower(user_id) = ?`).join(' OR ');
+    const creatorIdConditions = aliasList.map(() => `lower(creator) LIKE ?`).join(' OR ');
+    const creatorEmailConditions = aliasList.map(() => `lower(creator) LIKE ?`).join(' OR ');
+    const creatorUsernameConditions = aliasList.map(() => `lower(creator) LIKE ?`).join(' OR ');
+    const sharedWithConditions = aliasList.map(() => `lower(shared_with) LIKE ?`).join(' OR ');
+
+    const sql = `
+      SELECT * FROM playlists 
+      WHERE (${userIdConditions}) 
+         OR (${creatorIdConditions})
+         OR (${creatorEmailConditions})
+         OR (${creatorUsernameConditions})
+         OR (${sharedWithConditions})
+      ORDER BY updated_at DESC
+    `;
+
+    const args = [
+      ...aliasList,
+      ...aliasList.map(a => `%"id":"${a}"%`),
+      ...aliasList.map(a => `%"email":"${a}"%`),
+      ...aliasList.map(a => `%"username":"${a}"%`),
+      ...aliasList.map(a => `%"${a}"%`)
+    ];
+
+    const res = await tursoClient.execute({ sql, args });
 
     if (!res.rows || res.rows.length === 0) return [];
 

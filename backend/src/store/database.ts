@@ -1506,6 +1506,31 @@ class MemoryDatabase {
       const userTursoPlaylists = await tursoGetPlaylistsByUserId(targetId);
       if (userTursoPlaylists && userTursoPlaylists.length > 0) {
         for (const p of userTursoPlaylists) {
+          // Rehydrate user record in memory if missing (e.g. serverless cold start)
+          if (p.userId && !this.findUserById(p.userId) && p.creator) {
+            const restoredUser: User = {
+              id: p.userId,
+              name: p.creator.name || 'User',
+              email: p.creator.email || '',
+              username: p.creator.username || (p.creator.email ? p.creator.email.split('@')[0] : p.userId),
+              role: 'user',
+              preferences: {
+                userId: p.userId,
+                favoriteGenres: ['Bollywood', 'Lo-Fi & Chill', 'Hindi Retro', 'Marathi'],
+                favoriteMoods: ['Calm & Peaceful', 'Focus & Study', 'Workout & Energy', 'Romantic'],
+                preferredLanguages: ['Hindi', 'English', 'Marathi', 'Punjabi'],
+                favoriteArtists: ['Arijit Singh', 'Lata Mangeshkar', 'Bombay Chill Collective'],
+                autoPlaySimilar: true,
+                streamQuality: 'high',
+                downloadQuality: 'high',
+                wifiOnlyDownloads: true,
+                enableListeningHistory: true,
+                theme: 'dark'
+              },
+              createdAt: new Date().toISOString()
+            };
+            this.data.users.push(restoredUser);
+          }
           const idx = this.data.playlists.findIndex(x => x.id === p.id);
           if (idx >= 0) {
             const existing = this.data.playlists[idx];
