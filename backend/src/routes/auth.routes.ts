@@ -218,8 +218,11 @@ router.post('/login', async (req: Request, res: Response) => {
     const clientPlaylistIds = req.body.clientPlaylistIds;
     const clientPlaylists = req.body.clientPlaylists;
     if (clientPlaylistIds || clientPlaylists) {
-      db.linkPlaylistsToUser(user.id, clientPlaylistIds, clientPlaylists);
+      await db.linkPlaylistsToUserAsync(user.id, clientPlaylistIds, clientPlaylists);
     }
+
+    // Ensure all cloud/Turso playlists for this user are loaded & synced from other devices
+    await db.syncPlaylistsForUser(user.id);
 
     const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
     const playlists = db.getPlaylistsByUserId(user.id);

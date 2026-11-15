@@ -14,6 +14,7 @@ import {
   tursoRecordHistory, 
   tursoLoadAll,
   tursoGetPlaylist,
+  tursoGetPlaylistsByUserId,
   tursoGetPlaylistByShareToken,
   tursoSavePlaylistItems,
   tursoRemovePlaylistItem,
@@ -1435,6 +1436,94 @@ class MemoryDatabase {
     return playlist;
   }
 
+  public async createPlaylistAsync(playlist: Playlist): Promise<Playlist> {
+    const rawUserId = playlist.userId || 'demo-user-id';
+    const user = this.findUserById(rawUserId) || this.findUserByIdentifier(rawUserId);
+    const canonicalUserId = user ? user.id : rawUserId;
+    playlist.userId = canonicalUserId;
+
+    if (!playlist.creator) {
+      if (user) {
+        playlist.creator = {
+          id: user.id,
+          name: user.name,
+          username: user.username || user.name,
+          avatar: user.avatar,
+          email: user.email
+        };
+      } else {
+        playlist.creator = {
+          id: canonicalUserId,
+          name: canonicalUserId === 'demo-user-id' ? 'Aarav Sharma' : 'Music Lover',
+          username: canonicalUserId === 'demo-user-id' ? 'demo' : canonicalUserId,
+          avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
+        };
+      }
+    } else {
+      if (user) {
+        playlist.creator.id = user.id;
+        if (!playlist.creator.name || playlist.creator.name === 'Music Lover') {
+          playlist.creator.name = user.name;
+        }
+        playlist.creator.username = user.username || playlist.creator.username || user.name;
+        playlist.creator.email = user.email || playlist.creator.email;
+        playlist.creator.avatar = user.avatar || playlist.creator.avatar;
+      }
+    }
+
+    if (!Array.isArray(playlist.sharedWith)) playlist.sharedWith = [];
+    if (!Array.isArray(playlist.sharedWithUsers)) playlist.sharedWithUsers = [];
+    if (!playlist.shareToken) {
+      playlist.shareToken = `st-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    }
+    this.data.playlists.push(playlist);
+    this.saveToDisk();
+
+    // Await cloud & Turso writes to ensure cross-device consistency immediately
+    try {
+      await tursoSavePlaylist(playlist);
+    } catch (err) {
+      console.warn('[Turso] createPlaylistAsync write warning:', err);
+    }
+    try {
+      await this.syncToCloud();
+    } catch {}
+
+    return playlist;
+  }
+
+  public async syncPlaylistsForUser(userId: string): Promise<Playlist[]> {
+    if (!userId || userId === 'demo-user-id') return this.getPlaylistsByUserId(userId);
+    try {
+      const user = this.findUserById(userId) || this.findUserByIdentifier(userId);
+      const targetId = user ? user.id : userId;
+      const userTursoPlaylists = await tursoGetPlaylistsByUserId(targetId);
+      if (userTursoPlaylists && userTursoPlaylists.length > 0) {
+        for (const p of userTursoPlaylists) {
+          const idx = this.data.playlists.findIndex(x => x.id === p.id);
+          if (idx >= 0) {
+            const existing = this.data.playlists[idx];
+            const items = (p.items && existing.items)
+              ? (p.items.length >= existing.items.length ? p.items : existing.items)
+              : (p.items || existing.items);
+            this.data.playlists[idx] = {
+              ...existing,
+              ...p,
+              items,
+              itemCount: items ? items.length : (p.itemCount || existing.itemCount)
+            };
+          } else {
+            this.data.playlists.push(p);
+          }
+        }
+        this.saveToDisk();
+      }
+    } catch (err) {
+      console.warn('[DB] syncPlaylistsForUser error:', err);
+    }
+    return this.getPlaylistsByUserId(userId);
+  }
+
   public sharePlaylist(playlistId: string, ownerUserId: string, targetIdentifier: string): { success: boolean; playlist?: Playlist; message?: string } {
     const playlist = this.findPlaylistById(playlistId);
     if (!playlist) {
@@ -1854,12 +1943,32 @@ class MemoryDatabase {
     if (modified) {
       this.saveToDisk();
       this.syncToCloud().catch(() => {});
+      for (const p of this.data.playlists) {
+        if (p.userId === user.id && !p.id.startsWith('playlist-')) {
+          tursoSavePlaylist(p).catch(() => {});
+        }
+      }
     }
 
     return {
       linkedCount: this.getPlaylistsByUserId(user.id).length,
       playlists: this.getPlaylistsByUserId(user.id)
     };
+  }
+
+  public async linkPlaylistsToUserAsync(
+    userId: string, 
+    clientPlaylistIds?: string[], 
+    clientPlaylists?: Playlist[]
+  ): Promise<{ linkedCount: number; playlists: Playlist[] }> {
+    const res = this.linkPlaylistsToUser(userId, clientPlaylistIds, clientPlaylists);
+    try {
+      const savePromises = res.playlists
+        .filter(pl => !pl.id.startsWith('playlist-'))
+        .map(pl => tursoSavePlaylist(pl));
+      await Promise.allSettled(savePromises);
+    } catch {}
+    return res;
   }
 
   public async addItemsToPlaylist(

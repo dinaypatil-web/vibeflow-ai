@@ -1968,6 +1968,117 @@ async function runTests() {
     }
   });
 
+  // 39. Cross-Device Playlist Synchronization (Windows PC -> Android/iPhone)
+  await test('Cross-Device Playlist Sync (User A Windows PC -> Android/iPhone)', async () => {
+    const userAEmail = `user_a_${Date.now()}@vibeflow.device`;
+    const userAPass = 'CrossDevicePassword2026!';
+    const userAName = 'User A Windows';
+
+    // 1. User A logs in / registers on Windows PC
+    const regRes = await fetchJSON(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: userAName, email: userAEmail, password: userAPass })
+    });
+    const userA = regRes.user;
+    const tokenPC = regRes.token;
+
+    // 2. User A creates "Playlist X" on Windows PC
+    const createRes = await fetchJSON(`${API_BASE}/playlists`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${tokenPC}`,
+        'x-user-id': userA.id
+      },
+      body: JSON.stringify({
+        title: 'Playlist X',
+        description: 'Created on Windows PC/Laptop',
+        userId: userA.id,
+        creator: { id: userA.id, name: userA.name, email: userA.email }
+      })
+    });
+    const playlistX = createRes.playlist;
+    if (!playlistX || playlistX.title !== 'Playlist X') {
+      throw new Error('Failed to create Playlist X on Windows PC');
+    }
+
+    // 3. User A adds tracks to Playlist X on Windows PC
+    const addTrackRes = await fetchJSON(`${API_BASE}/playlists/${playlistX.id}/items`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${tokenPC}`,
+        'x-user-id': userA.id
+      },
+      body: JSON.stringify({
+        mediaItemId: `track-pc-${Date.now()}`,
+        title: 'Bohemian Rhapsody',
+        artist: 'Queen',
+        duration: 354
+      })
+    });
+    if (!addTrackRes.playlist || (addTrackRes.playlist.items || []).length !== 1) {
+      throw new Error('Failed to add track to Playlist X on Windows PC');
+    }
+
+    // 4. Simulate User A logging in from Android / iPhone device (fresh session, no client IDs)
+    const mobileLoginRes = await fetchJSON(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        identifier: userAEmail,
+        password: userAPass,
+        clientPlaylistIds: []
+      })
+    });
+    const tokenMobile = mobileLoginRes.token;
+    const mobilePlaylistsOnLogin = mobileLoginRes.playlists || [];
+
+    // Verify Playlist X is in mobile login response
+    const foundOnLogin = mobilePlaylistsOnLogin.find(p => p.id === playlistX.id);
+    if (!foundOnLogin) {
+      throw new Error('Playlist X was not returned in Android/iPhone login response!');
+    }
+    if (foundOnLogin.title !== 'Playlist X') {
+      throw new Error('Playlist title mismatch on mobile device');
+    }
+
+    // 5. Simulate Android/iPhone calling GET /playlists
+    const mobileGetPlaylists = await fetchJSON(`${API_BASE}/playlists?userId=${encodeURIComponent(userA.id)}`, {
+      headers: {
+        'Authorization': `Bearer ${tokenMobile}`,
+        'x-user-id': userA.id
+      }
+    });
+    const mobileList = mobileGetPlaylists.playlists || [];
+    const foundOnGet = mobileList.find(p => p.id === playlistX.id);
+    if (!foundOnGet) {
+      throw new Error('Playlist X was not returned on Android/iPhone GET /playlists!');
+    }
+    if (!foundOnGet.items || foundOnGet.items.length !== 1) {
+      throw new Error(`Playlist X items missing on mobile device! Found ${foundOnGet.items?.length || 0} items`);
+    }
+    if (foundOnGet.items[0].mediaItem.title !== 'Bohemian Rhapsody') {
+      throw new Error('Track title in Playlist X mismatch on mobile device');
+    }
+
+    // 6. Verify Android/iPhone can export Playlist X directly
+    const exportRes = await fetch(`${API_BASE}/playlists/${playlistX.id}/export?format=m3u`, {
+      headers: {
+        'Authorization': `Bearer ${tokenMobile}`,
+        'x-user-id': userA.id
+      }
+    });
+    if (!exportRes.ok) {
+      throw new Error(`Failed to export Playlist X: HTTP ${exportRes.status}`);
+    }
+    const m3uContent = await exportRes.text();
+    if (!m3uContent.includes('#EXTM3U') || !m3uContent.includes('Bohemian Rhapsody')) {
+      throw new Error('Exported M3U did not contain Playlist X track data');
+    }
+  });
+
   console.log(`\n🎉 Test Results: ${passed}/${total} passed!`);
   if (passed === total) {
     console.log('🌟 All VibeFlow AI core systems verified production-ready.\n');

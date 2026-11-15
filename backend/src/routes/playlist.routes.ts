@@ -136,7 +136,11 @@ function resolveUserId(req: Request): string {
 // Get playlists
 router.get('/', async (req: Request, res: Response) => {
   const userId = resolveUserId(req);
-  // Cloud sync handled by middleware above
+  if (userId && userId !== 'demo-user-id') {
+    await db.syncPlaylistsForUser(userId);
+  } else if (process.env.VERCEL) {
+    try { await db.syncFromCloud(); } catch {}
+  }
 
   // Parse client-created playlist IDs passed from frontend
   let clientPlaylistIds: string[] = [];
@@ -275,7 +279,7 @@ router.post('/cache/clear', handleClearPlaylistCache);
 router.delete('/cache', handleClearPlaylistCache);
 
 // Create Playlist
-router.post('/', (req: Request, res: Response) => {
+router.post('/', async (req: Request, res: Response) => {
   const { title, description, coverArt, isSmart, smartDefinition, isPrivate, isShareable, userId, creator: reqCreator, userEmail, userName } = req.body;
   if (!title) {
     return res.status(400).json({ error: 'Playlist title is required' });
@@ -386,7 +390,7 @@ router.post('/', (req: Request, res: Response) => {
     updatedAt: new Date().toISOString()
   };
 
-  db.createPlaylist(newPlaylist);
+  await db.createPlaylistAsync(newPlaylist);
   broadcastPlaylistEvent({
     type: 'playlist_created',
     playlistId: newPlaylist.id,
@@ -478,6 +482,10 @@ router.get('/:id', async (req: Request, res: Response) => {
     if (playlist) {
       db.createPlaylist(playlist);
     }
+  }
+  if (!playlist) {
+    try { await db.syncFromCloud(); } catch {}
+    playlist = db.findPlaylistById(req.params.id) || db.findPlaylistByShareToken(req.params.id);
   }
   if (!playlist) {
     return res.status(404).json({ error: 'Playlist not found' });
@@ -1073,6 +1081,12 @@ const handleExportPlaylist = async (req: Request, res: Response) => {
     if (playlist) {
       db.createPlaylist(playlist);
     }
+  }
+
+  // Full cloud sync fallback
+  if (!playlist) {
+    try { await db.syncFromCloud(); } catch {}
+    playlist = db.findPlaylistById(req.params.id) || db.findPlaylistByShareToken(req.params.id);
   }
 
   // If provided in request body (e.g. from client fallback sync), use it

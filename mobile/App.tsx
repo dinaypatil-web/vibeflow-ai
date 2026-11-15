@@ -117,6 +117,8 @@ const INITIAL_MOBILE_PLAYLISTS: Playlist[] = [
   }
 ];
 
+export const PRODUCTION_CLOUD_API_URL = 'https://vibeflowai18.vercel.app/api';
+
 const detectDefaultApiUrl = (): string => {
   try {
     const rn = require('react-native') as any;
@@ -427,13 +429,13 @@ export default function App() {
   };
 
   const fetchPlaylists = async (baseUrl = apiBaseUrl, uid = syncUser?.id || 'demo-user-id', token = authToken) => {
-    try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      headers['x-user-id'] = uid;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    headers['x-user-id'] = uid;
 
+    try {
       const res = await fetch(`${baseUrl}/playlists?userId=${encodeURIComponent(uid)}`, { headers });
       if (res.ok) {
         const data = await res.json();
@@ -476,6 +478,41 @@ export default function App() {
       }
     } catch (err) {
       console.warn('Network fetch playlists error:', err);
+      // Auto-fallback to live cloud backend if local dev endpoint is unreachable on physical device
+      if (baseUrl !== PRODUCTION_CLOUD_API_URL && (baseUrl.includes('localhost') || baseUrl.includes('10.0.2.2'))) {
+        try {
+          const fallbackRes = await fetch(`${PRODUCTION_CLOUD_API_URL}/playlists?userId=${encodeURIComponent(uid)}`, { headers });
+          if (fallbackRes.ok) {
+            const fbData = await fallbackRes.json();
+            const fbList = fbData.playlists || [];
+            const fbDeleted = new Set<string>(fbData.deletedPlaylistIds || []);
+            const transformed = fbList
+              .filter((p: any) => !fbDeleted.has(p.id))
+              .map((p: any) => ({
+                ...p,
+                items: (p.items || []).map((it: any) => ({
+                  id: it.id,
+                  mediaItemId: it.mediaItemId || it.mediaItem?.id,
+                  mediaItem: it.mediaItem || {
+                    id: it.mediaItemId || `track-${Math.random()}`,
+                    title: it.title || 'Unknown Track',
+                    artist: it.artist || 'Unknown Artist',
+                    thumbnail: p.coverArt || SAMPLE_TRACKS[0].thumbnail,
+                    duration: it.duration || 210,
+                    genre: 'Electronic',
+                    mood: 'Chill',
+                    streamUrl: it.streamUrl || 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
+                    isOfflinePermitted: true
+                  }
+                }))
+              }));
+            setPlaylists(transformed);
+            setApiBaseUrl(PRODUCTION_CLOUD_API_URL);
+            AsyncStorage.setItem(API_BASE_URL_KEY, PRODUCTION_CLOUD_API_URL).catch(() => {});
+            AsyncStorage.setItem(CACHED_PLAYLISTS_KEY, JSON.stringify(transformed)).catch(() => {});
+          }
+        } catch {}
+      }
     }
   };
 
@@ -540,11 +577,28 @@ export default function App() {
     setSyncSuccess(null);
     try {
       const clientPlaylistIds = playlists.filter(p => !p.id.startsWith('mobile-pl-')).map(p => p.id);
-      const res = await fetch(`${apiBaseUrl}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier: ident, password: pass, clientPlaylistIds })
-      });
+      let res: Response;
+      let targetUrl = apiBaseUrl;
+      try {
+        res = await fetch(`${targetUrl}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier: ident, password: pass, clientPlaylistIds })
+        });
+      } catch (networkErr) {
+        if (targetUrl !== PRODUCTION_CLOUD_API_URL && (targetUrl.includes('localhost') || targetUrl.includes('10.0.2.2'))) {
+          targetUrl = PRODUCTION_CLOUD_API_URL;
+          res = await fetch(`${targetUrl}/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier: ident, password: pass, clientPlaylistIds })
+          });
+          setApiBaseUrl(PRODUCTION_CLOUD_API_URL);
+          AsyncStorage.setItem(API_BASE_URL_KEY, PRODUCTION_CLOUD_API_URL).catch(() => {});
+        } else {
+          throw networkErr;
+        }
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Invalid credentials');
       setSyncUser(data.user);
@@ -2167,6 +2221,13 @@ export default function App() {
                   </TouchableOpacity>
                 </View>
                 <View style={[styles.lanHelpersRow, { marginTop: 8 }]}>
+                  <TouchableOpacity onPress={() => {
+                    setApiBaseUrl('https://vibeflowai18.vercel.app/api');
+                    AsyncStorage.setItem(API_BASE_URL_KEY, 'https://vibeflowai18.vercel.app/api').catch(() => {});
+                    fetchPlaylists('https://vibeflowai18.vercel.app/api');
+                  }}>
+                    <Text style={[styles.lanHelperChip, { color: '#10b981', borderColor: 'rgba(16,185,129,0.3)', fontWeight: 'bold' }]}>☁️ Cloud Server (VibeFlow AI)</Text>
+                  </TouchableOpacity>
                   <TouchableOpacity onPress={() => {
                     const detected = detectDefaultApiUrl();
                     setApiBaseUrl(detected);

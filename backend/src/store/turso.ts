@@ -332,6 +332,88 @@ export async function tursoRemovePlaylistItem(playlistId: string, itemIdOrMediaI
   }
 }
 
+export async function tursoGetPlaylistsByUserId(userId: string): Promise<Playlist[]> {
+  try {
+    await initTurso();
+    const cleanId = (userId || '').trim().toLowerCase();
+    if (!cleanId) return [];
+
+    const res = await tursoClient.execute({
+      sql: `SELECT * FROM playlists WHERE lower(user_id) = ? OR lower(creator) LIKE ? OR lower(shared_with) LIKE ? ORDER BY updated_at DESC`,
+      args: [cleanId, `%"id":"${cleanId}"%`, `%"${cleanId}"%`]
+    });
+
+    if (!res.rows || res.rows.length === 0) return [];
+
+    const playlistIds = res.rows.map(r => String(r.id));
+    const placeholders = playlistIds.map(() => '?').join(',');
+    const itemsRes = await tursoClient.execute({
+      sql: `SELECT * FROM playlist_items WHERE playlist_id IN (${placeholders}) ORDER BY order_index ASC`,
+      args: playlistIds
+    });
+
+    const itemsByPlaylist = new Map<string, PlaylistItem[]>();
+    for (const itRow of itemsRes.rows) {
+      const pId = String(itRow.playlist_id);
+      let mediaItem: any;
+      try { if (itRow.media_item) mediaItem = JSON.parse(String(itRow.media_item)); } catch {}
+      const item: PlaylistItem = {
+        id: String(itRow.id),
+        playlistId: pId,
+        mediaItemId: String(itRow.media_item_id),
+        orderIndex: Number(itRow.order_index || 0),
+        addedAt: String(itRow.added_at || ''),
+        mediaItem
+      };
+      let list = itemsByPlaylist.get(pId);
+      if (!list) {
+        list = [];
+        itemsByPlaylist.set(pId, list);
+      }
+      list.push(item);
+    }
+
+    return res.rows.map(row => {
+      const pId = String(row.id);
+      let creator: any;
+      let sharedWith: string[] = [];
+      let sharedWithUsers: any[] = [];
+      let smartDef: any;
+
+      try { if (row.creator) creator = JSON.parse(String(row.creator)); } catch {}
+      try { if (row.shared_with) sharedWith = JSON.parse(String(row.shared_with)); } catch {}
+      try { if (row.shared_with_users) sharedWithUsers = JSON.parse(String(row.shared_with_users)); } catch {}
+      try { if (row.smart_definition) smartDef = JSON.parse(String(row.smart_definition)); } catch {}
+
+      const items = itemsByPlaylist.get(pId) || [];
+
+      return {
+        id: pId,
+        userId: String(row.user_id),
+        title: String(row.title),
+        description: String(row.description || ''),
+        coverArt: String(row.cover_art || ''),
+        isSmart: Boolean(row.is_smart),
+        smartDefinition: smartDef,
+        isPrivate: Boolean(row.is_private),
+        isShareable: Boolean(row.is_shareable),
+        isPinned: Boolean(row.is_pinned),
+        shareToken: String(row.share_token || `st-${pId}`),
+        sharedWith,
+        sharedWithUsers,
+        creator,
+        itemCount: items.length || Number(row.item_count || 0),
+        items,
+        createdAt: String(row.created_at || ''),
+        updatedAt: String(row.updated_at || '')
+      };
+    });
+  } catch (err) {
+    console.warn('[Turso] tursoGetPlaylistsByUserId error:', err);
+    return [];
+  }
+}
+
 export async function tursoGetPlaylist(playlistId: string): Promise<Playlist | undefined> {
   try {
     await initTurso();
@@ -553,9 +635,36 @@ export async function tursoLoadAll(): Promise<Partial<DatabaseSchema>> {
       }
     }
 
-    // 2. Playlists
+    // 2. Playlists & Items in one optimized batch
     const plRes = await tursoClient.execute(`SELECT * FROM playlists`);
     const playlists: Playlist[] = [];
+
+    // Batch load all playlist items in a single query instead of N+1 sequential roundtrips
+    let itemsByPlaylist = new Map<string, PlaylistItem[]>();
+    try {
+      const allItemsRes = await tursoClient.execute(`SELECT * FROM playlist_items ORDER BY order_index ASC`);
+      for (const itRow of allItemsRes.rows) {
+        const pId = String(itRow.playlist_id);
+        let mediaItem: any;
+        try { if (itRow.media_item) mediaItem = JSON.parse(String(itRow.media_item)); } catch {}
+        const item: PlaylistItem = {
+          id: String(itRow.id),
+          playlistId: pId,
+          mediaItemId: String(itRow.media_item_id),
+          orderIndex: Number(itRow.order_index || 0),
+          addedAt: String(itRow.added_at || ''),
+          mediaItem
+        };
+        let list = itemsByPlaylist.get(pId);
+        if (!list) {
+          list = [];
+          itemsByPlaylist.set(pId, list);
+        }
+        list.push(item);
+      }
+    } catch (err) {
+      console.warn('[Turso] playlist_items batch query fallback:', err);
+    }
 
     for (const row of plRes.rows) {
       const pId = String(row.id);
@@ -569,24 +678,7 @@ export async function tursoLoadAll(): Promise<Partial<DatabaseSchema>> {
       try { if (row.shared_with_users) sharedWithUsers = JSON.parse(String(row.shared_with_users)); } catch {}
       try { if (row.smart_definition) smartDef = JSON.parse(String(row.smart_definition)); } catch {}
 
-      // Get playlist items
-      const itemsRes = await tursoClient.execute({
-        sql: `SELECT * FROM playlist_items WHERE playlist_id = ? ORDER BY order_index ASC`,
-        args: [pId]
-      });
-
-      const items: PlaylistItem[] = itemsRes.rows.map(itRow => {
-        let mediaItem: any;
-        try { if (itRow.media_item) mediaItem = JSON.parse(String(itRow.media_item)); } catch {}
-        return {
-          id: String(itRow.id),
-          playlistId: pId,
-          mediaItemId: String(itRow.media_item_id),
-          orderIndex: Number(itRow.order_index || 0),
-          addedAt: String(itRow.added_at || ''),
-          mediaItem
-        };
-      });
+      const items = itemsByPlaylist.get(pId) || [];
 
       playlists.push({
         id: pId,
