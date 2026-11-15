@@ -408,6 +408,52 @@ export default function App() {
     }
   };
 
+  const handleDeleteSinglePlaylist = async (playlist: Playlist) => {
+    const isOwner = playlist.userId === syncUser?.id;
+    const actionText = isOwner 
+      ? `delete playlist "${playlist.title}"? This cannot be undone.` 
+      : `delete / remove shared playlist "${playlist.title}" from your library?`;
+
+    const performDelete = async () => {
+      try {
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+        if (syncUser?.id) headers['x-user-id'] = syncUser.id;
+
+        const res = await fetch(`${apiBaseUrl}/playlists/${playlist.id}`, {
+          method: 'DELETE',
+          headers
+        });
+        if (res.ok) {
+          setPlaylists(prev => prev.filter(p => p.id !== playlist.id));
+          setSelectedPlaylistIds(prev => prev.filter(id => id !== playlist.id));
+          fetchPlaylists();
+        } else {
+          const err = await res.json().catch(() => ({}));
+          Alert.alert('Error', err.error || 'Failed to delete playlist');
+        }
+      } catch (err: any) {
+        Alert.alert('Error', err.message || 'Could not delete playlist');
+      }
+    };
+
+    if (typeof window !== 'undefined' && (window as any).confirm) {
+      if ((window as any).confirm(`Are you sure you want to ${actionText}`)) {
+        performDelete();
+        return;
+      }
+    }
+
+    Alert.alert(
+      isOwner ? 'Delete Playlist' : 'Delete Shared Playlist',
+      `Are you sure you want to ${actionText}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: isOwner ? 'Delete' : 'Remove', style: 'destructive', onPress: performDelete }
+      ]
+    );
+  };
+
   const confirmDeleteSelected = () => {
     const count = selectedPlaylistIds.length;
     if (count === 0) return;
@@ -1730,12 +1776,20 @@ export default function App() {
                       >
                         <Text style={styles.playlistPlayText}>▶ Play All</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity 
-                        style={[styles.playlistPlayBtn, { backgroundColor: '#1e2438', borderWidth: 1, borderColor: 'rgba(56,189,248,0.25)', paddingVertical: 4, paddingHorizontal: 8 }]}
-                        onPress={() => setQrSharePlaylist(pl)}
-                      >
-                        <Text style={[styles.playlistPlayText, { color: '#38bdf8', fontSize: 11 }]}>📱 Share QR</Text>
-                      </TouchableOpacity>
+                      <View style={{ flexDirection: 'row', gap: 6 }}>
+                        <TouchableOpacity 
+                          style={[styles.playlistPlayBtn, { backgroundColor: '#1e2438', borderWidth: 1, borderColor: 'rgba(56,189,248,0.25)', paddingVertical: 4, paddingHorizontal: 8 }]}
+                          onPress={() => setQrSharePlaylist(pl)}
+                        >
+                          <Text style={[styles.playlistPlayText, { color: '#38bdf8', fontSize: 11 }]}>📱 QR</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                          style={[styles.playlistPlayBtn, { backgroundColor: 'rgba(239,68,68,0.12)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)', paddingVertical: 4, paddingHorizontal: 8 }]}
+                          onPress={() => handleDeleteSinglePlaylist(pl)}
+                        >
+                          <Text style={[styles.playlistPlayText, { color: '#f87171', fontSize: 11 }]}>🗑️</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   )}
                 </TouchableOpacity>

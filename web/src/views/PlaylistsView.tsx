@@ -275,8 +275,16 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
 
   const handleDeletePlaylist = async () => {
     if (!selectedPlaylist) return;
-    if (confirm(`Delete playlist "${selectedPlaylist.title}"?`)) {
-      await api.deletePlaylist(selectedPlaylist.id);
+    const isShared = selectedPlaylist.isSharedWithMe || selectedPlaylist.userId !== user?.id;
+    const msg = isShared 
+      ? `Delete shared playlist "${selectedPlaylist.title}" from your library?`
+      : `Delete playlist "${selectedPlaylist.title}"? This cannot be undone.`;
+    if (confirm(msg)) {
+      if (isShared) {
+        await api.leaveSharedPlaylist(selectedPlaylist.id, token, user?.id);
+      } else {
+        await api.deletePlaylist(selectedPlaylist.id, token, user?.id);
+      }
       try {
         localStorage.removeItem('vibeflow_selected_playlist_id');
       } catch {}
@@ -288,7 +296,7 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
   const handleLeaveSharedPlaylist = async () => {
     if (!selectedPlaylist) return;
     if (confirm(`Remove shared playlist "${selectedPlaylist.title}" from your library?`)) {
-      await api.leaveSharedPlaylist(selectedPlaylist.id);
+      await api.leaveSharedPlaylist(selectedPlaylist.id, token, user?.id);
       try {
         localStorage.removeItem('vibeflow_selected_playlist_id');
       } catch {}

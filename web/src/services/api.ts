@@ -456,10 +456,15 @@ export const api = {
     const uid = userId || getStoredUserId();
     removeLocalCreatedPlaylist(id, uid);
     const t = token !== undefined ? token : getStoredToken();
-    await fetch(`${API_BASE}/playlists/${id}`, {
+    const res = await fetch(`${API_BASE}/playlists/${id}`, {
       method: 'DELETE',
-      headers: t ? { 'Authorization': `Bearer ${t}` } : {}
+      headers: authHeaders(t)
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to delete playlist');
+    }
+    return await res.json().catch(() => ({ success: true }));
   },
 
   deleteMultiplePlaylists: async (
@@ -726,7 +731,9 @@ export const api = {
     return data;
   },
 
-  leaveSharedPlaylist: async (playlistId: string, token?: string | null) => {
+  leaveSharedPlaylist: async (playlistId: string, token?: string | null, userId?: string) => {
+    const uid = userId || getStoredUserId();
+    removeLocalCreatedPlaylist(playlistId, uid);
     const t = token !== undefined ? token : getStoredToken();
     const res = await fetch(`${API_BASE}/playlists/${playlistId}/leave`, {
       method: 'POST',

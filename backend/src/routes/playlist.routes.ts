@@ -5,7 +5,8 @@ import {
   tursoSavePlaylist, 
   tursoGetPlaylist, 
   tursoGetPlaylistByShareToken, 
-  tursoRemovePlaylistItem 
+  tursoRemovePlaylistItem,
+  tursoDeletePlaylist 
 } from '../store/turso';
 import { Playlist, PlaylistItem, MediaItem } from '../types';
 import { DEFAULT_PREFERENCES } from './auth.routes';
@@ -684,9 +685,9 @@ router.delete('/:id/share/:targetUserId', (req: Request, res: Response) => {
 });
 
 // Leave / remove shared playlist for recipient
-router.post('/:id/leave', (req: Request, res: Response) => {
+router.post('/:id/leave', async (req: Request, res: Response) => {
   const userId = resolveUserId(req);
-  const ok = db.leaveSharedPlaylist(req.params.id, userId);
+  const ok = await db.leaveSharedPlaylistAsync(req.params.id, userId);
   if (!ok) {
     return res.status(404).json({ error: 'Playlist not found' });
   }
@@ -698,7 +699,7 @@ router.post('/:id/leave', (req: Request, res: Response) => {
     timestamp: Date.now()
   });
 
-  res.json({ success: true, message: 'Shared playlist removed from your library' });
+  res.json({ success: true, message: 'Shared playlist removed from your library', deletedId: req.params.id });
 });
 
 // Update playlist (owner only)
@@ -759,39 +760,49 @@ const handleBatchDelete = (req: Request, res: Response) => {
 router.delete('/batch', handleBatchDelete);
 router.post('/batch-delete', handleBatchDelete);
 
-// Delete playlist (owner deletes; recipient leaves)
-router.delete('/:id', (req: Request, res: Response) => {
+// Delete playlist (owner deletes; recipient leaves/removes shared playlist)
+router.delete('/:id', async (req: Request, res: Response) => {
   const userId = resolveUserId(req);
-  const playlist = db.findPlaylistById(req.params.id);
+  let playlist = db.findPlaylistById(req.params.id);
+  if (!playlist) {
+    playlist = await tursoGetPlaylist(req.params.id);
+    if (playlist) db.createPlaylist(playlist);
+  }
   if (!playlist) {
     return res.status(404).json({ error: 'Playlist not found' });
   }
 
+  // If user is not the creator, only shared recipients can delete/remove it from their library
   if (!db.isUserOwner(playlist, userId)) {
     if (db.isUserShared(playlist, userId)) {
-      db.leaveSharedPlaylist(req.params.id, userId);
+      await db.leaveSharedPlaylistAsync(req.params.id, userId);
       broadcastPlaylistEvent({
         type: 'playlist_updated',
         playlistId: req.params.id,
         userId,
         timestamp: Date.now()
       });
-      return res.json({ success: true, message: 'Removed shared playlist from your library' });
+      return res.json({ 
+        success: true, 
+        message: 'Removed shared playlist from your library',
+        deletedId: req.params.id 
+      });
     }
-    return res.status(403).json({ error: 'Only the creator can delete this playlist' });
+    return res.status(403).json({ error: 'Only the creator or a recipient can remove this playlist' });
   }
 
   const deleted = db.deletePlaylist(req.params.id);
   if (!deleted) {
     return res.status(404).json({ error: 'Playlist not found' });
   }
+  await tursoDeletePlaylist(req.params.id);
   broadcastPlaylistEvent({
     type: 'playlist_deleted',
     playlistId: req.params.id,
     userId,
     timestamp: Date.now()
   });
-  res.json({ success: true, message: 'Playlist deleted' });
+  res.json({ success: true, message: 'Playlist deleted', deletedId: req.params.id });
 });
 
 // Add item or multiple items to playlist (batch support)

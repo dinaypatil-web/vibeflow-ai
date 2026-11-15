@@ -2079,6 +2079,89 @@ async function runTests() {
     }
   });
 
+  // 40. User Can Delete Playlist Shared to Him (Leaves Shared Playlist, Preserving Creator Playlist)
+  await test('User Can Delete Shared Playlist Without Affecting Owner', async () => {
+    // 1. Create User A (Owner) and User B (Recipient)
+    const ownerRes = await fetchJSON(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Owner Alpha', email: `owner_${Date.now()}@vibeflow.io`, password: 'OwnerPassword2026!' })
+    });
+    const owner = ownerRes.user;
+    const tokenOwner = ownerRes.token;
+
+    const recipientRes = await fetchJSON(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Recipient Beta', email: `recipient_${Date.now()}@vibeflow.io`, password: 'RecipientPassword2026!' })
+    });
+    const recipient = recipientRes.user;
+    const tokenRecipient = recipientRes.token;
+
+    // 2. Owner creates Playlist S
+    const createRes = await fetchJSON(`${API_BASE}/playlists`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenOwner}`, 'x-user-id': owner.id },
+      body: JSON.stringify({
+        title: 'Shared Synthwave Gems',
+        description: 'Collaborative synth tracks',
+        userId: owner.id,
+        creator: { id: owner.id, name: owner.name, email: owner.email }
+      })
+    });
+    const playlistS = createRes.playlist;
+
+    // 3. Owner adds a track
+    await fetchJSON(`${API_BASE}/playlists/${playlistS.id}/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenOwner}` },
+      body: JSON.stringify({
+        mediaItemId: `synth-track-${Date.now()}`,
+        title: 'Midnight Drive',
+        artist: 'Synth Master'
+      })
+    });
+
+    // 4. Owner shares Playlist S with Recipient Beta
+    const shareRes = await fetchJSON(`${API_BASE}/playlists/${playlistS.id}/share`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenOwner}` },
+      body: JSON.stringify({ target: recipient.email })
+    });
+    if (!shareRes.success) throw new Error('Failed to share playlist with recipient');
+
+    // 5. Verify Recipient Beta sees Playlist S in their library
+    const recipientLibraryBefore = await fetchJSON(`${API_BASE}/playlists?userId=${encodeURIComponent(recipient.id)}`, {
+      headers: { 'Authorization': `Bearer ${tokenRecipient}`, 'x-user-id': recipient.id }
+    });
+    const foundBefore = (recipientLibraryBefore.playlists || []).find(p => p.id === playlistS.id);
+    if (!foundBefore) throw new Error('Recipient could not see shared playlist in library');
+
+    // 6. Recipient Beta deletes the shared playlist from their library
+    const deleteSharedRes = await fetchJSON(`${API_BASE}/playlists/${playlistS.id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${tokenRecipient}`, 'x-user-id': recipient.id }
+    });
+    if (!deleteSharedRes.success) throw new Error('Deleting shared playlist failed for recipient');
+
+    // 7. Verify Playlist S is NO LONGER in Recipient Beta's library
+    const recipientLibraryAfter = await fetchJSON(`${API_BASE}/playlists?userId=${encodeURIComponent(recipient.id)}`, {
+      headers: { 'Authorization': `Bearer ${tokenRecipient}`, 'x-user-id': recipient.id }
+    });
+    const foundAfter = (recipientLibraryAfter.playlists || []).find(p => p.id === playlistS.id);
+    if (foundAfter) throw new Error('Deleted shared playlist still appeared in recipient library!');
+
+    // 8. CRITICAL: Verify Playlist S is STILL completely intact in Owner Alpha's library!
+    const ownerLibraryAfter = await fetchJSON(`${API_BASE}/playlists?userId=${encodeURIComponent(owner.id)}`, {
+      headers: { 'Authorization': `Bearer ${tokenOwner}`, 'x-user-id': owner.id }
+    });
+    const foundOwner = (ownerLibraryAfter.playlists || []).find(p => p.id === playlistS.id);
+    if (!foundOwner) throw new Error('CRITICAL BUG: Shared playlist was deleted from owner when recipient removed it!');
+    if (!foundOwner.items || foundOwner.items.length !== 1 || foundOwner.items[0].mediaItem.title !== 'Midnight Drive') {
+      throw new Error('Owner playlist items were corrupted when recipient removed it');
+    }
+  });
+
   console.log(`\n🎉 Test Results: ${passed}/${total} passed!`);
   if (passed === total) {
     console.log('🌟 All VibeFlow AI core systems verified production-ready.\n');

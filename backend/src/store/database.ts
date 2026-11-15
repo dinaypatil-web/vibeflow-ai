@@ -1271,9 +1271,15 @@ class MemoryDatabase {
   }
 
   public isUserShared(playlist: Playlist, userIdOrIdent: string): boolean {
-    if (!playlist || !userIdOrIdent || !Array.isArray(playlist.sharedWith)) return false;
+    if (!playlist || !userIdOrIdent) return false;
     const idSet = this.getUserAliasSet(userIdOrIdent);
-    return playlist.sharedWith.some(s => idSet.has((s || '').toLowerCase()));
+    const inSharedWith = Array.isArray(playlist.sharedWith) && playlist.sharedWith.some(s => idSet.has((s || '').toLowerCase()));
+    const inSharedWithUsers = Array.isArray(playlist.sharedWithUsers) && playlist.sharedWithUsers.some(u => 
+      idSet.has((u?.id || '').toLowerCase()) || 
+      idSet.has((u?.username || '').toLowerCase()) || 
+      idSet.has((u?.email || '').toLowerCase())
+    );
+    return inSharedWith || inSharedWithUsers;
   }
 
   public getPlaylistsByUserId(userId: string, clientPlaylistIds?: string[]): Playlist[] {
@@ -1595,11 +1601,47 @@ class MemoryDatabase {
       playlist.sharedWith = playlist.sharedWith.filter(id => !idSet.has(id.toLowerCase()));
     }
     if (playlist.sharedWithUsers) {
-      playlist.sharedWithUsers = playlist.sharedWithUsers.filter(u => !idSet.has((u.id || '').toLowerCase()) && !idSet.has((u.username || '').toLowerCase()));
+      playlist.sharedWithUsers = playlist.sharedWithUsers.filter(u => 
+        !idSet.has((u.id || '').toLowerCase()) && 
+        !idSet.has((u.username || '').toLowerCase()) &&
+        !idSet.has((u.email || '').toLowerCase())
+      );
     }
     this.saveToDisk();
     this.syncToCloud().catch(() => {});
     tursoSavePlaylist(playlist).catch(() => {});
+    return true;
+  }
+
+  public async leaveSharedPlaylistAsync(playlistId: string, userId: string): Promise<boolean> {
+    let playlist = this.findPlaylistById(playlistId);
+    if (!playlist) {
+      playlist = await tursoGetPlaylist(playlistId);
+      if (playlist) {
+        this.createPlaylist(playlist);
+      }
+    }
+    if (!playlist) return false;
+    const idSet = this.getUserAliasSet(userId);
+    if (playlist.sharedWith) {
+      playlist.sharedWith = playlist.sharedWith.filter(id => !idSet.has(id.toLowerCase()));
+    }
+    if (playlist.sharedWithUsers) {
+      playlist.sharedWithUsers = playlist.sharedWithUsers.filter(u => 
+        !idSet.has((u.id || '').toLowerCase()) && 
+        !idSet.has((u.username || '').toLowerCase()) &&
+        !idSet.has((u.email || '').toLowerCase())
+      );
+    }
+    this.saveToDisk();
+    try {
+      await tursoSavePlaylist(playlist);
+    } catch (err) {
+      console.warn('[Turso] leaveSharedPlaylistAsync error:', err);
+    }
+    try {
+      await this.syncToCloud();
+    } catch {}
     return true;
   }
 
@@ -1841,6 +1883,7 @@ class MemoryDatabase {
     const idSet = new Set(ids);
     let changed = false;
 
+    const permanentlyDeletedIds: string[] = [];
     for (const id of idSet) {
       const pl = this.findPlaylistById(id);
       if (!pl) {
@@ -1849,6 +1892,7 @@ class MemoryDatabase {
           this.data.deletedPlaylistIds.push(id);
           changed = true;
         }
+        permanentlyDeletedIds.push(id);
         deletedIds.push(id);
         continue;
       }
@@ -1860,9 +1904,11 @@ class MemoryDatabase {
         if (!this.data.deletedPlaylistIds.includes(id)) {
           this.data.deletedPlaylistIds.push(id);
         }
+        permanentlyDeletedIds.push(id);
         deletedIds.push(id);
         changed = true;
       } else if (this.isUserShared(pl, userId)) {
+        // User deletes / leaves a playlist shared to them
         this.leaveSharedPlaylist(id, userId);
         deletedIds.push(id);
         changed = true;
@@ -1874,7 +1920,9 @@ class MemoryDatabase {
     if (changed) {
       this.saveToDisk();
       this.syncToCloud().catch(() => {});
-      tursoDeleteMultiplePlaylists(deletedIds).catch(() => {});
+      if (permanentlyDeletedIds.length > 0) {
+        tursoDeleteMultiplePlaylists(permanentlyDeletedIds).catch(() => {});
+      }
     }
 
     return { deletedIds, failedIds };
