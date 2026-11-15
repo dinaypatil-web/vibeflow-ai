@@ -65,6 +65,9 @@ export const App: React.FC = () => {
       const playlistId = urlParams.get('playlistId') || hashParams.get('playlistId') || urlParams.get('id') || hashParams.get('id');
 
       if (shareToken || playlistId) {
+        try {
+          window.history.replaceState({}, '', window.location.pathname);
+        } catch {}
         setActiveTab('playlists');
         if (shareToken) {
           api.acceptShareToken(shareToken).then(res => {

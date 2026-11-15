@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   ListMusic, 
   Sparkles, 
@@ -45,6 +45,10 @@ interface PlaylistsViewProps {
 export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
+  const selectedPlaylistRef = useRef<Playlist | null>(null);
+  selectedPlaylistRef.current = selectedPlaylist;
+
+  const initialCacheLoadedRef = useRef(false);
   const [isSmartModalOpen, setIsSmartModalOpen] = useState(false);
   const [isCustomModalOpen, setIsCustomModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -81,8 +85,9 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
       const activeUser = overrideUser !== undefined ? overrideUser : user;
       const activeToken = overrideToken !== undefined ? overrideToken : token;
 
-      // Instant cache display for seamless cross-device switching without layout flicker
-      if (playlists.length === 0) {
+      // Instant cache display ONLY ONCE on initial mount for instant UI render
+      if (!initialCacheLoadedRef.current) {
+        initialCacheLoadedRef.current = true;
         const cached = getLocallyCachedPlaylists(activeUser?.id);
         if (cached && cached.length > 0) {
           const cachedCustom = cached.filter(p => !p.id.startsWith('playlist-') && !p.isSharedWithMe);
@@ -91,7 +96,12 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
           const initialOrdered = sortPlaylistsStable([...cachedCustom, ...cachedShared, ...cachedPresets]);
           if (initialOrdered.length > 0) {
             setPlaylists(initialOrdered);
-            if (!selectedPlaylist) setSelectedPlaylist(initialOrdered[0]);
+            const storedId = localStorage.getItem('vibeflow_selected_playlist_id');
+            const target = (storedId ? initialOrdered.find(p => p.id === storedId) : null) || initialOrdered[0];
+            if (target && !selectedPlaylistRef.current) {
+              selectedPlaylistRef.current = target;
+              setSelectedPlaylist(target);
+            }
           }
         }
       }
@@ -127,27 +137,48 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
       });
 
       if (ordered.length > 0) {
+        // Deterministic playlist selection priority:
+        // 1. Explicitly requested ID (e.g. user just created a new playlist or clicked a deep link)
+        // 2. Currently selected playlist in memory (preserves user's selection across all sync polls/events!)
+        // 3. Stored selection in localStorage
         const storedSelectedId = localStorage.getItem('vibeflow_selected_playlist_id');
-        const targetId = preferredPlaylistId || selectedPlaylist?.id || storedSelectedId;
-        const matched = targetId ? ordered.find(p => p.id === targetId) : undefined;
-        // Priority: matched -> user's first custom playlist -> first shared playlist -> first playlist
-        const nextSelected = matched || customPlaylists[0] || sharedPlaylists[0] || ordered[0];
+        const activeSelectedId = preferredPlaylistId || selectedPlaylistRef.current?.id || storedSelectedId;
         
-        setSelectedPlaylist(prev => {
-          if (prev?.id === nextSelected?.id && 
-              (prev?.items?.length || 0) === (nextSelected?.items?.length || 0) && 
-              prev?.updatedAt === nextSelected?.updatedAt) {
-            return prev;
-          }
-          return nextSelected;
-        });
-
+        let nextSelected = activeSelectedId ? ordered.find(p => p.id === activeSelectedId) : undefined;
+        
+        // 4. Only if currently selected playlist no longer exists (e.g. deleted), fall back to first available
+        if (!nextSelected) {
+          nextSelected = customPlaylists[0] || sharedPlaylists[0] || ordered[0];
+        }
+        
         if (nextSelected) {
+          selectedPlaylistRef.current = nextSelected;
           try {
             localStorage.setItem('vibeflow_selected_playlist_id', nextSelected.id);
           } catch {}
+
+          setSelectedPlaylist(prev => {
+            if (prev?.id === nextSelected!.id) {
+              const prevItems = prev.items || [];
+              const nextItems = nextSelected!.items || [];
+              const itemsIdentical = prevItems.length === nextItems.length &&
+                prevItems.every((it, idx) => it.id === nextItems[idx]?.id && it.mediaItemId === nextItems[idx]?.mediaItemId);
+              
+              if (itemsIdentical &&
+                  prev.title === nextSelected!.title &&
+                  prev.description === nextSelected!.description &&
+                  prev.coverArt === nextSelected!.coverArt &&
+                  prev.updatedAt === nextSelected!.updatedAt &&
+                  Boolean(prev.isPinned) === Boolean(nextSelected!.isPinned) &&
+                  Boolean(prev.isSharedWithMe) === Boolean(nextSelected!.isSharedWithMe)) {
+                return prev; // Do not trigger state update or re-render if identical
+              }
+            }
+            return nextSelected!;
+          });
         }
       } else {
+        selectedPlaylistRef.current = null;
         setSelectedPlaylist(null);
         try {
           localStorage.removeItem('vibeflow_selected_playlist_id');
@@ -160,7 +191,11 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
     }
   };
 
+  const fetchPlaylistsRef = useRef(fetchPlaylists);
+  fetchPlaylistsRef.current = fetchPlaylists;
+
   const handleSelectPlaylist = (pl: Playlist) => {
+    selectedPlaylistRef.current = pl;
     setSelectedPlaylist(pl);
     try {
       localStorage.setItem('vibeflow_selected_playlist_id', pl.id);
@@ -169,6 +204,7 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
 
   const handlePlaylistCreated = (newPl?: Playlist) => {
     if (newPl) {
+      selectedPlaylistRef.current = newPl;
       setSelectedPlaylist(newPl);
       try {
         localStorage.setItem('vibeflow_selected_playlist_id', newPl.id);
@@ -188,6 +224,7 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
       const playlistId = urlParams.get('playlistId') || hashParams.get('playlistId') || urlParams.get('id') || hashParams.get('id');
 
       if (shareToken) {
+        try { window.history.replaceState({}, '', window.location.pathname); } catch {}
         api.acceptShareToken(shareToken)
           .then(res => {
             if (res.playlist) {
@@ -197,6 +234,7 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
           })
           .catch(() => {});
       } else if (playlistId) {
+        try { window.history.replaceState({}, '', window.location.pathname); } catch {}
         api.getPlaylist(playlistId)
           .then(pl => {
             if (pl) {
@@ -210,31 +248,31 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
   }, []);
 
   useEffect(() => {
-    fetchPlaylists();
+    fetchPlaylistsRef.current();
 
     const handleAuthChange = (e: any) => {
       const u = e?.detail?.user !== undefined ? e.detail.user : usePlayerStore.getState().user;
       const t = e?.detail?.token !== undefined ? e.detail.token : usePlayerStore.getState().token;
-      fetchPlaylists(undefined, u, t);
+      fetchPlaylistsRef.current(undefined, u, t);
     };
 
     // Live real-time event updates from server SSE or local dispatch
-    const handleLivePlaylistUpdate = (e: any) => {
-      const targetPlId = e?.detail?.playlist?.id || e?.detail?.playlistId;
-      fetchPlaylists(targetPlId, undefined, undefined, true);
+    const handleLivePlaylistUpdate = (_e: any) => {
+      // Background events refresh data in place without hijacking user's active playlist selection
+      fetchPlaylistsRef.current(undefined, undefined, undefined, true);
     };
 
     // Cross-device sync: refresh playlists when user focuses or returns to this tab
     const handleSyncRefresh = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        fetchPlaylists(undefined, undefined, undefined, true);
+        fetchPlaylistsRef.current(undefined, undefined, undefined, true);
       }
     };
 
     // Cross-tab sync: update if another tab on this device modified playlists
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key && (e.key.includes('playlist') || e.key.includes('user'))) {
-        fetchPlaylists(undefined, undefined, undefined, true);
+        fetchPlaylistsRef.current(undefined, undefined, undefined, true);
       }
     };
 
@@ -258,14 +296,15 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({ onOpenAuth }) => {
   // Auto-resolve real track durations for playlists that have fallback or preview tracks
   useEffect(() => {
     if (!selectedPlaylist || !selectedPlaylist.items || selectedPlaylist.items.length === 0) return;
+    const currentId = selectedPlaylist.id;
     const hasUnresolved = selectedPlaylist.items.some(
       i => !i.mediaItem?.duration || i.mediaItem.duration <= 0 || i.mediaItem.duration === 240 || 
         (i.mediaItem.duration === 30 && (i.mediaItem.id.startsWith('itunes-') || i.mediaItem.id.startsWith('deezer-')))
     );
     if (hasUnresolved && !selectedPlaylist.isSmart) {
-      api.resolvePlaylistDurations(selectedPlaylist.id)
+      api.resolvePlaylistDurations(currentId)
         .then(res => {
-          if (res.playlist) {
+          if (res.playlist && selectedPlaylistRef.current?.id === currentId) {
             setSelectedPlaylist(res.playlist);
             setPlaylists(prev => prev.map(p => p.id === res.playlist.id ? res.playlist : p));
           }
